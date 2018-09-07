@@ -1,7 +1,7 @@
 [package]
 name = "sonnerie"
 version = "0.1.0"
-authors = ["Charles Samuels <kalle@eventures.vc>", "e.ventures Management LLP <http://eventures.vc>"]
+authors = ["Charles Samuels <kalle@eventures.vc>", "e.ventures Management LLP"]
 description = "A simple timeseries database"
 license = "BSD-2-Clause"
 readme = "README.md"
@@ -10,25 +10,20 @@ keywords = ["cli", "timeseries", "database"]
 documentation = "https://docs.rs/sonnerie/"
 
 [dependencies]
-rusqlite = "*"
+rusqlite = "0.14.0"
 clap = "2"
-libc = "*"
-byteorder = "*"
-nix = "*"
-range = "*"
+libc = "0.2.43"
+byteorder = "1"
+nix = "0.11"
+range = "0.3.1"
 antidote = "1"
-chrono = "*"
-intrusive-collections = "*"
+chrono = "0.4.6"
+intrusive-collections = "0.7.4"
 rustyline = "2"
-shlex = "*"
+shlex = "0.1.1"
+sonnerie-api = "0.1.0"
+escape_string = "0.1.0"
 
 [dev-dependencies]
-tempfile = "*"
+tempfile = "3"
 
-[dependencies.sonnerie-api]
-path = "sonnerie-api"
-version = "*"
-
-[dependencies.escape_string]
-path = "escape_string"
-version = "*"
