@@ -9,8 +9,6 @@ keywords = ["timeseries", "database", "protocol"]
 documentation = "https://docs.rs/sonnerie-api/"
 
 [dependencies]
-chrono = "*"
+chrono = "0.4.6"
+escape_string = "0.1.0"
 
-[dependencies.escape_string]
-path = "../escape_string"
-version = "*"
