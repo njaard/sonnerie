@@ -1,8 +1,14 @@
+[![GitHub license](https://img.shields.io/badge/license-BSD-blue.svg)](https://raw.githubusercontent.com/njaard/sonnerie/master/LICENSE)
+[![Crates.io](https://img.shields.io/crates/v/pond.svg)](https://crates.io/crates/sonnerie)
+
 # Introduction
 
 Sonnerie is a time-series database. Map a timestamp to a floating-point
 value. Store multiple of these series in a single database. Insert
 tens of millions of samples in minutes, on rotational media.
+
+Sonnerie includes a [Client API](https://crates.io/crates/sonnerie-api),
+which has its own [API docs](https://docs.rs/sonnerie-api).
 
 ## Features
 
