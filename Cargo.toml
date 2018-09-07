@@ -1,0 +1,30 @@
+[package]
+name = "sonnerie"
+version = "0.1.0"
+authors = ["Charles Samuels <kalle@eventures.vc>"]
+description = "A timeseries database"
+license = "BSD-2-Clause"
+
+[dependencies]
+rusqlite = "*"
+clap = "2"
+libc = "*"
+byteorder = "*"
+nix = "*"
+range = "*"
+antidote = "1"
+chrono = "*"
+intrusive-collections = "*"
+rustyline = "2"
+shlex = "*"
+
+[dev-dependencies]
+tempfile = "*"
+
+[dependencies.sonnerie-api]
+path = "sonnerie-api"
+version = "*"
+
+[dependencies.escape_string]
+path = "escape_string"
+version = "*"

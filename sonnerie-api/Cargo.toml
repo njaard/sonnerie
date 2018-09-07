@@ -1,0 +1,13 @@
+[package]
+name = "sonnerie-api"
+version = "0.1.0"
+authors = ["Charles Samuels <kalle@eventures.vc>"]
+license = "BSD-2-Clause"
+description = "A client api to Sonnerie, a timeseries database"
+
+[dependencies]
+chrono = "*"
+
+[dependencies.escape_string]
+path = "../escape_string"
+version = "*"

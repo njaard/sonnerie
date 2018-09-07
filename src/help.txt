@@ -1,0 +1,30 @@
+The following commands are offered:
+
+begin read
+    start a read-only transaction
+begin write
+    start an writing transaction
+commit
+    end a transaction, saving its changes
+rollback
+    end a transaction, discarding its changes
+create SERIES
+    create a series by name
+add SERIES
+    add values to a series, the following
+    rows are in the form <TS> <VALUE>.
+    One blank line terminates.
+    The timestamps must be in increasing order.
+add1 SERIES TS VALUE
+    add a single value to a series
+read SERIES TS1 TS2
+    read a series from TS1 to TS2, inclusive
+dump LIKE TS1 TS2
+    read all series that are "like" LIKE, dumping
+    all their data between TS1 and TS2, inclusive
+    LIKE is passed to sqlite's LIKE operator on
+    the series name: % is a wildcard operator
+help
+    show this information
+exit
+    disconnect from server
