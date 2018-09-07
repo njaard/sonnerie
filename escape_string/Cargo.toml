@@ -1,6 +1,6 @@
 [package]
 name = "escape_string"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["Charles Samuels <kalle@eventures.vc>", "e.ventures Management LLC"]
 license = "BSD-2-Clause"
 description = "Very efficiently parse backslash-escaped strings"
