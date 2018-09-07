@@ -1,8 +1,11 @@
 [package]
 name = "escape_string"
 version = "0.1.0"
-authors = ["Charles Samuels <kalle@eventures.vc>"]
+authors = ["Charles Samuels <kalle@eventures.vc>", "e.ventures Management LLP <http://eventures.vc>"]
 license = "BSD-2-Clause"
 description = "Very efficiently parse backslash-escaped strings"
+repository = "https://github.com/njaard/sonnerie"
+keywords = ["string", "parse", "escape"]
+documentation = "https://docs.rs/escape_string/"
 
 [dependencies]

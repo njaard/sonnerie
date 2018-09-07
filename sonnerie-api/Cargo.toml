@@ -1,9 +1,12 @@
 [package]
 name = "sonnerie-api"
 version = "0.1.0"
-authors = ["Charles Samuels <kalle@eventures.vc>"]
+authors = ["Charles Samuels <kalle@eventures.vc>", "e.ventures Management LLP <http://eventures.vc>"]
 license = "BSD-2-Clause"
 description = "A client api to Sonnerie, a timeseries database"
+repository = "https://github.com/njaard/sonnerie"
+keywords = ["timeseries", "database", "protocol"]
+documentation = "https://docs.rs/sonnerie-api/"
 
 [dependencies]
 chrono = "*"
