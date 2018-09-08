@@ -165,12 +165,12 @@ Each sample requires 16 bytes on average plus small amounts of metadata.
 * Online incremental backups
 * Compacting
 * Compression
-* Old blocks can be compressed and unused space (including that
-caused by edits and insertions) compacted away.
 * An HTTP-based protocol
 * Most recent values
 * Store other fixed-size data (multiple floats per timestamp)
 * Store variable-sized data (a string or blob per timestamp)
+* Read by upper or lower bound: over many series, efficiently
+read the first value that is before or after a specific timestamp.
 
 # Copyright
 
