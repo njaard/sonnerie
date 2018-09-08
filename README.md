@@ -19,7 +19,7 @@ which has its own [API docs](https://docs.rs/sonnerie-api).
 * Isolated: A transaction doesn't see updates from other transactions or
 expose its changes until it has been committed.
 * Durable: committed data is resistant to loss from unexpected shutdown.
-* Millisecond-resolution timestamps (64 bit)
+* Nanosecond-resolution timestamps (64 bit)
 * No weird dependencies, no virtual machines, one single native binary
 
 Sonnerie runs on Unix-like systems and is developed on Linux.
@@ -122,7 +122,7 @@ Telnet into Sonnerie (`telnet ::1 5599`) and type "help" to see what you can
 do. The protocol is text-based and very similar to the client frontend.
 
 Commands use shell-like escaping, so spaces can be escaped with
-a backslash. Timestamps are milliseconds since the Unix Epoch.
+a backslash. Timestamps are nanoseconds since the Unix Epoch.
 
 The protocol formats floats with enough precision such that
 they can represent themselves exactly.

@@ -21,8 +21,8 @@ chrono = "0.4.6"
 intrusive-collections = "0.7.4"
 rustyline = "2"
 shlex = "0.1.1"
-sonnerie-api = "0.1.0"
-escape_string = "0.1.0"
+sonnerie-api = {version="0.1.0", path="sonnerie-api"}
+escape_string = {version="0.1.0", path="escape_string"}
 
 [dev-dependencies]
 tempfile = "3"

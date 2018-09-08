@@ -412,11 +412,11 @@ mod tests
 				for len in 1..17
 				{
 					let s = txw.read_series(h, Timestamp(start), Timestamp(start+len-1));
-					assert_eq!(s.len() as i64, len);
+					assert_eq!(s.len(), len as usize);
 					for (idx,a) in s.iter().enumerate()
 					{
-						assert_eq!((a.0).0 as i64, start+idx as i64);
-						assert_eq!(a.1, (start+idx as i64) as f64);
+						assert_eq!((a.0).0 as u64, start+idx as u64);
+						assert_eq!(a.1, (start+idx as u64) as f64);
 					}
 				}
 			}
@@ -451,11 +451,11 @@ mod tests
 				for len in 1..17
 				{
 					let s = txw.read_series(h, Timestamp(start), Timestamp(start+len-1));
-					assert_eq!(s.len() as i64, len);
+					assert_eq!(s.len(), len as usize);
 					for (idx,a) in s.iter().enumerate()
 					{
-						assert_eq!((a.0).0 as i64, start+idx as i64);
-						assert_eq!(a.1, ((start+idx as i64)*10) as f64);
+						assert_eq!(a.0 .0 as u64, start+idx as u64);
+						assert_eq!(a.1, ((start+idx as u64)*10) as f64);
 					}
 				}
 			}

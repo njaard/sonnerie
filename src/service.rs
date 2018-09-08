@@ -357,7 +357,7 @@ fn parse_float(t: &str) -> Result<f64, String>
 
 fn parse_time(t: &str) -> Result<Timestamp, String>
 {
-	let t: i64 = t.parse::<i64>()
+	let t: u64 = t.parse::<u64>()
 		.map_err(|e| format!("failed to parse timestamp \"{}\": {}", t, e))?;
 	Ok(Timestamp(t))
 }

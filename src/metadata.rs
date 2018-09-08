@@ -3,7 +3,8 @@ extern crate byteorder;
 extern crate antidote;
 
 #[derive(Debug,Clone,Copy,PartialEq,PartialOrd)]
-pub struct Timestamp(pub i64);
+pub struct Timestamp(pub u64);
+
 static BLOCK_SIZE: usize = 4096;
 
 use ::db::Db;
@@ -190,8 +191,8 @@ impl<'db> Transaction<'db>
 
 		let mut rows = s.query(&[
 			&(series_id as i64),
-			&last_ts.0,
-			&first_ts.0,
+			&last_ts.to_sqlite(),
+			&first_ts.to_sqlite(),
 		]).unwrap();
 
 		let mut blocks = vec!();
@@ -200,8 +201,8 @@ impl<'db> Transaction<'db>
 			let row = row.unwrap();
 			let b = Block
 			{
-				first_timestamp: Timestamp(row.get(0)),
-				last_timestamp: Timestamp(row.get(1)),
+				first_timestamp: Timestamp::from_sqlite(row.get(0)),
+				last_timestamp: Timestamp::from_sqlite(row.get(1)),
 				offset: row.get::<_,i64>(2) as u64,
 				capacity: row.get::<_,i64>(3) as u64,
 				size: row.get::<_,i64>(4) as u64,
@@ -313,7 +314,7 @@ impl<'db> Transaction<'db>
 			let last_block = self.last_block_for_series(series_id);
 
 			let mut one_sample = [0u8; 16];
-			BigEndian::write_i64(&mut one_sample[0..8], t.0);
+			BigEndian::write_u64(&mut one_sample[0..8], t.0);
 			BigEndian::write_f64(&mut one_sample[8..16], v);
 
 			let mut need_new_block = true;
@@ -427,7 +428,7 @@ impl<'db> Transaction<'db>
 					}
 					previous_timestamp = Some(ts);
 					let val = val.1;
-					BigEndian::write_i64(&mut one_sample_bytes[0..8], ts);
+					BigEndian::write_u64(&mut one_sample_bytes[0..8], ts);
 					BigEndian::write_f64(&mut one_sample_bytes[8..16], val);
 				}
 				self.metadata.blocks.write()
@@ -478,7 +479,7 @@ impl<'db> Transaction<'db>
 
 			for sample in block_data.chunks(16)
 			{
-				let t = Timestamp(BigEndian::read_i64(&sample[0..8]));
+				let t = Timestamp(BigEndian::read_u64(&sample[0..8]));
 				if t >= first_timestamp
 				{
 					if t > last_timestamp
@@ -525,8 +526,9 @@ impl<'db> Transaction<'db>
 			&[
 				&(series_id as i64),
 				&(self.metadata.generation as i64),
-				&first_timestamp.0,
-				&last_timestamp.0, &(self.metadata.next_offset.get() as i64),
+				&first_timestamp.to_sqlite(),
+				&last_timestamp.to_sqlite(),
+				&(self.metadata.next_offset.get() as i64),
 				&(capacity as i64), &(initial_size as i64),
 			]
 		).unwrap();
@@ -564,9 +566,9 @@ impl<'db> Transaction<'db>
 				series_id=? and first_timestamp=?
 			",
 			&[
-				&(new_size as i64), &new_last_timestamp.0,
+				&(new_size as i64), &new_last_timestamp.to_sqlite(),
 				&(self.metadata.generation as i64),
-				&(series_id as i64), &first_timestamp.0,
+				&(series_id as i64), &first_timestamp.to_sqlite(),
 			]
 		).unwrap();
 
@@ -598,8 +600,8 @@ impl<'db> Transaction<'db>
 			let row = row.unwrap();
 			let b = Block
 			{
-				first_timestamp: Timestamp(row.get(0)),
-				last_timestamp: Timestamp(row.get(1)),
+				first_timestamp: Timestamp::from_sqlite(row.get(0)),
+				last_timestamp: Timestamp::from_sqlite(row.get(1)),
 				offset: row.get::<_,i64>(2) as u64,
 				capacity: row.get::<_,i64>(3) as u64,
 				size: row.get::<_,i64>(4) as u64,
@@ -676,6 +678,42 @@ impl<'conn> Drop for Savepoint<'conn>
 			let _ = self.conn.execute(
 				"rollback to savepoint sp", &[]
 			);
+		}
+	}
+}
+
+/// Map u64 to i64, because sqlite doesn't do unsigned 64-bit
+///
+/// We just subtract the difference so that sorting is still the same
+impl Timestamp
+{
+	fn to_sqlite(&self) -> i64
+	{
+		(self.0 as i64).wrapping_add(::std::i64::MIN)
+	}
+	fn from_sqlite(v: i64) -> Timestamp
+	{
+		Timestamp(v.wrapping_sub(::std::i64::MIN) as u64)
+	}
+}
+
+#[cfg(test)]
+mod tests
+{
+	use ::metadata::Timestamp;
+	#[test]
+	fn timestamp_range()
+	{
+		assert_eq!(Timestamp(::std::u64::MAX).to_sqlite(), ::std::i64::MAX);
+		assert_eq!(Timestamp(500).to_sqlite(), ::std::i64::MIN+500);
+		assert_eq!(Timestamp(0).to_sqlite(), ::std::i64::MIN);
+
+		assert_eq!(Timestamp::from_sqlite(::std::i64::MIN).0, 0);
+		assert_eq!(Timestamp::from_sqlite(0).0-1, ::std::i64::MAX as u64);
+
+		for some in &[::std::i64::MIN, ::std::i64::MIN+100, 0, 100, ::std::i64::MAX-1000]
+		{
+			assert_eq!(Timestamp::from_sqlite(*some).to_sqlite(), *some);
 		}
 	}
 }

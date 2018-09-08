@@ -33,6 +33,8 @@ use std::io::{BufReader,BufWriter,BufRead,Write,Read};
 use std::io::{Result, ErrorKind, Error};
 use std::fmt;
 
+const NANO: u64 = 1_000_000_000;
+
 use escape_string::{escape,split_one};
 
 use std::cell::{Cell,RefCell};
@@ -232,15 +234,8 @@ impl Client
 		name: &str,
 	) -> Result<Vec<(NaiveDateTime, f64)>>
 	{
-		use chrono::{NaiveDate,NaiveTime};
-		let from = NaiveDateTime::new(
-			NaiveDate::from_ymd(-262144,1,1),
-			NaiveTime::from_hms(0,0,0)
-		);
-		let to = NaiveDateTime::new(
-			NaiveDate::from_ymd(262143,12,31),
-			NaiveTime::from_hms(0,0,0)
-		);
+		let from = NaiveDateTime::from_timestamp(0,0);
+		let to = max_time();
 		self.read_series_range(name, &from, &to)
 	}
 
@@ -289,20 +284,7 @@ impl Client
 					)
 				)?;
 
-			let ts: i64 = out[ 0 .. space ].parse()
-				.map_err(
-					|e|
-						Error::new(
-							ErrorKind::InvalidData,
-							ProtocolError::new(
-								format!("failed to parse timestamp: {}, '{}'", e, &out[0 .. space])
-							),
-						)
-				)?;
-			let ts = NaiveDateTime::from_timestamp(
-				ts/1000,
-				((ts%1000) * 1000) as u32
-			);
+			let ts = parse_time(&out[ 0 .. space ])?;
 			let val: f64 = out[space+1 ..].parse()
 				.map_err(
 					|e|
@@ -516,15 +498,8 @@ impl Client
 		where F: FnMut(&str, NaiveDateTime, f64)
 			-> ::std::result::Result<(), String>
 	{
-		// documented in chrono as the permitted range of timestamps
-		let from = NaiveDateTime::new(
-			chrono::NaiveDate::from_ymd(-262144,1,1),
-			chrono::NaiveTime::from_hms(0,0,0)
-		);
-		let to = NaiveDateTime::new(
-			chrono::NaiveDate::from_ymd(262143,12,31),
-			chrono::NaiveTime::from_hms(0,0,0)
-		);
+		let from = NaiveDateTime::from_timestamp(0,0);
+		let to = max_time();
 		self.dump_range(like, &from, &to, results)
 	}
 
@@ -598,20 +573,8 @@ impl Client
 					)
 				)?;
 
-			let ts: i64 = ts.parse()
-				.map_err(
-					|e|
-						Error::new(
-							ErrorKind::InvalidData,
-							ProtocolError::new(
-								format!("failed to parse timestamp: {}, '{}'", e, ts)
-							),
-						)
-				)?;
-			let ts = NaiveDateTime::from_timestamp(
-				ts/1000,
-				((ts%1000) * 1000) as u32
-			);
+			let ts = parse_time(&ts)?;
+
 			let val: f64 = val.parse()
 				.map_err(
 					|e|
@@ -647,11 +610,40 @@ impl Drop for Client
 }
 
 
-fn format_time(t: &NaiveDateTime) -> i64
+fn format_time(t: &NaiveDateTime) -> u64
 {
-	t.timestamp()*1000 + (t.timestamp_subsec_millis() as i64)
+	t.timestamp() as u64 * NANO
+		+ (t.timestamp_subsec_nanos() as u64)
 }
 
+fn parse_time(text: &str) -> Result<NaiveDateTime>
+{
+	let ts: u64 = text.parse()
+		.map_err(
+			|e|
+				Error::new(
+					ErrorKind::InvalidData,
+					ProtocolError::new(
+						format!("failed to parse timestamp: {}, '{}'", e, text)
+					),
+				)
+		)?;
+	let ts = NaiveDateTime::from_timestamp(
+		(ts/NANO) as i64,
+		((ts%NANO) * NANO) as u32
+	);
+	Ok(ts)
+}
+
+/// The maximum timestamp.
+///
+/// (2^64-1 nanoseconds since the Unix Epoch. The minimum timestamp is 0,
+/// or the Unix Epoch exactly.
+pub fn max_time() -> NaiveDateTime
+{
+	let max = std::u64::MAX;
+	NaiveDateTime::from_timestamp((max/NANO) as i64, (max%NANO) as u32)
+}
 
 fn check_error(l: &mut String) -> Result<()>
 {

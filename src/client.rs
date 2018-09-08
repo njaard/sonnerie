@@ -285,10 +285,7 @@ fn command<'client>(
 			}
 			else
 			{
-				from = NaiveDateTime::new(
-					chrono::NaiveDate::from_ymd(-262144,1,1),
-					chrono::NaiveTime::from_hms(0,0,0)
-				);
+				from = NaiveDateTime::from_timestamp(0,0);
 			}
 			let to;
 			if let Some(v) = cmd.value_of("to")
@@ -303,10 +300,7 @@ fn command<'client>(
 			}
 			else
 			{
-				to = NaiveDateTime::new(
-					chrono::NaiveDate::from_ymd(262143,12,31),
-					chrono::NaiveTime::from_hms(0,0,0)
-				);
+				to = self::sonnerie_api::max_time();
 			}
 
 			let samples = client.read_series_range(
@@ -355,10 +349,7 @@ fn command<'client>(
 			}
 			else
 			{
-				from = NaiveDateTime::new(
-					chrono::NaiveDate::from_ymd(-262144,1,1),
-					chrono::NaiveTime::from_hms(0,0,0)
-				);
+				from = NaiveDateTime::from_timestamp(0,0);
 			}
 			let to;
 			if let Some(v) = cmd.value_of("to")
@@ -373,10 +364,7 @@ fn command<'client>(
 			}
 			else
 			{
-				to = NaiveDateTime::new(
-					chrono::NaiveDate::from_ymd(262143,12,31),
-					chrono::NaiveTime::from_hms(0,0,0)
-				);
+				to = self::sonnerie_api::max_time();
 			}
 
 			let mut child = run_pager();
@@ -485,11 +473,11 @@ fn parse_human_times(t: &str)
 	-> Option<NaiveDateTime>
 {
 	if let Ok(a) = NaiveDateTime::parse_from_str(
-		t, "%Y-%m-%d %H:%M:%S"
+		t, "%Y-%m-%d %H:%M:%S%.f"
 	)
 		{ return Some(a); };
 	if let Ok(a) = NaiveDateTime::parse_from_str(
-		t, "%Y-%m-%dT%H:%M:%S"
+		t, "%Y-%m-%dT%H:%M:%S%.f"
 	)
 		{ return Some(a); };
 	if let Ok(a) = NaiveDateTime::parse_from_str(
