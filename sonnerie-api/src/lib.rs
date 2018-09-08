@@ -178,6 +178,8 @@ impl Client
 	/// Read-only functions will automatically close and open
 	/// a transaction, but calling this function allows you to not
 	/// see changes made over the life if your transaction.
+	///
+	/// Transactions may not be nested.
 	pub fn begin_read(&self)
 		-> Result<()>
 	{
@@ -200,8 +202,8 @@ impl Client
 	///
 	/// You must call this function before any calling any
 	/// write functions. Write transactions are not made
-	/// to prevent you from accidentally making many
-	/// small changes, which are relatively slow.
+	/// automatiicaly, to prevent you from accidentally making many
+	/// small transactions, which are relatively slow.
 	///
 	/// You must call [`commit()`](#method.commit) for the transactions to be saved.
 	/// You may also explicitly call [`rollback()`](#method.rollback) to discard your changes.
@@ -477,12 +479,12 @@ impl Client
 
 	/// Read all values from many series
 	///
-	/// Selects many series with a SQL-like "LIKE" operator
+	/// Selects many series with an SQL-like "LIKE" operator
 	/// and dumps values from those series.
 	///
 	/// * `like` is a string with `%` as a wildcard. For example,
 	/// `"192.168.%"` selects all series whose names start with
-	/// `192.168.`. If the `%` appears in the end, then the
+	/// `192.168.`. If the `%` appears near the end, then the
 	/// query is very efficient.
 	/// * `results` is a function which receives each value.
 	///
@@ -505,7 +507,7 @@ impl Client
 
 	/// Read many values from many series
 	///
-	/// Selects many series with a SQL-like "LIKE" operator
+	/// Selects many series with an SQL-like "LIKE" operator
 	/// and dumps values from those series.
 	///
 	/// * `like` is a string with `%` as a wildcard. For example,
@@ -635,9 +637,9 @@ fn parse_time(text: &str) -> Result<NaiveDateTime>
 	Ok(ts)
 }
 
-/// The maximum timestamp.
+/// The maximum timestamp allowed by Sonnerie.
 ///
-/// (2^64-1 nanoseconds since the Unix Epoch. The minimum timestamp is 0,
+/// 2^64-1 nanoseconds since the Unix Epoch. The minimum timestamp is 0,
 /// or the Unix Epoch exactly.
 pub fn max_time() -> NaiveDateTime
 {
