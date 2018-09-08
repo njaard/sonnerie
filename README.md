@@ -160,10 +160,17 @@ in wasted disk space and increased fragmentation.
 
 Each sample requires 16 bytes on average plus small amounts of metadata.
 
+## Semver
+
+The file format and protocol are subject to change between different 0.x versions.
+Once a 1.0 is released, no backwards incompatible changes will be permitted
+before Sonnerie 2.0.
+
 # Roadmap
 
+* Non-append insertion and editing
 * Online incremental backups
-* Compacting
+* Compacting (note: not useful without insertion and appending)
 * Compression
 * An HTTP-based protocol
 * Most recent values
