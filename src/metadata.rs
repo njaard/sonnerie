@@ -82,7 +82,7 @@ impl Metadata
 					-- which transaction did this appear in
 					-- (this series is not visible to transactions
 					-- that predate this generation)
-					generation
+					generation integer
 				);
 
 				create index if not exists series_name on series (name collate binary);
@@ -90,14 +90,14 @@ impl Metadata
 
 				-- which blocks are associated with which series
 				create table if not exists series_blocks (
-					series_id,
+					series_id integer,
 					-- when this block last changed (for backup)
-					generation,
-					first_timestamp,
-					last_timestamp,
-					offset,
-					capacity,
-					size,
+					generation integer,
+					first_timestamp integer,
+					last_timestamp integer,
+					offset integer,
+					capacity integer,
+					size integer,
 					constraint series_ts primary key (series_id, first_timestamp)
 				);
 				commit;
@@ -116,12 +116,12 @@ impl Metadata
 	pub fn last_generation(&self)
 		-> u64
 	{
-		let g: Option<i64> = self.db.query_row(
-			"select max(generation) from series",
+		let g: i64 = self.db.query_row(
+			"select generation from series order by generation desc limit 1",
 			&[],
 			|r| r.get(0)
-		).unwrap();
-		g.unwrap_or(0) as u64
+		).unwrap_or(0);
+		g as u64
 	}
 
 	/// Starts a transaction and converts me to a Transaction
