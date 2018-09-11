@@ -5,8 +5,7 @@ extern crate antidote;
 #[derive(Debug,Clone,Copy,PartialEq,PartialOrd)]
 pub struct Timestamp(pub u64);
 
-static BLOCK_SIZE: usize = 4096;
-
+use ::row_format::{parse_row_format, RowFormat};
 use ::db::Db;
 use ::blocks::Blocks;
 use self::byteorder::{ByteOrder, BigEndian};
@@ -14,7 +13,7 @@ use std::path::Path;
 
 use std::sync::Arc;
 pub use self::antidote::RwLock;
-use std::cell::Cell;
+use std::cell::{Cell,RefCell};
 
 /// Maintain all the information needed to locate data
 /// One of these is opened per transaction/thread
@@ -82,7 +81,8 @@ impl Metadata
 					-- which transaction did this appear in
 					-- (this series is not visible to transactions
 					-- that predate this generation)
-					generation integer
+					generation integer,
+					format text
 				);
 
 				create index if not exists series_name on series (name collate binary);
@@ -212,21 +212,41 @@ impl<'db> Transaction<'db>
 		blocks
 	}
 
+	fn series_format(&self, series_id: u64) -> Box<RowFormat>
+	{
+		let mut c = self.metadata.db.prepare_cached(
+			"select format from series where series_id=?"
+		).unwrap();
+
+		let v: String = c.query(&[&(series_id as i64)]).unwrap()
+			.next()
+			.map(|e| e.unwrap().get(0))
+			.unwrap();
+
+		let f = parse_row_format(&v);
+		f
+	}
+
 	/// creates a new series if necessary
 	///
 	/// Returns its ID
 	pub fn create_series(
 		&mut self,
-		name: &str
+		name: &str,
+		format: &str
 	) -> u64
 	{
 		if !self.writing
 			{ panic!("attempt to write in a read-only transaction"); }
 		self.metadata.db.execute("
-				insert into series (name, generation)
-					values (?, ?)
+				insert into series (name, generation, format)
+					values (?, ?, ?)
 			",
-			&[&name, &(self.metadata.generation as i64)]
+			&[
+				&name,
+				&(self.metadata.generation as i64),
+				&format,
+			]
 		).unwrap();
 
 		self.series_id(name).unwrap()
@@ -271,33 +291,16 @@ impl<'db> Transaction<'db>
 		}
 	}
 
-	/// inserts a single value into a series
-	pub fn insert_one_into_series(
-		&mut self,
-		series_id: u64,
-		ts: Timestamp,
-		value: f64,
-	) -> Result<(), String>
-	{
-		if !self.writing
-		{
-			Err("attempt to write in a \
-				read-only transaction".to_string())?;
-		}
-		self.insert_into_series(
-			series_id,
-			&mut [(ts, value)]
-		)
-	}
 
 	/// Inserts many values into a series
 	///
 	/// The timestamps must be sorted
-	pub fn insert_into_series(
+	pub fn insert_into_series<Generator>(
 		&mut self,
 		series_id: u64,
-		values: &mut [(Timestamp, f64)],
+		mut generator: Generator,
 	) -> Result<(), String>
+		where Generator: FnMut(&RowFormat, &mut Vec<u8>) -> Option<Timestamp>
 	{
 		if !self.writing
 		{
@@ -305,7 +308,7 @@ impl<'db> Transaction<'db>
 				read-only transaction".to_string())?;
 		}
 		let mut save = Savepoint::new(&self.metadata.db)?;
-
+/*
 		if values.len() == 1
 		{
 			let t = values[0].0;
@@ -355,89 +358,113 @@ impl<'db> Transaction<'db>
 					.write(b.offset, &one_sample);
 			}
 		}
-		else
+		else */
 		{
-			let mut index = 0usize;
-			let mut previous_timestamp = None;
+			let format = self.series_format(series_id);
+			let preferred_block_size = format.preferred_block_size();
 
-			while values[index..].len() > 0
+			let buffer = RefCell::new(vec!());
+			buffer.borrow_mut().reserve(preferred_block_size);
+
+			loop
 			{
-				let values = &mut values[index..];
 				let last_block = self.last_block_for_series(series_id);
 
-				let mut fits_in_block =
+				let fits_in_block =
 					if let Some(last_block) = last_block.as_ref()
 					{
-						((last_block.capacity-last_block.size)%16)
-							.min(values.len() as u64)
+						(last_block.capacity-last_block.size)
+							%preferred_block_size as u64
 					}
 					else
 					{
 						0
 					};
 
+
+				let mut fill_buffer =
+					|n_bytes: usize, last_block: &Option<Block>|
+					{
+						let mut buffer = buffer.borrow_mut();
+						buffer.clear();
+						let mut first_timestamp = None;
+						let mut last_timestamp = last_block.as_ref().map(
+							|b| b.last_timestamp
+						);
+						while buffer.len() < n_bytes
+						{
+							let r = generator(&*format, &mut buffer);
+							if r.is_none() { break; }
+							let r = r.unwrap();
+							if first_timestamp.is_none()
+								{ first_timestamp = Some(r); }
+							if let Some(p) = last_timestamp.clone()
+							{
+								if r <= p
+								{
+									return Err(format!("timestamps must be increasing (\
+										{}<={})", r.0, p.0));
+								}
+							}
+							last_timestamp = Some(r);
+						}
+
+						if first_timestamp.is_none()
+						{
+							Ok(None)
+						}
+						else
+						{
+							Ok(Some((
+								first_timestamp.unwrap(),
+								last_timestamp.unwrap(),
+							)))
+						}
+
+					};
+
 				let new_block;
 
+
 				if fits_in_block == 0
-				{
-					fits_in_block = ((BLOCK_SIZE/16) .min(values.len())) as u64;
+				{ // new block
+					let range = fill_buffer(preferred_block_size, &last_block)?;
+					let buffer = buffer.borrow();
+					if range.is_none() { break; }
+					let (first_timestamp,last_timestamp) = range.unwrap();
 					let mut b =
 						self.create_new_block(
 							series_id,
-							values[0].0,
-							values[fits_in_block as usize-1].0,
-							BLOCK_SIZE.min(values.len()*16),
+							first_timestamp,
+							last_timestamp,
+							buffer.len(),
+							preferred_block_size,
 						);
 					b.size = 0;
 					new_block = b;
 				}
 				else
-				{
+				{ // fill the existing block
+					let range = fill_buffer(fits_in_block as usize, &last_block)?;
+					if range.is_none() { break; }
+					let (_, last_timestamp) = range.unwrap();
+					let buffer = buffer.borrow();
 					new_block = last_block.unwrap();
 					self.resize_existing_block(
 						series_id,
 						new_block.first_timestamp,
-						values[fits_in_block as usize-1].0,
-						new_block.size + ((fits_in_block*16) as u64),
+						last_timestamp,
+						new_block.size + buffer.len() as u64,
 					);
 				}
 
-				let fits_in_block = fits_in_block;
-
-				let in_place_byteorder = &mut values[0..fits_in_block as usize];
-				let in_place_byteorder_bytes =
-					unsafe
-					{
-						let p = in_place_byteorder.as_ptr();
-						::std::slice::from_raw_parts_mut(
-							p as *mut u8, in_place_byteorder.len()*16
-						)
-					};
-
-				for (val, one_sample_bytes) in in_place_byteorder.iter().zip(
-					in_place_byteorder_bytes.chunks_mut(16) )
-				{
-					let ts = val.0 .0;
-					if let Some(p) = previous_timestamp.clone()
-					{
-						if ts <= p
-						{
-							Err(format!("timestamps must be increasing (\
-								{}<={})", ts, p))?;
-						}
-					}
-					previous_timestamp = Some(ts);
-					let val = val.1;
-					BigEndian::write_u64(&mut one_sample_bytes[0..8], ts);
-					BigEndian::write_f64(&mut one_sample_bytes[8..16], val);
-				}
+				let buffer = buffer.borrow();
 				self.metadata.blocks.write()
 					.write(
 						new_block.offset+new_block.size,
-						&in_place_byteorder_bytes
+						&buffer
 					);
 
-				index += fits_in_block as usize;
 			}
 		}
 		save.commit()?;
@@ -447,27 +474,27 @@ impl<'db> Transaction<'db>
 	/// reads values for a range of timestamps.
 	///
 	/// the timestamps are inclusive
-	pub fn read_series(
+	pub fn read_series<Output>(
 		&self,
 		series_id: u64,
 		first_timestamp: Timestamp,
-		last_timestamp: Timestamp
-	) -> Vec<(Timestamp, f64)>
+		last_timestamp: Timestamp,
+		mut out: Output,
+	)
+		where Output: FnMut(&Timestamp, &RowFormat, &[u8])
 	{
-
 		let blocks = self.blocks_for_range(
 			series_id,
 			first_timestamp,
 			last_timestamp,
 		);
 		// eprintln!("blocks for range: {:?}", blocks);
-		if blocks.is_empty() { return vec!(); }
+		if blocks.is_empty() { return; }
 
-		let mut res = vec!();
-		res.reserve(blocks.len() * (blocks[0].capacity as usize)/ 16);
+		let format = self.series_format(series_id);
 
 		let mut block_data = vec!();
-		block_data.resize(BLOCK_SIZE, 0u8);
+		block_data.reserve(format.preferred_block_size());
 
 		let mut done = false;
 
@@ -477,7 +504,7 @@ impl<'db> Transaction<'db>
 			self.metadata.blocks.read()
 				.read(block.offset, &mut block_data[..]);
 
-			for sample in block_data.chunks(16)
+			for sample in block_data.chunks(format.row_size())
 			{
 				let t = Timestamp(BigEndian::read_u64(&sample[0..8]));
 				if t >= first_timestamp
@@ -487,16 +514,12 @@ impl<'db> Transaction<'db>
 						done = true;
 						break;
 					}
-					let v: f64 = BigEndian::read_f64(&sample[8..16]);
-					res.push( (t, v) );
+					out(&t, &*format, &sample[8..]);
 				}
-
 			}
 
 			if done { break; }
 		}
-
-		res
 	}
 
 	/// creates a block in the metadata (does not populate the block)
@@ -511,9 +534,10 @@ impl<'db> Transaction<'db>
 		first_timestamp: Timestamp,
 		last_timestamp: Timestamp,
 		initial_size: usize, // not capacity
+		capacity: usize,
 	) -> Block
 	{
-		let capacity = BLOCK_SIZE.max(initial_size);
+		let capacity = capacity.max(initial_size);
 
 		self.metadata.db.execute(
 			"insert into series_blocks (

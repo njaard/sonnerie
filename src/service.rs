@@ -116,7 +116,7 @@ impl<'db> Client<'db>
 			let name = arg.unwrap().0;
 			if let Some(tx) = self.transaction.as_mut()
 			{
-				let _ = tx.create_series(&name);
+				let _ = tx.create_series(&name, "F");
 				writeln!(writer, "creating a timeseries named \"{}\"", name).unwrap();
 			}
 			else
@@ -186,17 +186,18 @@ impl<'db> Client<'db>
 			{
 				let series_id = cache_last_series_id(tx, name)
 					.ok_or_else(|| format!("no series \"{}\"", name))?;
-				let items = tx.read_series(
+				tx.read_series(
 					series_id,
 					ts1,
 					ts2,
+					|ts, format, data|
+					{
+						write!(writer, "{}\t", ts.0).unwrap();
+						format.to_protocol_format(data, writer).unwrap();
+						writeln!(writer, "").unwrap();
+					}
 				);
 
-				for (ts, val) in items
-				{
-					let ts = ts.0;
-					writeln!(writer, "{}\t{:.17}", ts, val).unwrap();
-				}
 				writeln!(writer, "").unwrap();
 			}
 			else
@@ -217,31 +218,8 @@ impl<'db> Client<'db>
 			// (one blank line)
 			let name = &args[0];
 
-			let mut samples = vec!();
+			let line_reader = &mut self.input_lines;
 
-			loop
-			{
-				let line = match self.input_lines.next()
-				{
-					Some(a) => a,
-					None => break,
-				};
-
-				let line = line.unwrap();
-				let split_one = split_one(&line);
-				if split_one.is_none()
-				{
-					writeln!(writer, "error: failed to parse line: {}", line).unwrap();
-					continue;
-				};
-				let split_one = split_one.unwrap();
-				if split_one.0.is_empty() { break; }
-
-				let ts = parse_time(&split_one.0)?;
-				let val = parse_float(&split_one.1)?;
-
-				samples.push((ts, val));
-			}
 
 			if let Some(tx) = self.transaction.as_mut()
 			{
@@ -249,7 +227,25 @@ impl<'db> Client<'db>
 					.ok_or_else(|| format!("no series \"{}\"", name))?;
 				if let Err(e) = tx.insert_into_series(
 						series_id,
-						&mut samples
+						|format, bytes|
+						{
+							let line = match line_reader.next()
+							{
+								Some(a) => a,
+								None => panic!("error: failed to read input"),
+							};
+							let line = line.unwrap();
+							let split_one = split_one(&line);
+							if split_one.is_none()
+							{
+								panic!("error: failed to parse line: {}", line);
+							}
+							let split_one = split_one.unwrap();
+							if split_one.0.is_empty() { return None; }
+							let ts = parse_time(&split_one.0).unwrap();
+							format.to_stored_format(&ts, &split_one.1, bytes);
+							Some(ts)
+						}
 					)
 				{
 					writeln!(writer, "error: {}", e).unwrap();
@@ -263,25 +259,29 @@ impl<'db> Client<'db>
 		}
 		else if cmd == "add1"
 		{
-			let args = split(remainder);
-			if args.is_none() { Err("failed to parse arguments")?; }
-			let args = args.unwrap();
-			if args.len() != 3 { Err("command requires exactly \
-				four parameters".to_string())?; }
+			/*
 			// add1 <name> <ts> <val>
-			let name = &args[0];
-			let ts = parse_time(&args[1])?;
-
-			let val = parse_float(&args[2])?;
+			let args = split_one(remainder);
+			if args.is_none() { Err("failed to parse name in arguments")?; }
+			let (name,args) = args.unwrap();
+			let args = split_one(args);
+			if args.is_none() { Err("failed to parse timestamp in arguments")?; }
+			let (ts,args) = args.unwrap();
+			let ts = parse_time(&ts);
 
 			if let Some(tx) = self.transaction.as_mut()
 			{
 				let series_id = cache_last_series_id(tx, name)
 					.ok_or_else(|| format!("no series \"{}\"", name))?;
+
+				let mut bytes = vec!();
+				let fmt = tx.series_format(series_id);
+				fmt.to_stored_format(args, bytes);
+
 				if let Err(e) = tx.insert_one_into_series(
 					series_id,
 					ts,
-					val
+					&bytes,
 				)
 				{
 					writeln!(writer, "error: {}", e).unwrap();
@@ -291,7 +291,7 @@ impl<'db> Client<'db>
 			else
 			{
 				writeln!(writer, "error: not in a transaction").unwrap();
-			}
+			}*/
 		}
 		else if cmd == "dump"
 		{
@@ -311,21 +311,17 @@ impl<'db> Client<'db>
 					let print_res =
 						|name: &str, series_id: u64|
 						{
-							let items = tx.read_series(
+							tx.read_series(
 								series_id,
 								ts1,
 								ts2,
+								|ts, format, data|
+								{
+									write!(writer, "{}\t{}\t", escape(&name), ts.0).unwrap();
+									format.to_protocol_format(data, writer).unwrap();
+									writeln!(writer, "").unwrap();
+								}
 							);
-
-							for (ts, val) in items
-							{
-								let ts = ts.0;
-								writeln!(
-									writer,
-									"{}\t{}\t{:.17}",
-									escape(&name), ts, val
-								).unwrap();
-							}
 						};
 
 					tx.series_like(
@@ -346,13 +342,6 @@ impl<'db> Client<'db>
 		}
 		Ok(())
 	}
-}
-
-fn parse_float(t: &str) -> Result<f64, String>
-{
-	if t == "nan" { return Ok(::std::f64::NAN); }
-	t.parse()
-		.map_err(|e| format!("while parsing {}: {}", t, e))
 }
 
 fn parse_time(t: &str) -> Result<Timestamp, String>

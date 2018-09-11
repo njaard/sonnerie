@@ -9,6 +9,7 @@ mod db;
 mod disk_wal;
 mod block_file;
 mod client;
+mod row_format;
 
 extern crate rusqlite;
 extern crate clap;
