@@ -660,6 +660,20 @@ mod tests
 			).unwrap();
 		}
 	}
+	#[test]
+	#[should_panic]
+	fn backwards_illegal_two()
+	{
+		// this will one day be permitted
+		let tmp = n();
+		{
+			let m = Db::open(tmp.path().to_path_buf());
+			let mut txw = m.write_transaction();
+			let h = txw.create_series("horse", "F");
+			insert_f64(&mut txw, h, Timestamp(1000), 42.0);
+			insert_f64(&mut txw, h, Timestamp(999), 42.0);
+		}
+	}
 
 	#[test]
 	fn blocks_exact_file()
