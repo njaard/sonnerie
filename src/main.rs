@@ -16,7 +16,6 @@ extern crate clap;
 extern crate nix;
 
 use std::fs::create_dir;
-use std::net::TcpListener;
 
 use clap::{Arg, App, SubCommand};
 use std::path::Path;
@@ -31,7 +30,7 @@ fn main()
 			.arg(Arg::with_name("listen")
 				.long("listen")
 				.short("l")
-				.help("listen on this address and port")
+				.help("listen on this address and port or unix domain socket")
 				.takes_value(true)
 			)
 			.subcommand(
@@ -78,15 +77,38 @@ fn main()
 		let _ = create_dir(path);
 		let db = db::Db::open(Path::new(path).to_path_buf());
 
-		let listener
-			= TcpListener::bind(address)
-			.expect("binding to socket");
-
-		if ! args.is_present("no-fork")
+		if address.starts_with("/") || address.starts_with("unix:")
 		{
-			nix::unistd::daemon(true, true).expect("failed to daemonize");
+			let address =
+				if address.starts_with("unix:")
+					{ &address[5..] }
+				else
+					{ address };
+
+			use std::os::unix::net::UnixListener;
+			let listener
+				= UnixListener::bind(address)
+				.expect("binding to socket");
+
+			if ! args.is_present("no-fork")
+			{
+				nix::unistd::daemon(true, true).expect("failed to daemonize");
+			}
+			service::service_unix(listener, db);
 		}
-		service::service(listener, db);
+		else
+		{
+			use std::net::TcpListener;
+			let listener
+				= TcpListener::bind(address)
+				.expect("binding to socket");
+
+			if ! args.is_present("no-fork")
+			{
+				nix::unistd::daemon(true, true).expect("failed to daemonize");
+			}
+			service::service_tcp(listener, db);
+		}
 	}
 	else if let Some(args) = args.subcommand_matches("client")
 	{

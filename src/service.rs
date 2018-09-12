@@ -1,9 +1,8 @@
 extern crate escape_string;
 extern crate chrono;
 
-use std::net::{TcpListener, TcpStream};
 use std::thread;
-use std::io::{Write,BufReader,BufRead,BufWriter};
+use std::io::{Read,Write,BufReader,BufRead,BufWriter};
 use std::sync::Arc;
 
 use db::Db;
@@ -12,30 +11,25 @@ use db::Transaction;
 
 use self::escape_string::{split_one, split, escape};
 
-struct Client<'db>
+struct Session<'db>
 {
 	db: &'db Db,
-	input_lines: ::std::io::Lines<BufReader<TcpStream>>,
-	writer: BufWriter<TcpStream>,
+	input_lines: ::std::io::Lines<BufReader<Box<Read>>>,
+	writer: BufWriter<Box<Write>>,
 	transaction: Option<Transaction<'db>>,
 	cache_last_series_id: Option<(String,u64)>,
 }
 
-impl<'db> Client<'db>
+impl<'db> Session<'db>
 {
-	fn new(stream: TcpStream, db: &'db Db)
-		-> Client<'db>
+	fn new(r: Box<Read>, w: Box<Write>, db: &'db Db)
+		-> Session<'db>
 	{
-		println!(
-			"Connection from {}",
-			stream.peer_addr().unwrap()
-		);
-
-		let reader = BufReader::new(stream.try_clone().unwrap());
-		let writer = BufWriter::new(stream.try_clone().unwrap());
+		let reader = BufReader::new(r);
+		let writer = BufWriter::new(w);
 		let input_lines = reader.lines();
 
-		Client
+		Session
 		{
 			db: db,
 			input_lines: input_lines,
@@ -371,7 +365,9 @@ fn parse_time(t: &str) -> Result<Timestamp, String>
 	Ok(Timestamp(t))
 }
 
-pub fn service(listener: TcpListener, db: Db)
+use std::net::TcpListener;
+
+pub fn service_tcp(listener: TcpListener, db: Db)
 {
 	let db = Arc::new(db);
 	
@@ -381,13 +377,57 @@ pub fn service(listener: TcpListener, db: Db)
 		{
 			Ok(stream) =>
 			{
+				println!(
+					"Connection from {}",
+					stream.peer_addr().unwrap()
+				);
+
 				let db = db.clone();
 				thread::spawn(
 					move ||
 					{
-						let s = stream;
+						let r = stream.try_clone().unwrap();
+
 						// connection succeeded
-						let mut c = Client::new(s, &db);
+						let mut c = Session::new(
+							Box::new(r), Box::new(stream), &db
+						);
+						c.run();
+					}
+				);
+			}
+			Err(e) =>
+			{
+				eprintln!("Failed to establish connection: {}", e);
+			}
+		}
+    }
+}
+
+use std::os::unix::net::UnixListener;
+
+pub fn service_unix(listener: UnixListener, db: Db)
+{
+	let db = Arc::new(db);
+
+	for stream in listener.incoming()
+	{
+		match stream
+		{
+			Ok(stream) =>
+			{
+				println!("Connection");
+
+				let db = db.clone();
+				thread::spawn(
+					move ||
+					{
+						let r = stream.try_clone().unwrap();
+
+						// connection succeeded
+						let mut c = Session::new(
+							Box::new(r), Box::new(stream), &db
+						);
 						c.run();
 					}
 				);
