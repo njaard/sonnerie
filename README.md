@@ -168,13 +168,17 @@ before Sonnerie 2.0.
 
 # Roadmap
 
+Version 0.2:
+* Nanosecond precision from 1970-2554
+* Store other fixed-size data (multiple floats per timestamp)
+
+Later:
 * Non-append insertion and editing
 * Online incremental backups
-* Compacting (note: not useful without insertion and appending)
+* Compacting (not useful without insertion and appending)
 * Compression
-* An HTTP-based protocol
+* An HTTP-based protocol (won't be quite complete)
 * Most recent values
-* Store other fixed-size data (multiple floats per timestamp)
 * Store variable-sized data (a string or blob per timestamp)
 * Read by upper or lower bound: over many series, efficiently
 read the first value that is before or after a specific timestamp.
