@@ -109,15 +109,22 @@ impl<'db> Client<'db>
 			).unwrap();
 		}
 		else if cmd == "create"
-		{ // create a series by name
-			let arg = split_one(remainder);
-			if arg.is_none() { Err("command requires exactly \
-				one parameter".to_string())?; }
-			let name = arg.unwrap().0;
+		{ // create a series by name and format
+			let (name,remainder) = split_one(remainder)
+				.ok_or_else( || "command requires series name".to_string() )?;
+			let (format,_) = split_one(remainder)
+				.ok_or_else( || "command requires format".to_string() )?;
+
 			if let Some(tx) = self.transaction.as_mut()
 			{
-				let _ = tx.create_series(&name, "F");
-				writeln!(writer, "creating a timeseries named \"{}\"", name).unwrap();
+				if let Some(_) = tx.create_series(&name, &format)
+				{
+					writeln!(writer, "creating a timeseries named \"{}\"", name).unwrap();
+				}
+				else
+				{
+					writeln!(writer, "error: format \"{}\" does not match existing", format).unwrap();
+				}
 			}
 			else
 			{
@@ -205,6 +212,22 @@ impl<'db> Client<'db>
 				writeln!(writer, "error: not in a transaction").unwrap();
 			}
 		}
+		else if cmd == "format"
+		{
+			let (name,_) = split_one(remainder)
+				.ok_or_else( || "command requires series name".to_string() )?;
+
+			if let Some(tx) = self.transaction.as_ref()
+			{
+				let f = tx.series_format_string(&name)
+					.ok_or_else(|| format!("no series \"{}\"", name))?;
+				writeln!(writer, "{}", f).unwrap();
+			}
+			else
+			{
+				writeln!(writer, "error: not in a transaction").unwrap();
+			}
+		}
 		else if cmd == "add"
 		{
 			let args = split(remainder);
@@ -213,7 +236,7 @@ impl<'db> Client<'db>
 			if args.len() != 1 { return Err("command requires exactly \
 				one parameter".to_string()); }
 			// add <name>
-			// <ts> <val>
+			// <ts> <vals>
 			// ...
 			// (one blank line)
 			let name = &args[0];
@@ -259,39 +282,36 @@ impl<'db> Client<'db>
 		}
 		else if cmd == "add1"
 		{
-			/*
-			// add1 <name> <ts> <val>
-			let args = split_one(remainder);
-			if args.is_none() { Err("failed to parse name in arguments")?; }
-			let (name,args) = args.unwrap();
-			let args = split_one(args);
-			if args.is_none() { Err("failed to parse timestamp in arguments")?; }
-			let (ts,args) = args.unwrap();
-			let ts = parse_time(&ts);
+			// add1 <name> <ts> <vals>
+			let (name,remainder) = split_one(remainder)
+				.ok_or_else( || "command requires series name".to_string() )?;
+			let (ts,remainder) = split_one(remainder)
+				.ok_or_else( || "command requires timestamp".to_string() )?;
+			let ts = parse_time(&ts)?;
 
 			if let Some(tx) = self.transaction.as_mut()
 			{
-				let series_id = cache_last_series_id(tx, name)
+				let series_id = cache_last_series_id(tx, &name)
 					.ok_or_else(|| format!("no series \"{}\"", name))?;
 
-				let mut bytes = vec!();
-				let fmt = tx.series_format(series_id);
-				fmt.to_stored_format(args, bytes);
+				let mut did_one=false;
 
-				if let Err(e) = tx.insert_one_into_series(
+				tx.insert_into_series(
 					series_id,
-					ts,
-					&bytes,
-				)
-				{
-					writeln!(writer, "error: {}", e).unwrap();
-				}
+					|format, data|
+					{
+						if did_one { return None; }
+						format.to_stored_format(&ts, remainder, data);
+						did_one=true;
+						Some(ts)
+					}
+				)?;
 				writeln!(writer, "inserted value").unwrap();
 			}
 			else
 			{
 				writeln!(writer, "error: not in a transaction").unwrap();
-			}*/
+			}
 		}
 		else if cmd == "dump"
 		{

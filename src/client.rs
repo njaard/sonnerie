@@ -90,6 +90,13 @@ pub fn run(args: &::clap::ArgMatches, address: &str)
 					.index(1)
 					.required(true)
 				)
+				.arg(Arg::with_name("format")
+					.short("f")
+					.long("format")
+					.help("the format for each row (a string \
+						containing one or more of: f, F, i, I, u, U)")
+					.takes_value(true)
+				)
 		)
 		.subcommand(
 			SubCommand::with_name("add")
@@ -105,6 +112,7 @@ pub fn run(args: &::clap::ArgMatches, address: &str)
 				.arg(Arg::with_name("value")
 					.index(3)
 					.required(true)
+					.multiple(true)
 				)
 		)
 		.subcommand(
@@ -233,7 +241,8 @@ fn command<'client>(
 			}
 
 			let name = cmd.value_of("series").unwrap();
-			let r = client.create_series(name);
+			let format = cmd.value_of("format").unwrap_or("F");
+			let r = client.create_series(name, format);
 			if let Err(e) = r
 			{
 				eprintln!("error creating series: {:?}", e);
@@ -413,15 +422,10 @@ fn command<'client>(
 				return Some(false);
 			}
 
-			let value = cmd.value_of("value").unwrap().parse();
-			if value.is_err()
-			{
-				eprintln!("unable to parse value");
-				return Some(false);
-			}
-			let value: f64 = value.unwrap();
+			let value = cmd.values_of("value").unwrap()
+				.fold(String::new(), |a, b| a + " " + b );
 
-			let r = client.add_value(series, &ts, value);
+			let r = client.add_row_raw(series, &ts, &value);
 			if let Err(e) = r
 			{
 				eprintln!("error inserting value: {:?}", e);

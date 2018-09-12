@@ -227,20 +227,50 @@ impl<'db> Transaction<'db>
 		f
 	}
 
+	pub fn series_format_string(&self, name: &str)
+		-> Option<String>
+	{
+		let mut c = self.metadata.db.prepare_cached(
+			"select format from series where name=?"
+		).unwrap();
+
+		let v = c.query(&[&name]).unwrap()
+			.next()
+			.map(|e| e.unwrap().get(0));
+		v
+	}
+
 	/// creates a new series if necessary
 	///
-	/// Returns its ID
+	/// Returns its ID, or None if the format doesn't match
 	pub fn create_series(
 		&mut self,
 		name: &str,
 		format: &str
-	) -> u64
+	) -> Option<u64>
 	{
 		if !self.writing
 			{ panic!("attempt to write in a read-only transaction"); }
-		self.metadata.db.execute("
-				insert into series (name, generation, format)
-					values (?, ?, ?)
+
+		let mut q = self.metadata.db.prepare_cached(
+			"select series_id,format from series where name=?"
+		).unwrap();
+		let mut row = q.query(&[&name]).unwrap();
+		if let Some(row) = row.next()
+		{
+			let row = row.unwrap();
+			let id: i64 = row.get(0);
+			let stored_format: String = row.get(1);
+			if stored_format != format
+			{
+				return None;
+			}
+			return Some(id as u64);
+		}
+
+		self.metadata.db.execute(
+			"insert into series (name, generation, format)
+				values (?, ?, ?)
 			",
 			&[
 				&name,
@@ -249,7 +279,7 @@ impl<'db> Transaction<'db>
 			]
 		).unwrap();
 
-		self.series_id(name).unwrap()
+		Some(self.metadata.db.last_insert_rowid() as u64)
 	}
 
 	/// Returns a series's ID

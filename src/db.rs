@@ -309,7 +309,7 @@ mod tests
 		let m = Db::open(tmp.path().to_path_buf());
 		{
 			let mut txw = m.write_transaction();
-			let h = txw.create_series("horse", "F");
+			let h = txw.create_series("horse", "F").unwrap();
 			insert_f64(&mut txw, h, Timestamp(1000), 42.0);
 			insert_f64(&mut txw, h, Timestamp(1001), 43.0);
 
@@ -345,7 +345,7 @@ mod tests
 		{
 			let m = Db::open(tmp.path().to_path_buf());
 			let mut txw = m.write_transaction();
-			let h = txw.create_series("horse", "F");
+			let h = txw.create_series("horse", "F").unwrap();
 			insert_f64(&mut txw, h, Timestamp(1000), 42.0);
 			insert_f64(&mut txw, h, Timestamp(1001), 43.0);
 			txw.commit();
@@ -368,8 +368,8 @@ mod tests
 		{
 			let m = Db::open(tmp.path().to_path_buf());
 			let mut txw = m.write_transaction();
-			let h1 = txw.create_series("horse1", "F");
-			let h2 = txw.create_series("horse2", "F");
+			let h1 = txw.create_series("horse1", "F").unwrap();
+			let h2 = txw.create_series("horse2", "F").unwrap();
 			insert_f64(&mut txw, h1, Timestamp(1000), 101.0);
 			insert_f64(&mut txw, h1, Timestamp(1001), 102.0);
 			insert_f64(&mut txw, h2, Timestamp(1000), 201.0);
@@ -392,7 +392,7 @@ mod tests
 		{
 			let m = Db::open(tmp.path().to_path_buf());
 			let mut txw = m.write_transaction();
-			let h = txw.create_series("horse", "F");
+			let h = txw.create_series("horse", "F").unwrap();
 			insert_f64(&mut txw, h, Timestamp(1000), 1.0);
 			insert_f64(&mut txw, h, Timestamp(1001), 2.0);
 			insert_f64(&mut txw, h, Timestamp(1002), 3.0);
@@ -415,7 +415,7 @@ mod tests
 		{
 			let m = Db::open(tmp.path().to_path_buf());
 			let mut txw = m.write_transaction();
-			let h = txw.create_series("horse", "F");
+			let h = txw.create_series("horse", "F").unwrap();
 			for x in 1..30000
 			{
 				insert_f64(&mut txw, h, Timestamp(x), x as f64);
@@ -473,7 +473,7 @@ mod tests
 		{
 			let m = Db::open(tmp.path().to_path_buf());
 			let mut txw = m.write_transaction();
-			let h = txw.create_series("horse", "F");
+			let h = txw.create_series("horse", "F").unwrap();
 			let mut items_to_insert = vec!();
 			for x in 1..30000
 			{
@@ -505,14 +505,14 @@ mod tests
 	{
 		{
 			let mut txw = m.write_transaction();
-			let h1 = txw.create_series("horse1", "F");
+			let h1 = txw.create_series("horse1", "F").unwrap();
 			insert_f64(&mut txw, h1, Timestamp(1000), 101.0);
 			insert_f64(&mut txw, h1, Timestamp(1001), 102.0);
 			txw.commit();
 		}
 		{
 			let mut txw = m.write_transaction();
-			let h2 = txw.create_series("horse2", "F");
+			let h2 = txw.create_series("horse2", "F").unwrap();
 			insert_f64(&mut txw, h2, Timestamp(1000), 201.0);
 			insert_f64(&mut txw, h2, Timestamp(1001), 202.0);
 			txw.commit();
@@ -583,7 +583,7 @@ mod tests
 		{
 			let m = Db::open(tmp.path().to_path_buf());
 			let mut txw = m.write_transaction();
-			let h = txw.create_series("horse", "F");
+			let h = txw.create_series("horse", "F").unwrap();
 			insert_f64(&mut txw, h, Timestamp(1000), 42.0);
 			insert_f64(&mut txw, h, Timestamp(1001), 43.0);
 			// don't commit
@@ -603,7 +603,7 @@ mod tests
 		{
 			let m = Db::open(tmp.path().to_path_buf());
 			let mut txr = m.read_transaction();
-			txr.create_series("horse", "F");
+			txr.create_series("horse", "F").unwrap();
 		}
 	}
 
@@ -615,7 +615,7 @@ mod tests
 		{
 			let m = Db::open(tmp.path().to_path_buf());
 			let mut txw = m.write_transaction();
-			let h = txw.create_series("horse", "F");
+			let h = txw.create_series("horse", "F").unwrap();
 			insert_f64(&mut txw, h, Timestamp(1000), 42.0);
 			insert_f64(&mut txw, h, Timestamp(1000), 43.0);
 			txw.commit();
@@ -630,7 +630,7 @@ mod tests
 		{
 			let m = Db::open(tmp.path().to_path_buf());
 			let mut txw = m.write_transaction();
-			let h = txw.create_series("horse", "F");
+			let h = txw.create_series("horse", "F").unwrap();
 			txw.insert_into_series(
 				h,
 				generator_f64(&[
@@ -650,7 +650,7 @@ mod tests
 		{
 			let m = Db::open(tmp.path().to_path_buf());
 			let mut txw = m.write_transaction();
-			let h = txw.create_series("horse", "F");
+			let h = txw.create_series("horse", "F").unwrap();
 			txw.insert_into_series(
 				h,
 				generator_f64(&[
@@ -669,7 +669,7 @@ mod tests
 		{
 			let m = Db::open(tmp.path().to_path_buf());
 			let mut txw = m.write_transaction();
-			let h = txw.create_series("horse", "F");
+			let h = txw.create_series("horse", "F").unwrap();
 			insert_f64(&mut txw, h, Timestamp(1000), 42.0);
 			insert_f64(&mut txw, h, Timestamp(999), 42.0);
 		}
@@ -682,7 +682,7 @@ mod tests
 		{
 			let m = Db::open(tmp.path().to_path_buf());
 			let mut txw = m.write_transaction();
-			let h = txw.create_series("horse", "F");
+			let h = txw.create_series("horse", "F").unwrap();
 			insert_f64(&mut txw, h, Timestamp(42), 42.0);
 			insert_f64(&mut txw, h, Timestamp(43), 43.0);
 			txw.commit();
@@ -725,7 +725,7 @@ mod tests
 		let m = Db::open(tmp.path().to_path_buf());
 		{
 			let mut txw = m.write_transaction();
-			let h = txw.create_series("horse", "F");
+			let h = txw.create_series("horse", "F").unwrap();
 			insert_f64(&mut txw, h, Timestamp(42), 42.0);
 			txw.commit();
 		}

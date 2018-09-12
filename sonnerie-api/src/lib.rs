@@ -39,6 +39,10 @@ use escape_string::{escape,split_one};
 
 use std::cell::{Cell,RefCell};
 
+mod types;
+use types::ToValue;
+
+
 /// Error for when client could not understand the server
 pub struct ProtocolError
 {
@@ -367,7 +371,7 @@ impl Client
 	/// Does not fail if the series already exists.
 	///
 	/// You must call [`begin_write()`](#method.begin_write) prior to this function.
-	pub fn create_series(&mut self, name: &str)
+	pub fn create_series(&mut self, name: &str, format: &str)
 		-> Result<()>
 	{
 		self.check_write_tx()?;
@@ -376,8 +380,9 @@ impl Client
 		let mut r = self.reader.borrow_mut();
 		writeln!(
 			&mut w,
-			"create {}",
+			"create {} {}",
 			escape(name),
+			escape(format),
 		)?;
 		w.flush()?;
 		let mut out = String::new();
@@ -399,11 +404,37 @@ impl Client
 	/// * `value` is the sample to insert at this timepoint.
 	///
 	/// You must call [`begin_write()`](#method.begin_write) prior to this function.
-	pub fn add_value(
+	pub fn add_value<V: ToValue>(
 		&mut self,
 		series_name: &str,
 		time: &NaiveDateTime,
-		value: f64
+		value: V,
+	) -> Result<()>
+	{
+		use std::ops::DerefMut;
+		self.check_write_tx()?;
+		let mut w = self.writer.borrow_mut();
+		let mut r = self.reader.borrow_mut();
+		write!(
+			&mut w,
+			"add1 {} {} ",
+			escape(series_name),
+			format_time(time),
+		)?;
+		value.serialize(w.deref_mut())?;
+		writeln!(&mut w, "")?;
+		w.flush()?;
+		let mut error = String::new();
+		r.read_line(&mut error)?;
+		check_error(&mut error)?;
+		Ok(())
+	}
+
+	pub fn add_row_raw(
+		&mut self,
+		series_name: &str,
+		time: &NaiveDateTime,
+		row: &str,
 	) -> Result<()>
 	{
 		self.check_write_tx()?;
@@ -411,10 +442,10 @@ impl Client
 		let mut r = self.reader.borrow_mut();
 		writeln!(
 			&mut w,
-			"add1 {} {} {:.17}",
+			"add1 {} {} {}",
 			escape(series_name),
 			format_time(time),
-			value,
+			row,
 		)?;
 		w.flush()?;
 		let mut error = String::new();
@@ -444,12 +475,11 @@ impl Client
 	/// ```
 	///
 	/// You must call [`begin_write()`](#method.begin_write) prior to this function.
-	pub fn add_values_from<I>(
+	pub fn add_rows_from(
 		&mut self,
 		series_name: &str,
-		src: I,
+		src: &[ (NaiveDateTime, &[&ToValue]) ] ,
 	) -> Result<()>
-		where I: Iterator<Item=(NaiveDateTime,f64)>
 	{
 		self.check_write_tx()?;
 		let mut w = self.writer.borrow_mut();
@@ -461,13 +491,19 @@ impl Client
 		)?;
 		let mut error = String::new();
 
-		for (t,v) in src
+		for (t,r) in src
 		{
-			writeln!(
+			write!(
 				&mut w,
-				"{} {:.17}",
-				format_time(&t), v,
+				"{}",
+				format_time(&t),
 			)?;
+
+			for v in *r
+			{
+				v.serialize(w.as_mut())?;
+			}
+			writeln!(&mut w, "")?;
 		}
 
 		w.flush()?;

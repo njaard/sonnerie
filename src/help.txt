@@ -11,12 +11,12 @@ rollback
 create SERIES
     create a series by name
 add SERIES
-    add values to a series, the following
-    rows are in the form <TS> <VALUE>.
+    add rows to a series, the following
+    rows are in the form <TS> <VALUES>.
     One blank line terminates.
     The timestamps must be in increasing order.
-add1 SERIES TS VALUE
-    add a single value to a series
+add1 SERIES TS VALUES
+    add a single row to a series
 read SERIES TS1 TS2
     read a series from TS1 to TS2, inclusive
 dump LIKE TS1 TS2
@@ -24,6 +24,8 @@ dump LIKE TS1 TS2
     all their data between TS1 and TS2, inclusive
     LIKE is passed to sqlite's LIKE operator on
     the series name: % is a wildcard operator
+format SERIES
+    outputs the format of the given series
 help
     show this information
 exit
