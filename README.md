@@ -68,17 +68,20 @@ Sonnerie can then be installed from Cargo: `cargo install sonnerie`.
 
 Sonnerie consists of one executable, `sonnerie` (`~/.cargo/bin/sonnerie`)
 
-## Run
+## Run Server
 
-Just run Sonnerie, `sonnerie start -d <database directory to use>`.
+`sonnerie start -d <database directory to use>`.
 
 Sonnerie is running in the background, listening on `[::1]:5599` for connections.
 
-## Insert data
-
-Start the Sonnerie client:
+## Start the Sonnerie Client
 
     sonnerie client
+
+After you start the client, you enter a shell-like command line
+from within all of the below is run.
+
+## Insert data
 
 Start a transaction:
 
