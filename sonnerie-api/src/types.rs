@@ -1,7 +1,7 @@
 
 use ::std::io::Write;
 
-/// This trait is implemented for the integer types
+/// This trait is implemented for the numeric types
 /// that Sonnerie supports.
 ///
 /// Sonnerie's API accepts this type in places
