@@ -88,7 +88,7 @@ fn main()
 			use std::os::unix::net::UnixListener;
 			let listener
 				= UnixListener::bind(address)
-				.expect("binding to socket");
+				.expect(&format!("binding to socket {}", address));
 
 			if ! args.is_present("no-fork")
 			{

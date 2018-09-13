@@ -39,10 +39,11 @@ impl RowFormat for RowFormatImpl
 			from = e.to_stored_format(from, dest);
 		}
 	}
-	fn to_protocol_format(&self, from: &[u8], dest: &mut ::std::io::Write)
+	fn to_protocol_format(&self, mut from: &[u8], dest: &mut ::std::io::Write)
 		-> ::std::io::Result<()>
 	{
 		let mut first = true;
+
 		for e in self.elements.iter()
 		{
 			if !first
@@ -50,7 +51,7 @@ impl RowFormat for RowFormatImpl
 				write!(dest, " ")?;
 			}
 			first = false;
-			e.to_protocol_format(from, dest)?;
+			from = e.to_protocol_format(from, dest)?;
 		}
 		Ok(())
 	}
@@ -142,8 +143,8 @@ pub fn parse_row_format(human: &str) -> Box<RowFormat>
 trait Element
 {
 	fn to_stored_format<'s>(&self, from: &'s str, dest: &mut Vec<u8>) -> &'s str;
-	fn to_protocol_format(&self, from: &[u8], dest: &mut ::std::io::Write)
-		-> ::std::io::Result<()>;
+	fn to_protocol_format<'a>(&self, from: &'a [u8], dest: &mut ::std::io::Write)
+		-> ::std::io::Result<&'a [u8]>;
 }
 
 struct ElementI32;
@@ -164,11 +165,12 @@ impl Element for ElementI32
 
 		rest
 	}
-	fn to_protocol_format(&self, from: &[u8], dest: &mut ::std::io::Write)
-		-> ::std::io::Result<()>
+	fn to_protocol_format<'a>(&self, from: &'a [u8], dest: &mut ::std::io::Write)
+		-> ::std::io::Result<&'a [u8]>
 	{
 		let v: i32 = BigEndian::read_i32(&from[0..4]);
-		write!(dest, "{}", v)
+		write!(dest, "{}", v)?;
+		Ok(&from[4..])
 	}
 }
 
@@ -190,11 +192,12 @@ impl Element for ElementU32
 
 		rest
 	}
-	fn to_protocol_format(&self, from: &[u8], dest: &mut ::std::io::Write)
-		-> ::std::io::Result<()>
+	fn to_protocol_format<'a>(&self, from: &'a [u8], dest: &mut ::std::io::Write)
+		-> ::std::io::Result<&'a [u8]>
 	{
 		let v: u32 = BigEndian::read_u32(&from[0..4]);
-		write!(dest, "{}", v)
+		write!(dest, "{}", v)?;
+		Ok(&from[4..])
 	}
 }
 
@@ -216,11 +219,12 @@ impl Element for ElementI64
 
 		rest
 	}
-	fn to_protocol_format(&self, from: &[u8], dest: &mut ::std::io::Write)
-		-> ::std::io::Result<()>
+	fn to_protocol_format<'a>(&self, from: &'a [u8], dest: &mut ::std::io::Write)
+		-> ::std::io::Result<&'a [u8]>
 	{
 		let v: i64 = BigEndian::read_i64(&from[0..8]);
-		write!(dest, "{}", v)
+		write!(dest, "{}", v)?;
+		Ok(&from[8..])
 	}
 }
 
@@ -242,11 +246,12 @@ impl Element for ElementU64
 
 		rest
 	}
-	fn to_protocol_format(&self, from: &[u8], dest: &mut ::std::io::Write)
-		-> ::std::io::Result<()>
+	fn to_protocol_format<'a>(&self, from: &'a [u8], dest: &mut ::std::io::Write)
+		-> ::std::io::Result<&'a [u8]>
 	{
 		let v: u64 = BigEndian::read_u64(&from[0..8]);
-		write!(dest, "{}", v)
+		write!(dest, "{}", v)?;
+		Ok(&from[8..])
 	}
 }
 
@@ -276,11 +281,12 @@ impl Element for ElementF32
 
 		rest
 	}
-	fn to_protocol_format(&self, from: &[u8], dest: &mut ::std::io::Write)
-		-> ::std::io::Result<()>
+	fn to_protocol_format<'a>(&self, from: &'a [u8], dest: &mut ::std::io::Write)
+		-> ::std::io::Result<&'a [u8]>
 	{
 		let v: f32 = BigEndian::read_f32(&from[0..4]);
-		write!(dest, "{:.17}", v)
+		write!(dest, "{:.17}", v)?;
+		Ok(&from[4..])
 	}
 }
 
@@ -309,10 +315,11 @@ impl Element for ElementF64
 
 		rest
 	}
-	fn to_protocol_format(&self, from: &[u8], dest: &mut ::std::io::Write)
-		-> ::std::io::Result<()>
+	fn to_protocol_format<'a>(&self, from: &'a [u8], dest: &mut ::std::io::Write)
+		-> ::std::io::Result<&'a [u8]>
 	{
 		let v: f64 = BigEndian::read_f64(&from[0..8]);
-		write!(dest, "{:.17}", v)
+		write!(dest, "{:.17}", v)?;
+		Ok(&from[8..])
 	}
 }

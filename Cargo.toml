@@ -26,4 +26,3 @@ escape_string = {version="0.1.0", path="escape_string"}
 
 [dev-dependencies]
 tempfile = "3"
-

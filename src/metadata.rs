@@ -396,7 +396,9 @@ impl<'db> Transaction<'db>
 			let buffer = RefCell::new(vec!());
 			buffer.borrow_mut().reserve(preferred_block_size);
 
-			loop
+			let mut done = false;
+
+			while !done
 			{
 				let last_block = self.last_block_for_series(series_id);
 
@@ -413,7 +415,7 @@ impl<'db> Transaction<'db>
 
 
 				let mut fill_buffer =
-					|n_bytes: usize, last_block: &Option<Block>|
+					|n_bytes: usize, last_block: &Option<Block>, done: &mut bool|
 					{
 						let mut buffer = buffer.borrow_mut();
 						buffer.clear();
@@ -424,7 +426,7 @@ impl<'db> Transaction<'db>
 						while buffer.len() < n_bytes
 						{
 							let r = generator(&*format, &mut buffer);
-							if r.is_none() { break; }
+							if r.is_none() { *done = true; break; }
 							let r = r.unwrap();
 							if first_timestamp.is_none()
 								{ first_timestamp = Some(r); }
@@ -458,7 +460,7 @@ impl<'db> Transaction<'db>
 
 				if fits_in_block == 0
 				{ // new block
-					let range = fill_buffer(preferred_block_size, &last_block)?;
+					let range = fill_buffer(preferred_block_size, &last_block, &mut done)?;
 					let buffer = buffer.borrow();
 					if range.is_none() { break; }
 					let (first_timestamp,last_timestamp) = range.unwrap();
@@ -475,7 +477,7 @@ impl<'db> Transaction<'db>
 				}
 				else
 				{ // fill the existing block
-					let range = fill_buffer(fits_in_block as usize, &last_block)?;
+					let range = fill_buffer(fits_in_block as usize, &last_block, &mut done)?;
 					if range.is_none() { break; }
 					let (_, last_timestamp) = range.unwrap();
 					let buffer = buffer.borrow();
