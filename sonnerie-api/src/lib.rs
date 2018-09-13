@@ -780,7 +780,7 @@ fn parse_time(text: &str) -> Result<NaiveDateTime>
 		)?;
 	let ts = NaiveDateTime::from_timestamp(
 		(ts/NANO) as i64,
-		((ts%NANO) * NANO) as u32
+		(ts%NANO) as u32
 	);
 	Ok(ts)
 }
