@@ -21,7 +21,7 @@ expose its changes until it has been committed.
 * Durable: committed data is resistant to loss from unexpected shutdown.
 * Nanosecond-resolution timestamps (64 bit)
 * No weird dependencies, no virtual machines, one single native binary
-* floating point and integer values, multiple rows
+* floating point and integer values, multiple columns per sample
 
 Sonnerie runs on Unix-like systems and is developed on Linux.
 
