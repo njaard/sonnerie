@@ -11,15 +11,21 @@
 //!     let stream = std::net::TcpStream::connect("localhost:5599")?;
 //!     let mut client = sonnerie_api::Client::new(stream)?;
 //!     // read a series (a read transaction is automatically created and closed)
-//!     let _: Vec<(sonnerie_api::NaiveDateTime,f64)> =
-//!         client.read_series("fibonacci")?;
 //!     // start a write transaction
 //!     client.begin_write()?;
+//!     client.create_series("fibonacci", "u")?;
 //!     client.add_value(
 //!         "fibonacci",
 //!         &"2018-01-06T00:00:00".parse().unwrap(),
 //!         13.0,
 //!     )?;
+//!     let results: Vec<(sonnerie_api::NaiveDateTime, Vec<sonnerie_api::OwnedColumn>)> =
+//!         client.read_series("fibonacci")?;
+//!     for row in &results
+//!     {
+//!         // interpret each column as an integer
+//!         for col in &row.1 { let _: u32 = col.from(); }
+//!     }
 //!     // save the transaction
 //!     client.commit()?;
 //!     Ok(())
@@ -35,12 +41,15 @@ use std::fmt;
 
 const NANO: u64 = 1_000_000_000;
 
-use escape_string::{escape,split_one};
+use escape_string::{escape, split_one};
 
 use std::cell::{Cell,RefCell};
 
 mod types;
-use types::ToValue;
+
+pub use types::FromValue;
+pub use types::OwnedColumn;
+pub use types::Column;
 
 
 /// Error for when client could not understand the server
@@ -231,20 +240,6 @@ impl Client
 		Ok(())
 	}
 
-	/// Read all the values in a specific series.
-	///
-	/// Fails if the series does not exist, but returns an empty
-	/// Vec if the series does exist and is simply empty.
-	pub fn read_series(
-		&mut self,
-		name: &str,
-	) -> Result<Vec<(NaiveDateTime, f64)>>
-	{
-		let from = NaiveDateTime::from_timestamp(0,0);
-		let to = max_time();
-		self.read_series_range(name, &from, &to)
-	}
-
 	/// Read values within a range of timestamps in a specific series.
 	///
 	/// Fails if the series does not exist, but returns an empty
@@ -252,12 +247,15 @@ impl Client
 	///
 	/// * `first_time` is the first timestamp to begin reading from
 	/// * `last_time` is the last timestamp to read (inclusive)
-	pub fn read_series_range(
+	/// * `to` is a callback function which receives each row
+	pub fn read_series_range_to<F>(
 		&mut self,
 		name: &str,
 		first_time: &NaiveDateTime,
 		last_time: &NaiveDateTime,
-	) -> Result<Vec<(NaiveDateTime, f64)>>
+		mut to: F
+	) -> Result<()>
+		where F: FnMut(NaiveDateTime, &[Column])
 	{
 		let _maybe = TransactionLock::read(self)?;
 
@@ -271,41 +269,94 @@ impl Client
 			format_time(last_time),
 		)?;
 		w.flush()?;
-		let mut res = vec!();
 		let mut out = String::new();
 		loop
 		{
 			out.clear();
 			r.read_line(&mut out)?;
 			check_error(&mut out)?;
+			if out.is_empty() { break; }
 
-			let out = out.trim_right();
-			if out.len() == 0 { break; }
-
-			let space = out.find('\t')
-				.ok_or_else(
-					|| Error::new(
+			let (ts, mut remainder) = split_one(&out)
+				.ok_or_else(||
+					Error::new(
 						ErrorKind::InvalidData,
-						ProtocolError::new(out.to_string()),
+						ProtocolError::new(format!("reading timestamp")),
 					)
 				)?;
 
-			let ts = parse_time(&out[ 0 .. space ])?;
-			let val: f64 = out[space+1 ..].parse()
-				.map_err(
-					|e|
-						Error::new(
-							ErrorKind::InvalidData,
-							ProtocolError::new(
-								format!("failed to parse value: {}, '{}'", e, &out[space+1 ..])
-							),
-						)
-				)?;
-			res.push( (ts, val) );
+			let ts = parse_time(&ts)?;
+
+			// TODO: reuse allocations for split_columns and columns
+			let mut split_columns = vec!();
+			while !remainder.is_empty()
+			{
+				let s = split_one(remainder);
+				if s.is_none()
+				{
+					return Err(Error::new(
+						ErrorKind::InvalidData,
+						ProtocolError::new(format!("reading columns")),
+					));
+				}
+				let s = s.unwrap();
+				split_columns.push( s.0 );
+				remainder = s.1;
+			}
+
+			let mut columns = vec!();
+			for c in &split_columns
+			{
+				columns.push( Column { serialized: c } );
+			}
+
+			to( ts, &columns );
 		}
 
-		Ok(res)
+		Ok(())
 	}
+
+	/// Read all the values in a specific series.
+	///
+	/// Fails if the series does not exist, but returns an empty
+	/// Vec if no samples were contained in that range.
+	///
+	/// * `first_time` is the first timestamp to begin reading from
+	/// * `last_time` is the last timestamp to read (inclusive)
+	pub fn read_series_range(
+		&mut self,
+		name: &str,
+		first_time: &NaiveDateTime,
+		last_time: &NaiveDateTime,
+	) -> Result<Vec<(NaiveDateTime, Vec<OwnedColumn>)>>
+	{
+		let mut out = vec!();
+		self.read_series_range_to(
+			name,
+			first_time, last_time,
+			|ts, cols|
+			{
+				let r = cols.iter().map( |e| e.copy() ).collect();
+				out.push((ts,r));
+			}
+		)?;
+		Ok(out)
+	}
+
+	/// Read all the values in a specific series.
+	///
+	/// Fails if the series does not exist, but returns an empty
+	/// Vec if the series does exist and is simply empty.
+	pub fn read_series(
+		&mut self,
+		name: &str,
+	) -> Result<Vec<(NaiveDateTime, Vec<OwnedColumn>)>>
+	{
+		let from = NaiveDateTime::from_timestamp(0,0);
+		let to = max_time();
+		self.read_series_range(name, &from, &to)
+	}
+
 
 	/// Discard and end the current transaction.
 	///
@@ -426,7 +477,7 @@ impl Client
 	/// according to the format for the series's format.
 	///
 	/// You must call [`begin_write()`](#method.begin_write) prior to this function.
-	pub fn add_value<V: ToValue>(
+	pub fn add_value<V: FromValue>(
 		&mut self,
 		series_name: &str,
 		time: &NaiveDateTime,
@@ -462,6 +513,8 @@ impl Client
 	/// * `row` is a space-delimited string whose values are parsed
 	/// by column according to the series's format.
 	///
+	/// This function panics if it the row contains a newline character.
+	///
 	/// You must call [`begin_write()`](#method.begin_write) prior to this function.
 	pub fn add_row_raw(
 		&mut self,
@@ -470,9 +523,13 @@ impl Client
 		row: &str,
 	) -> Result<()>
 	{
+		if row.find('\n').is_some()
+			{ panic!("row contains non-permitted data"); }
+
 		self.check_write_tx()?;
 		let mut w = self.writer.borrow_mut();
 		let mut r = self.reader.borrow_mut();
+
 		writeln!(
 			&mut w,
 			"add1 {} {} {}",
@@ -529,7 +586,7 @@ impl Client
 	pub fn add_rows_from(
 		&mut self,
 		series_name: &str,
-		src: &[ (NaiveDateTime, &[&ToValue]) ] ,
+		src: &[ (NaiveDateTime, &[&FromValue]) ] ,
 	) -> Result<()>
 	{
 		self.check_write_tx()?;
@@ -575,6 +632,9 @@ impl Client
 	/// query is very efficient.
 	/// * `results` is a function which receives each value.
 	///
+	/// Specify the types of the parameters to `results`, due to
+	/// [a Rust compiler bug](https://github.com/rust-lang/rust/issues/41078).
+	///
 	/// The values are always generated first for each series
 	/// in ascending order and then each timestamp in ascending order.
 	/// (In other words, each series gets its own group of samples
@@ -584,8 +644,7 @@ impl Client
 		like: &str,
 		results: F,
 	) -> Result<()>
-		where F: FnMut(&str, NaiveDateTime, f64)
-			-> ::std::result::Result<(), String>
+		where F: FnMut(&str, NaiveDateTime, &[Column])
 	{
 		let from = NaiveDateTime::from_timestamp(0,0);
 		let to = max_time();
@@ -607,6 +666,9 @@ impl Client
 	/// all values per series.
 	/// * `results` is a function which receives each value.
 	///
+	/// Specify the types of the parameters to `results`, due to
+	/// [a Rust compiler bug](https://github.com/rust-lang/rust/issues/41078).
+	///
 	/// The values are always generated first for each series
 	/// in ascending order and then each timestamp in ascending order.
 	/// (In other words, each series gets its own group of samples
@@ -618,8 +680,7 @@ impl Client
 		last_time: &NaiveDateTime,
 		mut results: F,
 	) -> Result<()>
-		where F: FnMut(&str, NaiveDateTime, f64)
-			-> ::std::result::Result<(), String>
+		where F: FnMut(&str, NaiveDateTime, &[Column])
 	{
 		let _maybe = TransactionLock::read(self)?;
 		let mut w = self.writer.borrow_mut();
@@ -632,7 +693,9 @@ impl Client
 			format_time(last_time),
 		)?;
 		w.flush()?;
+
 		let mut out = String::new();
+
 		loop
 		{
 			out.clear();
@@ -647,41 +710,40 @@ impl Client
 					)
 				)?;
 			if series_name.len() == 0 { break; }
-			let (ts, remainder) = split_one(&remainder)
+			let (ts, mut remainder) = split_one(&remainder)
 				.ok_or_else(||
 					Error::new(
 						ErrorKind::InvalidData,
 						ProtocolError::new(format!("reading timestamp")),
 					)
 				)?;
-			let (val, _) = split_one(&remainder)
-				.ok_or_else(||
-					Error::new(
+
+			// TODO: reuse allocations for split_columns and columns
+			let mut split_columns = vec!();
+			while !remainder.is_empty()
+			{
+				let s = split_one(remainder);
+				if s.is_none()
+				{
+					return Err(Error::new(
 						ErrorKind::InvalidData,
-						ProtocolError::new(format!("reading value")),
-					)
-				)?;
+						ProtocolError::new(format!("reading columns")),
+					));
+				}
+				let s = s.unwrap();
+				split_columns.push( s.0 );
+				remainder = s.1;
+			}
+
+			let mut columns = vec!();
+			for c in &split_columns
+			{
+				columns.push( Column { serialized: c } );
+			}
 
 			let ts = parse_time(&ts)?;
 
-			let val: f64 = val.parse()
-				.map_err(
-					|e|
-						Error::new(
-							ErrorKind::InvalidData,
-							ProtocolError::new(
-								format!("failed to parse value: {}, '{}'", e, val)
-							),
-						)
-				)?;
-			results(&series_name, ts, val)
-				.map_err(
-					|e|
-						Error::new(
-							ErrorKind::Other,
-							ProtocolError::new(format!("{:?}", e)),
-						)
-				)?;
+			results(&series_name, ts, &columns);
 		}
 		Ok(())
 	}
@@ -697,7 +759,6 @@ impl Drop for Client
 		}
 	}
 }
-
 
 fn format_time(t: &NaiveDateTime) -> u64
 {

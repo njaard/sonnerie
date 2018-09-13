@@ -4,7 +4,7 @@ extern crate rustyline;
 extern crate clap;
 extern crate chrono;
 
-use self::sonnerie_api::NaiveDateTime;
+use self::sonnerie_api::{NaiveDateTime,Column};
 
 use std::net::TcpStream;
 
@@ -325,10 +325,14 @@ fn command<'client>(
 					let mut child = run_pager();
 					{
 						let mut stdin = child.stdin.as_mut().expect("Failed to open stdin");
-						for (ts,val) in samples
+						for (ts,cols) in samples
 						{
-							writeln!(stdin, "{}   {}", ts, val)
-								.unwrap();
+							write!(stdin, "{}  ", ts).unwrap();
+							for col in cols
+							{
+								write!(stdin, " {}", col).unwrap();
+							}
+							writeln!(stdin, "").unwrap();
 						}
 					}
 					child.stdin.take();
@@ -384,11 +388,14 @@ fn command<'client>(
 				let res;
 				{
 					let display =
-						|name: &str, ts, val| -> ::std::result::Result<(), String>
+						|name: &str, ts, cols: &[Column]|
 						{
-							writeln!(stdin, "{:?}\t{}\t{}", ts, val, name)
-								.unwrap();
-							Ok(())
+							write!(stdin, "{:?}\t{}", name, ts).unwrap();
+							for col in cols
+							{
+								write!(stdin, " {}", col).unwrap();
+							}
+							writeln!(stdin, "").unwrap();
 						};
 
 					res = client.dump_range(like, &from, &to, display);
