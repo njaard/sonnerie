@@ -21,6 +21,7 @@ expose its changes until it has been committed.
 * Durable: committed data is resistant to loss from unexpected shutdown.
 * Nanosecond-resolution timestamps (64 bit)
 * No weird dependencies, no virtual machines, one single native binary
+* floating point and integer values, multiple rows
 
 Sonnerie runs on Unix-like systems and is developed on Linux.
 
@@ -35,6 +36,8 @@ Fundamentally, the database is append-only. Edits and insertions
 are costly (and not yet implemented!).
 
 ## Why
+
+Sonnerie is for storing data that you can plot.
 
 You intake a lot of samples related to different entities all
 at once, and then want to read a lot of data for a entity, the
@@ -113,6 +116,37 @@ After `commit` completes, the data is definitely on disk.
 
 Try `help` and `read --help` (or `--help` with any command)
 for more information.
+
+## Multiple columns
+
+In the above example, we are storing one value with each timestamp. You
+can also store multiple values with each timestamp of differing types. This
+is useful for multi-dimensional data.
+
+When you create a series, you must specify the format ("type") of the records.
+The format is specified as a bunch of single character codes, one for each value.
+
+The character codes are:
+* `f` - a 32 bit float (f32)
+* `F` - a 64 bit float (f64)
+* `u` - a 32 bit unsigned integer (u32)
+* `U` - a 64 bit unsigned integer (u64)
+* `i` - a 32 bit signed integer (i32)
+* `I` - a 64 bit signed integer (i64)
+
+We can create another series plotting the coordinates of a jet travelling
+over the Pacific Ocean in terms of its longitude and latitude (respectively):
+
+    create oceanic-airlines --format ff
+
+And we can insert values for this flight as well:
+
+	add oceanic-airlines 2018-01-01T00:00:00 37.686751 -122.602227
+	add oceanic-airlines 2018-01-01T00:00:01 37.686810 -122.603713
+	add oceanic-airlines 2018-01-01T00:00:02 37.686873 -122.605997
+	add oceanic-airlines 2018-01-01T00:00:03 37.687022 -122.609997
+	add oceanic-airlines 2018-01-01T00:00:04 37.687364 -122.610945
+	add oceanic-airlines 2018-01-01T00:00:05 37.687503 -122.615211
 
 # Errata
 

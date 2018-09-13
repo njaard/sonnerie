@@ -368,7 +368,25 @@ impl Client
 
 	/// Ensures a series by the given name already exists.
 	///
-	/// Does not fail if the series already exists.
+	/// Fails if the preexisting series has a different format,
+	/// but otherwise does not fail.
+	///
+	/// `format` is a string, one character per column that defines
+	/// how each sample in your time series is stored.
+	///
+	/// The permitted characters are:
+	/// * `f` - a 32 bit float (f32)
+	/// * `F` - a 64 bit float (f64)
+	/// * `u` - a 32 bit unsigned integer (u32)
+	/// * `U` - a 64 bit unsigned integer (u64)
+	/// * `i` - a 32 bit signed integer (i32)
+	/// * `I` - a 64 bit signed integer (i64)
+	///
+	/// For example, "`FFii`" stores a 4 column record with two 64-bit floats
+	/// and two 32-bit signed integers.
+	///
+	/// Reading and writing to this series requires you to provide types
+	/// that are compatible with the format string.
 	///
 	/// You must call [`begin_write()`](#method.begin_write) prior to this function.
 	pub fn create_series(&mut self, name: &str, format: &str)
@@ -396,12 +414,16 @@ impl Client
 	///
 	/// Fails if a value at the given timestamp already exists.
 	///
+	/// Fails if this series's format doesn't have exactly one
+	/// column, and its type cannot be interpreted as compatible.
+	///
 	/// * `series_name` is the name of the series, as created by
 	/// [`create_series`](#method.create_series).
 	/// * `time` is the point in time to add the sample, which
 	/// must be unique (and also must be after all other timestamps
 	/// in this series, until this feature is added which should be soon).
-	/// * `value` is the sample to insert at this timepoint.
+	/// * `value` is the sample to insert at this timepoint, and is interpreted
+	/// according to the format for the series's format.
 	///
 	/// You must call [`begin_write()`](#method.begin_write) prior to this function.
 	pub fn add_value<V: ToValue>(
@@ -430,6 +452,17 @@ impl Client
 		Ok(())
 	}
 
+	/// Insert data that is parsed from a string
+	///
+	/// * `series_name` is the name of the series, as created by
+	/// [`create_series`](#method.create_series).
+	/// * `time` is the point in time to add the sample, which
+	/// must be unique (and also must be after all other timestamps
+	/// in this series, until this feature is added which should be soon).
+	/// * `row` is a space-delimited string whose values are parsed
+	/// by column according to the series's format.
+	///
+	/// You must call [`begin_write()`](#method.begin_write) prior to this function.
 	pub fn add_row_raw(
 		&mut self,
 		series_name: &str,
@@ -459,7 +492,9 @@ impl Client
 	/// The timestamps must be sorted ascending.
 	///
 	/// * `series_name` is the series to insert the values into.
-	/// * `src` is the iterator to read values from.
+	/// * `src` is a container where each value is dynamically serialized.
+	/// The type is serialized and the server will confirm that it
+	/// can be stored according to the series's format.
 	///
 	/// ```no_run
 	/// # let stream = std::net::TcpStream::connect("localhost:5599").unwrap();
@@ -468,9 +503,25 @@ impl Client
 	/// # let ts2: sonnerie_api::NaiveDateTime = "2015-01-01".parse().unwrap();
 	/// # let ts3: sonnerie_api::NaiveDateTime = "2015-01-01".parse().unwrap();
 	/// # let ts4: sonnerie_api::NaiveDateTime = "2015-01-01".parse().unwrap();
-	/// client.add_values_from(
+	/// // add rows with one column
+	/// client.add_rows_from(
 	///     "fibonacci",
-	///     [(ts1, 1.0), (ts2, 1.0), (ts3, 2.0), (ts3, 3.0)].iter().cloned()
+	///     &[
+	///         (ts1, &[&1.0]),
+	///         (ts2, &[&1.0]),
+	///         (ts3, &[&2.0]),
+	///         (ts3, &[&3.0]),
+	///     ]
+	/// );
+	/// // add rows with one column (in this case, a float and an integer)
+	/// client.add_rows_from(
+	///     "san-francisco:temperature-and-humidity",
+	///     &[
+	///         (ts1, &[&25.0, &45]),
+	///         (ts2, &[&24.5, &48]),
+	///         (ts3, &[&24.2, &49]),
+	///         (ts3, &[&23.9, &49]),
+	///     ]
 	/// );
 	/// ```
 	///
