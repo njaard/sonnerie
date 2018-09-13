@@ -260,7 +260,7 @@ impl<'db> Session<'db>
 							let split_one = split_one.unwrap();
 							if split_one.0.is_empty() { return None; }
 							let ts = parse_time(&split_one.0).unwrap();
-							format.to_stored_format(&ts, &split_one.1, bytes);
+							format.to_stored_format(&ts, &split_one.1, bytes).unwrap();
 							Some(ts)
 						}
 					)
@@ -295,7 +295,7 @@ impl<'db> Session<'db>
 					|format, data|
 					{
 						if did_one { return None; }
-						format.to_stored_format(&ts, remainder, data);
+						format.to_stored_format(&ts, remainder, data).unwrap();
 						did_one=true;
 						Some(ts)
 					}

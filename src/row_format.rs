@@ -8,7 +8,8 @@ pub use metadata::Timestamp;
 
 pub trait RowFormat
 {
-	fn to_stored_format(&self, ts: &Timestamp, from: &str, dest: &mut Vec<u8>);
+	fn to_stored_format(&self, ts: &Timestamp, from: &str, dest: &mut Vec<u8>)
+		-> Result<(), String>;
 	fn to_protocol_format(&self, from: &[u8], dest: &mut ::std::io::Write)
 		-> ::std::io::Result<()>;
 
@@ -29,6 +30,7 @@ struct RowFormatImpl
 impl RowFormat for RowFormatImpl
 {
 	fn to_stored_format(&self, ts: &Timestamp, mut from: &str, dest: &mut Vec<u8>)
+		-> Result<(), String>
 	{
 		let at = dest.len();
 		dest.reserve(at+self.row_size());
@@ -36,8 +38,11 @@ impl RowFormat for RowFormatImpl
 		BigEndian::write_u64(&mut dest[at..], ts.0);
 		for e in self.elements.iter()
 		{
-			from = e.to_stored_format(from, dest);
+			from = e.to_stored_format(from, dest)?;
 		}
+		if !from.is_empty()
+			{ return Err("too many columns in input".to_string()); }
+		Ok(())
 	}
 	fn to_protocol_format(&self, mut from: &[u8], dest: &mut ::std::io::Write)
 		-> ::std::io::Result<()>
@@ -142,7 +147,8 @@ pub fn parse_row_format(human: &str) -> Box<RowFormat>
 
 trait Element
 {
-	fn to_stored_format<'s>(&self, from: &'s str, dest: &mut Vec<u8>) -> &'s str;
+	fn to_stored_format<'s>(&self, from: &'s str, dest: &mut Vec<u8>)
+		-> Result<&'s str, String>;
 	fn to_protocol_format<'a>(&self, from: &'a [u8], dest: &mut ::std::io::Write)
 		-> ::std::io::Result<&'a [u8]>;
 }
@@ -150,7 +156,8 @@ trait Element
 struct ElementI32;
 impl Element for ElementI32
 {
-	fn to_stored_format<'s>(&self, from: &'s str, dest: &mut Vec<u8>) -> &'s str
+	fn to_stored_format<'s>(&self, from: &'s str, dest: &mut Vec<u8>)
+		-> Result<&'s str, String>
 	{
 		let at = dest.len();
 		dest.resize(at + 4, 0);
@@ -159,11 +166,10 @@ impl Element for ElementI32
 		let (t, rest) = split_one(from).unwrap();
 
 		let v = t.parse()
-			.map_err(|e| format!("while parsing {}: {}", t, e))
-			.unwrap();
+			.map_err(|e| format!("while parsing {}: {}", t, e))?;
 		BigEndian::write_i32(&mut dest, v);
 
-		rest
+		Ok(rest)
 	}
 	fn to_protocol_format<'a>(&self, from: &'a [u8], dest: &mut ::std::io::Write)
 		-> ::std::io::Result<&'a [u8]>
@@ -177,7 +183,8 @@ impl Element for ElementI32
 struct ElementU32;
 impl Element for ElementU32
 {
-	fn to_stored_format<'s>(&self, from: &'s str, dest: &mut Vec<u8>) -> &'s str
+	fn to_stored_format<'s>(&self, from: &'s str, dest: &mut Vec<u8>)
+		-> Result<&'s str, String>
 	{
 		let at = dest.len();
 		dest.resize(at + 4, 0);
@@ -186,11 +193,10 @@ impl Element for ElementU32
 		let (t, rest) = split_one(from).unwrap();
 
 		let v = t.parse()
-			.map_err(|e| format!("while parsing {}: {}", t, e))
-			.unwrap();
+			.map_err(|e| format!("while parsing {}: {}", t, e))?;
 		BigEndian::write_u32(&mut dest, v);
 
-		rest
+		Ok(rest)
 	}
 	fn to_protocol_format<'a>(&self, from: &'a [u8], dest: &mut ::std::io::Write)
 		-> ::std::io::Result<&'a [u8]>
@@ -204,7 +210,8 @@ impl Element for ElementU32
 struct ElementI64;
 impl Element for ElementI64
 {
-	fn to_stored_format<'s>(&self, from: &'s str, dest: &mut Vec<u8>) -> &'s str
+	fn to_stored_format<'s>(&self, from: &'s str, dest: &mut Vec<u8>)
+		-> Result<&'s str, String>
 	{
 		let at = dest.len();
 		dest.resize(at + 8, 0);
@@ -213,11 +220,10 @@ impl Element for ElementI64
 		let (t, rest) = split_one(from).unwrap();
 
 		let v = t.parse()
-			.map_err(|e| format!("while parsing {}: {}", t, e))
-			.unwrap();
+			.map_err(|e| format!("while parsing {}: {}", t, e))?;
 		BigEndian::write_i64(&mut dest, v);
 
-		rest
+		Ok(rest)
 	}
 	fn to_protocol_format<'a>(&self, from: &'a [u8], dest: &mut ::std::io::Write)
 		-> ::std::io::Result<&'a [u8]>
@@ -231,7 +237,8 @@ impl Element for ElementI64
 struct ElementU64;
 impl Element for ElementU64
 {
-	fn to_stored_format<'s>(&self, from: &'s str, dest: &mut Vec<u8>) -> &'s str
+	fn to_stored_format<'s>(&self, from: &'s str, dest: &mut Vec<u8>)
+		-> Result<&'s str, String>
 	{
 		let at = dest.len();
 		dest.resize(at + 8, 0);
@@ -240,11 +247,10 @@ impl Element for ElementU64
 		let (t, rest) = split_one(from).unwrap();
 
 		let v = t.parse()
-			.map_err(|e| format!("while parsing {}: {}", t, e))
-			.unwrap();
+			.map_err(|e| format!("while parsing {}: {}", t, e))?;
 		BigEndian::write_u64(&mut dest, v);
 
-		rest
+		Ok(rest)
 	}
 	fn to_protocol_format<'a>(&self, from: &'a [u8], dest: &mut ::std::io::Write)
 		-> ::std::io::Result<&'a [u8]>
@@ -259,7 +265,8 @@ impl Element for ElementU64
 struct ElementF32;
 impl Element for ElementF32
 {
-	fn to_stored_format<'s>(&self, from: &'s str, dest: &mut Vec<u8>) -> &'s str
+	fn to_stored_format<'s>(&self, from: &'s str, dest: &mut Vec<u8>)
+		-> Result<&'s str, String>
 	{
 		let at = dest.len();
 		dest.resize(at + 4, 0);
@@ -274,12 +281,11 @@ impl Element for ElementF32
 		else
 		{
 			v = t.parse()
-				.map_err(|e| format!("while parsing {}: {}", t, e))
-				.unwrap();
+				.map_err(|e| format!("while parsing {}: {}", t, e))?;
 		}
 		BigEndian::write_f32(&mut dest, v);
 
-		rest
+		Ok(rest)
 	}
 	fn to_protocol_format<'a>(&self, from: &'a [u8], dest: &mut ::std::io::Write)
 		-> ::std::io::Result<&'a [u8]>
@@ -293,7 +299,8 @@ impl Element for ElementF32
 struct ElementF64;
 impl Element for ElementF64
 {
-	fn to_stored_format<'s>(&self, from: &'s str, dest: &mut Vec<u8>) -> &'s str
+	fn to_stored_format<'s>(&self, from: &'s str, dest: &mut Vec<u8>)
+		-> Result<&'s str, String>
 	{
 		let at = dest.len();
 		dest.resize(at + 8, 0);
@@ -308,12 +315,11 @@ impl Element for ElementF64
 		else
 		{
 			v = t.parse()
-				.map_err(|e| format!("while parsing {}: {}", t, e))
-				.unwrap();
+				.map_err(|e| format!("while parsing {}: {}", t, e))?;
 		}
 		BigEndian::write_f64(&mut dest, v);
 
-		rest
+		Ok(rest)
 	}
 	fn to_protocol_format<'a>(&self, from: &'a [u8], dest: &mut ::std::io::Write)
 		-> ::std::io::Result<&'a [u8]>
