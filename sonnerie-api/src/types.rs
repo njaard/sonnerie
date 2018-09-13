@@ -114,7 +114,7 @@ impl<'v> ::std::fmt::Display for Column<'v>
 	fn fmt(&self, f: &mut ::std::fmt::Formatter)
 		-> ::std::fmt::Result
 	{
-		write!(f, "{})", self.serialized)
+		write!(f, "{}", self.serialized)
 	}
 }
 
@@ -132,7 +132,7 @@ impl ::std::fmt::Display for OwnedColumn
 	fn fmt(&self, f: &mut ::std::fmt::Formatter)
 		-> ::std::fmt::Result
 	{
-		write!(f, "{})", self.serialized)
+		write!(f, "{}", self.serialized)
 	}
 }
 

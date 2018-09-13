@@ -390,7 +390,7 @@ fn command<'client>(
 					let display =
 						|name: &str, ts, cols: &[Column]|
 						{
-							write!(stdin, "{:?}\t{}", name, ts).unwrap();
+							write!(stdin, "{}\t{}", name, ts).unwrap();
 							for col in cols
 							{
 								write!(stdin, " {}", col).unwrap();
