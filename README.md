@@ -193,10 +193,6 @@ You can do a *full* online backup as such, maintaining the following order:
 Modifying existing data will be implemented shortly. It will result
 in wasted disk space and increased fragmentation.
 
-## Disk usage
-
-Each sample requires 16 bytes on average plus small amounts of metadata.
-
 ## Semver
 
 The file format and protocol are subject to change between different 0.x versions.
