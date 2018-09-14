@@ -43,11 +43,12 @@ const NANO: u64 = 1_000_000_000;
 
 use escape_string::{escape, split_one};
 
-use std::cell::{Cell,RefCell};
+use std::cell::{Cell,RefCell,RefMut};
 
 mod types;
 
 pub use types::FromValue;
+pub use types::ToValue;
 pub use types::OwnedColumn;
 pub use types::Column;
 
@@ -377,6 +378,26 @@ impl Client
 		Ok(())
 	}
 
+	/// Read the format for a series
+	///
+	/// The string returned is the same specified as `format`
+	/// in [`create_series()`](#method.create_series).
+	///
+	/// Fails if the series doesn't exist.
+	pub fn format(&self, series: &str) -> Result<String>
+	{
+		let _maybe = TransactionLock::read(self)?;
+		let mut w = self.writer.borrow_mut();
+		let mut r = self.reader.borrow_mut();
+		writeln!(&mut w, "format {}", escape(series))?;
+		w.flush()?;
+		let mut out = String::new();
+		r.read_line(&mut out)?;
+		check_error(&mut out)?;
+		Ok(out)
+	}
+
+
 	/// Save and end the current transaction.
 	///
 	/// This must be called for any changes by a write transaction
@@ -546,12 +567,8 @@ impl Client
 
 	/// Efficiently add many samples into a timeseries.
 	///
+	/// Returns an object that can accept each row.
 	/// The timestamps must be sorted ascending.
-	///
-	/// * `series_name` is the series to insert the values into.
-	/// * `src` is a container where each value is dynamically serialized.
-	/// The type is serialized and the server will confirm that it
-	/// can be stored according to the series's format.
 	///
 	/// ```no_run
 	/// # let stream = std::net::TcpStream::connect("localhost:5599").unwrap();
@@ -560,65 +577,49 @@ impl Client
 	/// # let ts2: sonnerie_api::NaiveDateTime = "2015-01-01".parse().unwrap();
 	/// # let ts3: sonnerie_api::NaiveDateTime = "2015-01-01".parse().unwrap();
 	/// # let ts4: sonnerie_api::NaiveDateTime = "2015-01-01".parse().unwrap();
-	/// // add rows with one column
-	/// client.add_rows_from(
-	///     "fibonacci",
-	///     &[
-	///         (ts1, &[&1.0]),
-	///         (ts2, &[&1.0]),
-	///         (ts3, &[&2.0]),
-	///         (ts3, &[&3.0]),
-	///     ]
-	/// );
-	/// // add rows with one column (in this case, a float and an integer)
-	/// client.add_rows_from(
-	///     "san-francisco:temperature-and-humidity",
-	///     &[
-	///         (ts1, &[&25.0, &45]),
-	///         (ts2, &[&24.5, &48]),
-	///         (ts3, &[&24.2, &49]),
-	///         (ts3, &[&23.9, &49]),
-	///     ]
-	/// );
+	/// {
+	///     // add rows with one column
+	///     let mut adder = client.add_rows("fibonacci").unwrap();
+	///     adder.row(&ts1, &[&1.0]);
+	///     adder.row(&ts2, &[&1.0]);
+	///     adder.row(&ts3, &[&2.0]);
+	///     adder.row(&ts3, &[&3.0]);
+	/// }
+	///
+	/// {
+	///     // add rows with two columns (in this case, a float and an integer)
+	///     let mut adder = client.add_rows("san-francisco:temp-and-humidity").unwrap();
+	///     adder.row(&ts1, &[&25.0, &45]);
+	///     adder.row(&ts2, &[&24.5, &48]);
+	///     adder.row(&ts3, &[&24.2, &49]);
+	///     adder.row(&ts3, &[&23.9, &49]);
+	/// }
 	/// ```
 	///
 	/// You must call [`begin_write()`](#method.begin_write) prior to this function.
-	pub fn add_rows_from(
-		&mut self,
+	pub fn add_rows<'s>(
+		&'s mut self,
 		series_name: &str,
-		src: &[ (NaiveDateTime, &[&FromValue]) ] ,
-	) -> Result<()>
+	) -> Result<RowAdder<'s>>
 	{
 		self.check_write_tx()?;
 		let mut w = self.writer.borrow_mut();
-		let mut r = self.reader.borrow_mut();
+		let r = self.reader.borrow_mut();
 		writeln!(
 			&mut w,
 			"add {}",
 			escape(series_name),
 		)?;
-		let mut error = String::new();
 
-		for (t,r) in src
+		let r =
+		RowAdder
 		{
-			write!(
-				&mut w,
-				"{}",
-				format_time(&t),
-			)?;
+			r: r,
+			w: w,
+			done: false,
+		};
 
-			for v in *r
-			{
-				v.serialize(w.as_mut())?;
-			}
-			writeln!(&mut w, "")?;
-		}
-
-		w.flush()?;
-		r.read_line(&mut error)?;
-		check_error(&mut error)?;
-
-		Ok(())
+		Ok(r)
 	}
 
 	/// Read all values from many series
@@ -784,6 +785,73 @@ fn parse_time(text: &str) -> Result<NaiveDateTime>
 	);
 	Ok(ts)
 }
+
+/// A function returned by [`Client::add_rows`](struct.Client.html#method.add_rows).
+pub struct RowAdder<'client>
+{
+	w: RefMut<'client, Box<Write>>,
+	r: RefMut<'client, Box<BufRead>>,
+	done: bool,
+}
+
+impl<'client> RowAdder<'client>
+{
+	/// Add a single row
+	///
+	/// Panics on error. Call [`row_checked`](#method.row)
+	/// in order to test for failures.
+	pub fn row(&mut self, t: &NaiveDateTime, cols: &[&FromValue])
+	{
+		self.row_checked(t, cols).unwrap();
+	}
+
+
+	pub fn row_checked(&mut self, t: &NaiveDateTime, cols: &[&FromValue])
+		-> Result<()>
+	{
+		write!(&mut self.w, "{}", format_time(t))?;
+		for v in cols.iter()
+		{
+			v.serialize(self.w.as_mut())?;
+		}
+		writeln!(&mut self.w, "")?;
+
+		Ok(())
+	}
+
+	/// Explicitly end the transaction, testing for errors
+	///
+	/// Calling this function is optional, you can just
+	/// let the object go out of scope, but this function
+	/// allows you to check for errors.
+	pub fn finish(mut self) -> Result<()>
+	{
+		self.finish_ref()
+	}
+
+	fn finish_ref(&mut self) -> Result<()>
+	{
+		let mut error = String::new();
+		self.done = true;
+		self.w.flush()?;
+		self.r.read_line(&mut error)?;
+		check_error(&mut error)?;
+
+		Ok(())
+	}
+}
+
+impl<'client> Drop for RowAdder<'client>
+{
+	fn drop(&mut self)
+	{
+		if !self.done
+		{
+			self.finish_ref().unwrap();
+		}
+	}
+}
+
 
 /// The maximum timestamp allowed by Sonnerie.
 ///

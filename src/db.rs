@@ -289,7 +289,7 @@ mod tests
 						&ts,
 						&format!("{}", value),
 						dest
-					);
+					).unwrap();
 					Some(ts)
 				}
 				else
@@ -453,7 +453,7 @@ mod tests
 			if let Some((ts,val)) = i.next()
 			{
 				let formatted = format!("{}", val);
-				format.to_stored_format(ts, &formatted, data);
+				format.to_stored_format(ts, &formatted, data).unwrap();
 				Some(*ts)
 			}
 			else
