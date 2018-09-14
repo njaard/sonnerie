@@ -276,7 +276,6 @@ impl Client
 			out.clear();
 			r.read_line(&mut out)?;
 			check_error(&mut out)?;
-			if out.is_empty() { break; }
 
 			let (ts, mut remainder) = split_one(&out)
 				.ok_or_else(||
@@ -285,6 +284,7 @@ impl Client
 						ProtocolError::new(format!("reading timestamp")),
 					)
 				)?;
+			if ts.is_empty() { break; }
 
 			let ts = parse_time(&ts)?;
 
@@ -710,7 +710,7 @@ impl Client
 						ProtocolError::new(format!("reading series name")),
 					)
 				)?;
-			if series_name.len() == 0 { break; }
+			if series_name.is_empty() { break; }
 			let (ts, mut remainder) = split_one(&remainder)
 				.ok_or_else(||
 					Error::new(
