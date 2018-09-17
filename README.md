@@ -19,7 +19,7 @@ which has its own [API docs](https://docs.rs/sonnerie-api).
 * Isolated: A transaction doesn't see updates from other transactions or
 expose its changes until it has been committed.
 * Durable: committed data is resistant to loss from unexpected shutdown.
-* Nanosecond-resolution timestamps (64 bit)
+* Nanosecond-resolution timestamps (64 bit), 1970-2554
 * No weird dependencies, no virtual machines, one single native binary
 * floating point and integer values, multiple columns per sample
 
@@ -201,11 +201,6 @@ before Sonnerie 2.0.
 
 # Roadmap
 
-Version 0.2:
-* Nanosecond precision from 1970-2554
-* Store other fixed-size data (multiple floats per timestamp)
-
-Later:
 * Non-append insertion and editing
 * Online incremental backups
 * Compacting (not useful without insertion and appending)
