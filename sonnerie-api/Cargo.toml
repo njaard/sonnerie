@@ -1,6 +1,6 @@
 [package]
 name = "sonnerie-api"
-version = "0.2.2"
+version = "0.2.3"
 authors = ["Charles Samuels <kalle@eventures.vc>", "e.ventures Management LLC"]
 license = "BSD-2-Clause"
 description = "A client api to Sonnerie, a timeseries database"

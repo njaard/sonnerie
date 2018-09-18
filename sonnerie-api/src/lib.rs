@@ -840,6 +840,7 @@ impl<'client> RowAdder<'client>
 	{
 		let mut error = String::new();
 		self.done = true;
+		writeln!(&mut self.w, "")?;
 		self.w.flush()?;
 		self.r.read_line(&mut error)?;
 		check_error(&mut error)?;
