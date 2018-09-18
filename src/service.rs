@@ -255,16 +255,20 @@ impl<'db> Session<'db>
 				let id = tx.create_series(&name, &format)
 					.ok_or_else( || format!("format for '{}' is different", format))?;
 
+				let mut done = false;
 				tx.insert_into_series(
 					id,
 					|fmt, bytes|
 					{
+						if done { return None; }
+						done = true;
 						fmt.to_stored_format(&ts, &values, bytes)
 							.unwrap();
 						Some(ts)
 					}
 				)?;
 			}
+			writeln!(writer, "inserted values").unwrap();
 		}
 		else if cmd == "add"
 		{
