@@ -619,12 +619,30 @@ impl Client
 		)?;
 
 		let r =
-		RowAdder
-		{
-			r: r,
-			w: w,
-			done: false,
-		};
+			RowAdder
+			{
+				r: r,
+				w: w,
+				done: false,
+			};
+
+		Ok(r)
+	}
+
+	pub fn create_and_add<'s>(&'s mut self) -> Result<CreateAdder<'s>>
+	{
+		self.check_write_tx()?;
+		let mut w = self.writer.borrow_mut();
+		let r = self.reader.borrow_mut();
+		writeln!(&mut w, "create-add")?;
+
+		let r =
+			CreateAdder
+			{
+				r: r,
+				w: w,
+				done: false,
+			};
 
 		Ok(r)
 	}
@@ -793,7 +811,7 @@ fn parse_time(text: &str) -> Result<NaiveDateTime>
 	Ok(ts)
 }
 
-/// A function returned by [`Client::add_rows`](struct.Client.html#method.add_rows).
+/// An object returned by [`Client::add_rows`](struct.Client.html#method.add_rows).
 pub struct RowAdder<'client>
 {
 	w: RefMut<'client, Box<Write>>,
@@ -826,7 +844,7 @@ impl<'client> RowAdder<'client>
 		Ok(())
 	}
 
-	/// Explicitly end the transaction, testing for errors
+	/// Explicitly end the operation, testing for errors
 	///
 	/// Calling this function is optional, you can just
 	/// let the object go out of scope, but this function
@@ -855,10 +873,79 @@ impl<'client> Drop for RowAdder<'client>
 	{
 		if !self.done
 		{
-			self.finish_ref().unwrap();
+			let _ = self.finish_ref();
 		}
 	}
 }
+
+
+/// A function returned by [`Client::create_and_add`](struct.Client.html#method.create_and_add).
+pub struct CreateAdder<'client>
+{
+	w: RefMut<'client, Box<Write>>,
+	r: RefMut<'client, Box<BufRead>>,
+	done: bool,
+}
+
+impl<'client> CreateAdder<'client>
+{
+	/// Add a single row
+	///
+	/// Panics on error. Call [`row_checked`](#method.row)
+	/// in order to test for failures.
+	pub fn row(&mut self, name: &str, format: &str, t: &NaiveDateTime, cols: &[&FromValue])
+	{
+		self.row_checked(name, format, t, cols).unwrap();
+	}
+
+
+	pub fn row_checked(&mut self, name: &str, format: &str, t: &NaiveDateTime, cols: &[&FromValue])
+		-> Result<()>
+	{
+		write!(&mut self.w, "{} {} {} ", escape(name), escape(format), format_time(t))?;
+		for v in cols.iter()
+		{
+			v.serialize(self.w.as_mut())?;
+		}
+		writeln!(&mut self.w, "")?;
+
+		Ok(())
+	}
+
+	/// Explicitly end the operation, testing for errors
+	///
+	/// Calling this function is optional, you can just
+	/// let the object go out of scope, but this function
+	/// allows you to check for errors.
+	pub fn finish(mut self) -> Result<()>
+	{
+		self.finish_ref()
+	}
+
+	fn finish_ref(&mut self) -> Result<()>
+	{
+		let mut error = String::new();
+		self.done = true;
+		writeln!(&mut self.w, "")?;
+		self.w.flush()?;
+		self.r.read_line(&mut error)?;
+		check_error(&mut error)?;
+
+		Ok(())
+	}
+}
+
+impl<'client> Drop for CreateAdder<'client>
+{
+	fn drop(&mut self)
+	{
+		if !self.done
+		{
+			let _ = self.finish_ref();
+		}
+	}
+}
+
 
 
 /// The maximum timestamp allowed by Sonnerie.

@@ -222,6 +222,50 @@ impl<'db> Session<'db>
 				writeln!(writer, "error: not in a transaction").unwrap();
 			}
 		}
+		else if cmd == "create-add"
+		{
+			// create-add
+			// <name> <format> <ts> <vals>
+			// ...
+			// (one blank line)
+
+			let tx =
+				if let Some(tx) = self.transaction.as_mut()
+					{ tx }
+				else
+				{
+					writeln!(writer, "error: not in a transaction").unwrap();
+					return Ok(());
+				};
+
+			let line_reader = &mut self.input_lines;
+
+			for line in line_reader
+			{
+				let line = line.map_err(|e| format!("failed to read input: {}", e))?;
+				let (name,remainder) = split_one(&line)
+					.ok_or_else( || "command requires series name".to_string() )?;
+				if name.is_empty() { break; }
+				let (format,remainder) = split_one(remainder)
+					.ok_or_else( || "command requires format".to_string() )?;
+				let (ts,values) = split_one(remainder)
+					.ok_or_else( || "command requires timestamp".to_string() )?;
+				let ts = parse_time(&ts)?;
+
+				let id = tx.create_series(&name, &format)
+					.ok_or_else( || format!("format for '{}' is different", format))?;
+
+				tx.insert_into_series(
+					id,
+					|fmt, bytes|
+					{
+						fmt.to_stored_format(&ts, &values, bytes)
+							.unwrap();
+						Some(ts)
+					}
+				)?;
+			}
+		}
 		else if cmd == "add"
 		{
 			let args = split(remainder);
