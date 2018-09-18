@@ -816,7 +816,7 @@ impl<'client> RowAdder<'client>
 	pub fn row_checked(&mut self, t: &NaiveDateTime, cols: &[&FromValue])
 		-> Result<()>
 	{
-		write!(&mut self.w, "{}", format_time(t))?;
+		write!(&mut self.w, "{} ", format_time(t))?;
 		for v in cols.iter()
 		{
 			v.serialize(self.w.as_mut())?;
