@@ -394,7 +394,14 @@ impl Client
 		let mut out = String::new();
 		r.read_line(&mut out)?;
 		check_error(&mut out)?;
-		Ok(out)
+		let (fmt, _) = split_one(&out)
+			.ok_or_else( ||
+				Error::new(
+					ErrorKind::InvalidData,
+					ProtocolError::new(format!("parsing response to format: \"{}\"", out)),
+				)
+			)?;
+		Ok(fmt.to_string())
 	}
 
 
