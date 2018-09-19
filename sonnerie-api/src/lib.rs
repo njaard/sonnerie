@@ -629,6 +629,12 @@ impl Client
 		Ok(r)
 	}
 
+	/// Add many rows, automatically creating the series of necessary.
+	///
+	/// Returns an object that can accept each row.
+	/// The timestamps must be sorted ascending.
+	///
+	/// You must call [`begin_write()`](#method.begin_write) prior to this function.
 	pub fn create_and_add<'s>(&'s mut self) -> Result<CreateAdder<'s>>
 	{
 		self.check_write_tx()?;
@@ -844,7 +850,7 @@ impl<'client> RowAdder<'client>
 		Ok(())
 	}
 
-	/// Explicitly end the operation, testing for errors
+	/// Explicitly end the operation.
 	///
 	/// Calling this function is optional, you can just
 	/// let the object go out of scope, but this function
@@ -891,6 +897,13 @@ impl<'client> CreateAdder<'client>
 {
 	/// Add a single row
 	///
+	/// If the series `name` doesn't exist, creates it. If it does,
+	/// then the existing format must match `format`. Then adds
+	/// a record.
+	///
+	/// If you pass multiple rows for the same series,
+	/// then the timestamps must be ascending.
+	///
 	/// Panics on error. Call [`row_checked`](#method.row)
 	/// in order to test for failures.
 	pub fn row(&mut self, name: &str, format: &str, t: &NaiveDateTime, cols: &[&FromValue])
@@ -912,7 +925,7 @@ impl<'client> CreateAdder<'client>
 		Ok(())
 	}
 
-	/// Explicitly end the operation, testing for errors
+	/// Explicitly end the operation.
 	///
 	/// Calling this function is optional, you can just
 	/// let the object go out of scope, but this function
