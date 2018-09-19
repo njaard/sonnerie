@@ -338,57 +338,6 @@ impl<'db> Transaction<'db>
 				read-only transaction".to_string())?;
 		}
 		let mut save = Savepoint::new(&self.metadata.db)?;
-/*
-		if values.len() == 1
-		{
-			let t = values[0].0;
-			let v = values[0].1;
-
-			let last_block = self.last_block_for_series(series_id);
-
-			let mut one_sample = [0u8; 16];
-			BigEndian::write_u64(&mut one_sample[0..8], t.0);
-			BigEndian::write_f64(&mut one_sample[8..16], v);
-
-			let mut need_new_block = true;
-
-			if let Some(last_block) = last_block
-			{
-				if last_block.last_timestamp >= t
-				{
-					Err("insertion not implemented".to_string())?;
-				}
-				// modify an existing block
-				if last_block.size + (one_sample.len() as u64)
-					< last_block.capacity
-				{
-					need_new_block = false;
-					self.resize_existing_block(
-						series_id,
-						last_block.first_timestamp,
-						t,
-						last_block.size + (one_sample.len() as u64),
-					);
-					self.metadata.blocks.write()
-						.write(last_block.offset+last_block.size, &one_sample);
-				}
-				else
-				{
-					need_new_block = true;
-				}
-			}
-
-			if need_new_block
-			{
-				// create a new block
-				let b =
-					self.create_new_block(series_id, t, t, 16);
-
-				self.metadata.blocks.write()
-					.write(b.offset, &one_sample);
-			}
-		}
-		else */
 		{
 			let format = self.series_format(series_id);
 			let preferred_block_size = format.preferred_block_size();
