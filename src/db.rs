@@ -289,12 +289,12 @@ mod tests
 						&ts,
 						&format!("{}", value),
 						dest
-					).unwrap();
-					Some(ts)
+					)?;
+					Ok(Some(ts))
 				}
 				else
 				{
-					None
+					Ok(None)
 				}
 			}
 		).unwrap();
@@ -443,22 +443,22 @@ mod tests
 
 	fn generator_f64<'q>(items: &'q [(Timestamp, f64)])
 		-> impl 'q + FnMut(&::row_format::RowFormat, &mut Vec<u8>)
-			-> Option<Timestamp>
+			-> Result<Option<Timestamp>, String>
 	{
 		let mut i = items.iter();
 
 		let f = move |format: &::row_format::RowFormat, data: &mut Vec<u8>|
-			-> Option<Timestamp>
+			-> Result<Option<Timestamp>, String>
 		{
 			if let Some((ts,val)) = i.next()
 			{
 				let formatted = format!("{}", val);
-				format.to_stored_format(ts, &formatted, data).unwrap();
-				Some(*ts)
+				format.to_stored_format(ts, &formatted, data)?;
+				Ok(Some(*ts))
 			}
 			else
 			{
-				None
+				Ok(None)
 			}
 		};
 		f

@@ -260,11 +260,10 @@ impl<'db> Session<'db>
 					id,
 					|fmt, bytes|
 					{
-						if done { return None; }
+						if done { return Ok(None); }
 						done = true;
-						fmt.to_stored_format(&ts, &values, bytes)
-							.unwrap();
-						Some(ts)
+						fmt.to_stored_format(&ts, &values, bytes)?;
+						Ok(Some(ts))
 					}
 				)?;
 			}
@@ -285,37 +284,35 @@ impl<'db> Session<'db>
 
 			let line_reader = &mut self.input_lines;
 
-
 			if let Some(tx) = self.transaction.as_mut()
 			{
 				let series_id = tx.series_id(name)
 					.ok_or_else(|| format!("no series \"{}\"", name))?;
-				if let Err(e) = tx.insert_into_series(
-						series_id,
-						|format, bytes|
-						{
-							let line = match line_reader.next()
-							{
-								Some(a) => a,
-								None => panic!("error: failed to read input"),
-							};
-							let line = line.unwrap();
-							let split_one = split_one(&line);
-							if split_one.is_none()
-							{
-								panic!("error: failed to parse line: {}", line);
-							}
-							let split_one = split_one.unwrap();
-							if split_one.0.is_empty() { return None; }
-							let ts = parse_time(&split_one.0).unwrap();
-							format.to_stored_format(&ts, &split_one.1, bytes).unwrap();
-							Some(ts)
-						}
-					)
+
+				let e = tx.insert_into_series(
+					series_id,
+					|format, bytes|
+					{
+						let line = line_reader.next()
+							.ok_or_else(|| format!("failed to read input"))?
+							.map_err(|e| format!("failed to read input: {}", e))?;
+						let split_one = split_one(&line)
+							.ok_or_else(|| format!("failed to parse line"))?;
+
+						if split_one.0.is_empty() { return Ok(None); }
+						let ts = parse_time(&split_one.0)?;
+						format.to_stored_format(&ts, &split_one.1, bytes)?;
+						Ok(Some(ts))
+					}
+				);
+				if let Err(e) = e
 				{
 					writeln!(writer, "error: {}", e).unwrap();
 				}
-				writeln!(writer, "inserted values").unwrap();
+				else
+				{
+					writeln!(writer, "inserted values").unwrap();
+				}
 			}
 			else
 			{
@@ -342,10 +339,10 @@ impl<'db> Session<'db>
 					series_id,
 					|format, data|
 					{
-						if did_one { return None; }
-						format.to_stored_format(&ts, remainder, data).unwrap();
+						if did_one { return Ok(None); }
+						format.to_stored_format(&ts, remainder, data)?;
 						did_one=true;
-						Some(ts)
+						Ok(Some(ts))
 					}
 				)?;
 				writeln!(writer, "inserted value").unwrap();

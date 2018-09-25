@@ -330,7 +330,8 @@ impl<'db> Transaction<'db>
 		series_id: u64,
 		mut generator: Generator,
 	) -> Result<(), String>
-		where Generator: FnMut(&RowFormat, &mut Vec<u8>) -> Option<Timestamp>
+		where Generator: FnMut(&RowFormat, &mut Vec<u8>)
+			-> Result<Option<Timestamp>, String>
 	{
 		if !self.writing
 		{
@@ -374,7 +375,7 @@ impl<'db> Transaction<'db>
 						);
 						while buffer.len() < n_bytes
 						{
-							let r = generator(&*format, &mut buffer);
+							let r = generator(&*format, &mut buffer)?;
 							if r.is_none() { *done = true; break; }
 							let r = r.unwrap();
 							if first_timestamp.is_none()
@@ -405,7 +406,6 @@ impl<'db> Transaction<'db>
 					};
 
 				let new_block;
-
 
 				if fits_in_block == 0
 				{ // new block
