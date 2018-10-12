@@ -661,18 +661,35 @@ mod tests
 		}
 	}
 	#[test]
-	#[should_panic]
-	fn backwards_illegal_two()
+	fn backwards_two()
 	{
-		// this will one day be permitted
 		let tmp = n();
-		{
-			let m = Db::open(tmp.path().to_path_buf());
-			let mut txw = m.write_transaction();
-			let h = txw.create_series("horse", "F").unwrap();
-			insert_f64(&mut txw, h, Timestamp(1000), 42.0);
-			insert_f64(&mut txw, h, Timestamp(999), 42.0);
-		}
+		let m = Db::open(tmp.path().to_path_buf());
+		let mut txw = m.write_transaction();
+		let h = txw.create_series("horse", "F").unwrap();
+		insert_f64(&mut txw, h, Timestamp(1000), 42.0);
+		insert_f64(&mut txw, h, Timestamp(998), 40.0);
+		insert_f64(&mut txw, h, Timestamp(999), 41.0);
+		assert_eq!(
+			format!("{:?}", read_f64s(&txw, h, 999, 1001)),
+			"[(Timestamp(999), 41.0), (Timestamp(1000), 42.0)]"
+		);
+	}
+
+	#[test]
+	fn backwards_break()
+	{
+		let tmp = n();
+		let m = Db::open(tmp.path().to_path_buf());
+		let mut txw = m.write_transaction();
+		let h = txw.create_series("horse", "F").unwrap();
+		insert_f64(&mut txw, h, Timestamp(1000), 40.0);
+		insert_f64(&mut txw, h, Timestamp(1002), 42.0);
+		insert_f64(&mut txw, h, Timestamp(1001), 41.0);
+		assert_eq!(
+			format!("{:?}", read_f64s(&txw, h, 1000, 1002)),
+			"[(Timestamp(1000), 40.0), (Timestamp(1001), 41.0), (Timestamp(1002), 42.0)]"
+		);
 	}
 
 	#[test]

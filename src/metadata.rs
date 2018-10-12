@@ -13,7 +13,7 @@ use std::path::Path;
 
 use std::sync::Arc;
 pub use self::antidote::RwLock;
-use std::cell::{Cell,RefCell};
+use std::cell::Cell;
 
 /// Maintain all the information needed to locate data
 /// One of these is opened per transaction/thread
@@ -328,7 +328,7 @@ impl<'db> Transaction<'db>
 	pub fn insert_into_series<Generator>(
 		&mut self,
 		series_id: u64,
-		mut generator: Generator,
+		generator: Generator,
 	) -> Result<(), String>
 		where Generator: FnMut(&RowFormat, &mut Vec<u8>)
 			-> Result<Option<Timestamp>, String>
@@ -339,115 +339,9 @@ impl<'db> Transaction<'db>
 				read-only transaction".to_string())?;
 		}
 		let mut save = Savepoint::new(&self.metadata.db)?;
-		{
-			let format = self.series_format(series_id);
-			let preferred_block_size = format.preferred_block_size();
 
-			let buffer = RefCell::new(vec!());
-			buffer.borrow_mut().reserve(preferred_block_size);
-
-			let mut done = false;
-
-			while !done
-			{
-				let last_block = self.last_block_for_series(series_id);
-
-				let fits_in_block =
-					if let Some(last_block) = last_block.as_ref()
-					{
-						(last_block.capacity-last_block.size)
-							%preferred_block_size as u64
-					}
-					else
-					{
-						0
-					};
-
-
-				let mut fill_buffer =
-					|n_bytes: usize, last_block: &Option<Block>, done: &mut bool|
-					{
-						let mut buffer = buffer.borrow_mut();
-						buffer.clear();
-						let mut first_timestamp = None;
-						let mut last_timestamp = last_block.as_ref().map(
-							|b| b.last_timestamp
-						);
-						while buffer.len() < n_bytes
-						{
-							let r = generator(&*format, &mut buffer)?;
-							if r.is_none() { *done = true; break; }
-							let r = r.unwrap();
-							if first_timestamp.is_none()
-								{ first_timestamp = Some(r); }
-							if let Some(p) = last_timestamp.clone()
-							{
-								if r <= p
-								{
-									return Err(format!("timestamps must be increasing (\
-										{}<={})", r.0, p.0));
-								}
-							}
-							last_timestamp = Some(r);
-						}
-
-						if first_timestamp.is_none()
-						{
-							Ok(None)
-						}
-						else
-						{
-							Ok(Some((
-								first_timestamp.unwrap(),
-								last_timestamp.unwrap(),
-							)))
-						}
-
-					};
-
-				let new_block;
-
-				if fits_in_block == 0
-				{ // new block
-					let range = fill_buffer(preferred_block_size, &last_block, &mut done)?;
-					let buffer = buffer.borrow();
-					if range.is_none() { break; }
-					let (first_timestamp,last_timestamp) = range.unwrap();
-					let mut b =
-						self.create_new_block(
-							series_id,
-							first_timestamp,
-							last_timestamp,
-							buffer.len(),
-							preferred_block_size,
-						);
-					b.size = 0;
-					new_block = b;
-				}
-				else
-				{ // fill the existing block
-					let range = fill_buffer(fits_in_block as usize, &last_block, &mut done)?;
-					if range.is_none() { break; }
-					let (_, last_timestamp) = range.unwrap();
-					let buffer = buffer.borrow();
-					new_block = last_block.unwrap();
-					self.resize_existing_block(
-						series_id,
-						new_block.first_timestamp,
-						last_timestamp,
-						new_block.size + buffer.len() as u64,
-					);
-				}
-
-				let buffer = buffer.borrow();
-				self.metadata.blocks.write()
-					.write(
-						new_block.offset+new_block.size,
-						&buffer
-					);
-
-			}
-		}
+		let mut i = Inserter::new(self, series_id, generator);
+		i.perform()?;
 		save.commit()?;
 		Ok(())
 	}
@@ -502,6 +396,7 @@ impl<'db> Transaction<'db>
 			if done { break; }
 		}
 	}
+
 
 	/// creates a block in the metadata (does not populate the block)
 	///
@@ -576,7 +471,97 @@ impl<'db> Transaction<'db>
 				&(series_id as i64), &first_timestamp.to_sqlite(),
 			]
 		).unwrap();
+	}
 
+	/// return a tuple of the block that would contain
+	/// this timestamp. If the timestamp is at
+	/// a boundary between blocks, return both
+	fn block_for_series_timestamp(
+		&self,
+		series_id: u64,
+		timestamp: Timestamp,
+	) -> (Option<Block>, Option<Block>)
+	{
+		let mut before_stmt = self.metadata.db.prepare_cached(
+			"select
+				first_timestamp,
+				last_timestamp,
+				offset,
+				capacity,
+				size
+			from series_blocks
+			where
+				series_id=?
+				and first_timestamp<=?
+			order by first_timestamp desc
+			limit 1"
+		).unwrap();
+
+		let mut after_stmt = self.metadata.db.prepare_cached(
+			"
+			select
+				first_timestamp,
+				last_timestamp,
+				offset,
+				capacity,
+				size
+			from series_blocks
+			where
+				series_id=?
+				and first_timestamp>?
+			order by first_timestamp asc
+			limit 1
+		").unwrap();
+
+		let mut before_rows = before_stmt.query(
+			&[
+				&(series_id as i64),
+				&timestamp.to_sqlite(),
+			]
+		).unwrap();
+		let mut after_rows = after_stmt.query(
+			&[
+				&(series_id as i64),
+				&timestamp.to_sqlite(),
+			]
+		).unwrap();
+
+		let before;
+		if let Some(row) = before_rows.next()
+		{
+			let row = row.unwrap();
+			before = Some(Block
+			{
+				first_timestamp: Timestamp::from_sqlite(row.get(0)),
+				last_timestamp: Timestamp::from_sqlite(row.get(1)),
+				offset: row.get::<_,i64>(2) as u64,
+				capacity: row.get::<_,i64>(3) as u64,
+				size: row.get::<_,i64>(4) as u64,
+			});
+		}
+		else
+		{
+			before = None;
+		}
+
+		let after;
+		if let Some(row) = after_rows.next()
+		{
+			let row = row.unwrap();
+			after = Some(Block
+			{
+				first_timestamp: Timestamp::from_sqlite(row.get(0)),
+				last_timestamp: Timestamp::from_sqlite(row.get(1)),
+				offset: row.get::<_,i64>(2) as u64,
+				capacity: row.get::<_,i64>(3) as u64,
+				size: row.get::<_,i64>(4) as u64,
+			});
+		}
+		else
+		{
+			after = None;
+		}
+		(before, after)
 	}
 
 	fn last_block_for_series(
@@ -630,6 +615,266 @@ impl<'db> Transaction<'db>
 		self.committed = true;
 		self.metadata.db.execute("commit", &[]).unwrap();
 	}
+}
+
+struct Inserter<'m, Generator>
+	where Generator: FnMut(&RowFormat, &mut Vec<u8>)
+		-> Result<Option<Timestamp>, String>
+{
+	tx: &'m Transaction<'m>,
+	format: Box<RowFormat>,
+	series_id: u64,
+	preferred_block_size: u64,
+	buffer: Vec<u8>,
+
+	creating_at: Option<Timestamp>,
+	last_ts: Timestamp,
+	previous_block: Option<Block>,
+	following_block: Option<Block>,
+	generator: Generator,
+}
+
+impl<'m, Generator> Inserter<'m, Generator>
+	where Generator: FnMut(&RowFormat, &mut Vec<u8>)
+		-> Result<Option<Timestamp>, String>
+{
+	fn new(tx: &'m Transaction<'m>, series_id: u64, generator: Generator)
+		-> Self
+	{
+		let format = tx.series_format(series_id);
+		let preferred_block_size = format.preferred_block_size();
+
+		Inserter
+		{
+			tx: tx,
+			format: format,
+			series_id: series_id,
+			preferred_block_size: preferred_block_size as u64,
+			buffer: Vec::with_capacity(preferred_block_size),
+			creating_at: None,
+			last_ts: Timestamp(0),
+			previous_block: None,
+			following_block: None,
+			generator: generator,
+		}
+	}
+
+	fn perform(&mut self) -> Result<(), String>
+	{
+		loop
+		{
+			let len = self.buffer.len();
+
+			let incoming = (self.generator)(&*self.format, &mut self.buffer)?;
+			if incoming.is_none() { break; }
+			let incoming = incoming.unwrap();
+			if incoming <= self.last_ts
+			{
+				return Err("timestamps must be in ascending order".to_string());
+			}
+			self.handle_last_item(len, incoming)?;
+
+			self.last_ts = incoming;
+		}
+
+		if !self.buffer.is_empty()
+		{
+			let l = self.buffer.len();
+			let ts = self.last_ts;
+			self.save_current_block(l, ts)?;
+		}
+		Ok(())
+	}
+
+	// we just added "at" to the end of the buffer
+	fn handle_last_item(&mut self, len_before_adding: usize, at: Timestamp)
+		-> Result<(), String>
+	{
+		let mut trying = true;
+		let mut boundary_reached = self.creating_at.is_none();
+		while trying
+		{
+			trying = false;
+
+			if boundary_reached
+			{
+				boundary_reached = false;
+				let (previous_block, following_block)
+					= self.tx.block_for_series_timestamp(self.series_id, at);
+
+				self.previous_block = previous_block;
+				self.following_block = following_block;
+			}
+
+			if self.creating_at.is_none()
+			{
+				if let Some(previous_block) = self.previous_block
+				{
+					if previous_block.last_timestamp == at
+					{
+						return Err("cannot overwrite timestamp".to_string());
+					}
+					if previous_block.last_timestamp > at
+					{
+						self.break_previous_block_at(at);
+					}
+				}
+				else
+				{
+					// there isn't a previous block
+					self.creating_at = Some(at);
+				}
+			}
+
+			// see if I've gotten to the next block
+			if let Some(following_block) = self.following_block
+			{
+				if at == following_block.first_timestamp
+				{
+					return Err("cannot overwrite timestamp".to_string());
+				}
+				if at > following_block.first_timestamp
+				{
+					// we have finished with current_block, write it
+					let ts = self.last_ts;
+					self.save_current_block(len_before_adding, ts)?;
+					trying = true;
+					boundary_reached = true;
+					continue;
+				}
+			}
+		}
+
+		Ok(())
+	}
+
+	fn save_current_block(&mut self, len_before_adding: usize, last_ts: Timestamp)
+		-> Result<(), String>
+	{
+		if let Some(creating_at) = self.creating_at
+		{
+			let new_block = self.tx.create_new_block(
+				self.series_id,
+				creating_at,
+				last_ts,
+				len_before_adding,
+				self.preferred_block_size as usize, // TODO: depending on if it's the last block
+			);
+			self.creating_at = None;
+			self.tx.metadata.blocks.write()
+				.write(
+					new_block.offset,
+					&self.buffer[0..len_before_adding]
+				);
+		}
+		else
+		{
+			let b = self.previous_block.unwrap();
+
+			self.tx.resize_existing_block(
+				self.series_id,
+				b.first_timestamp,
+				last_ts,
+				b.size + len_before_adding as u64,
+			);
+			self.tx.metadata.blocks.write()
+				.write(
+					b.offset + b.size,
+					&self.buffer[0..len_before_adding]
+				);
+		}
+
+		// put the last item at the front
+		let new_len;
+		{
+			let (left, right) = self.buffer.split_at_mut(len_before_adding);
+			new_len = right.len();
+			left[0..new_len].copy_from_slice(right);
+		}
+		self.buffer.truncate(new_len);
+		Ok(())
+	}
+
+	fn break_previous_block_at(&mut self, at: Timestamp)
+	{
+		let block = self.previous_block.take().unwrap();
+
+		let mut buffer2 = vec!();
+		buffer2.resize(block.size as usize, 0u8);
+		self.tx.metadata.blocks.read()
+			.read(block.offset, &mut buffer2[..]);
+
+		let resize_buffer_to;
+		{
+			let (one, _, first_ts, two)
+				= split_raw_at_ts(&*self.format, &buffer2, at);
+
+			assert!(one.len()>0);
+			assert!(two.len()>0);
+			{
+				let mut s = self.tx.metadata.db.prepare_cached(
+					"delete from series_blocks
+					where series_id=?
+					and first_timestamp=?
+					"
+				).unwrap();
+				s.execute(&[
+					&(self.series_id as i64),
+					&block.first_timestamp.to_sqlite(),
+				]).unwrap();
+
+				// create the block for "two"
+				let twoblock = self.tx.create_new_block(
+					self.series_id,
+					first_ts, block.last_timestamp,
+					two.len(),
+					self.preferred_block_size as usize, // TODO: depending on if it's the last block
+				);
+
+				self.tx.metadata.blocks.write()
+					.write(
+						twoblock.offset,
+						&two
+					);
+				self.following_block = Some(twoblock);
+			}
+
+			resize_buffer_to = one.len();
+		}
+		buffer2.truncate(resize_buffer_to);
+		buffer2.extend_from_slice( &self.buffer );
+		self.buffer = buffer2;
+		self.creating_at = Some(block.first_timestamp);
+	}
+
+}
+
+// return the data before and after the timestamp at
+// .0: everything before incoming `at`
+// .1: the last timestamp in .0
+// .2: the first timestamp in .3
+// .3: everything after `at`
+fn split_raw_at_ts<'a>(
+	format: &RowFormat,
+	data: &'a [u8],
+	at: Timestamp,
+) -> (&'a [u8], Timestamp, Timestamp, &'a [u8])
+{
+	let stride = format.row_size();
+	let mut pos = 0;
+	let mut prev = Timestamp(0);
+	while pos < data.len()
+	{
+		let t = Timestamp(BigEndian::read_u64(&data[pos..pos+8]));
+		if t > at
+		{
+			return (&data[0..pos], prev, t, &data[pos..]);
+		}
+		prev = t;
+		pos += stride;
+	}
+
+	(&data[..], prev, prev, &data[data.len()..])
 }
 
 impl<'db> Drop for Transaction<'db>
@@ -723,7 +968,7 @@ mod tests
 	}
 }
 
-#[derive(Debug)]
+#[derive(Debug,Copy,Clone)]
 struct Block
 {
 	first_timestamp: Timestamp,
