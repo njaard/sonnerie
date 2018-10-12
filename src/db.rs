@@ -501,6 +501,48 @@ mod tests
 		}
 	}
 
+	#[test]
+	fn insertion_bulk()
+	{
+		let tmp = n();
+		eprintln!("created in {:?}", tmp.path());
+
+		let m = Db::open(tmp.path().to_path_buf());
+		let mut txw = m.write_transaction();
+		let h = txw.create_series("horse", "F").unwrap();
+
+		{
+			let items_to_insert =
+				[
+					(Timestamp(1000),  1000.0),
+					(Timestamp(1010),  1010.0),
+					(Timestamp(1020),  1020.0),
+				];
+			txw.insert_into_series(h, generator_f64(&items_to_insert)).unwrap();
+		}
+		{
+			let items_to_insert =
+				[
+					(Timestamp(900),  900.0),
+					(Timestamp(901),  901.0),
+					(Timestamp(902),  902.0),
+					(Timestamp(1011),  1011.0),
+					(Timestamp(1012),  1012.0),
+					(Timestamp(1030),  1030.0),
+					(Timestamp(1031),  1031.0),
+				];
+			txw.insert_into_series(h, generator_f64(&items_to_insert)).unwrap();
+		}
+		assert_eq!(
+			format!("{:?}", read_f64s(&txw, h, 900, 2000)),
+			"[(Timestamp(900), 900.0), (Timestamp(901), 901.0), \
+			(Timestamp(902), 902.0), (Timestamp(1000), 1000.0), \
+			(Timestamp(1010), 1010.0), (Timestamp(1011), 1011.0), \
+			(Timestamp(1012), 1012.0), (Timestamp(1020), 1020.0), \
+			(Timestamp(1030), 1030.0), (Timestamp(1031), 1031.0)]"
+		);
+	}
+
 	fn create_two_on(m: &Db)
 	{
 		{
