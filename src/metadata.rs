@@ -564,6 +564,7 @@ impl<'db> Transaction<'db>
 		(before, after)
 	}
 
+	/*
 	fn last_block_for_series(
 		&self,
 		series_id: u64,
@@ -603,6 +604,7 @@ impl<'db> Transaction<'db>
 			None
 		}
 	}
+	*/
 
 	pub fn commit(mut self)
 	{
@@ -690,12 +692,9 @@ impl<'m, Generator> Inserter<'m, Generator>
 	fn handle_last_item(&mut self, len_before_adding: usize, at: Timestamp)
 		-> Result<(), String>
 	{
-		let mut trying = true;
 		let mut boundary_reached = self.creating_at.is_none();
-		while trying
+		loop
 		{
-			trying = false;
-
 			if boundary_reached
 			{
 				boundary_reached = false;
@@ -738,11 +737,12 @@ impl<'m, Generator> Inserter<'m, Generator>
 					// we have finished with current_block, write it
 					let ts = self.last_ts;
 					self.save_current_block(len_before_adding, ts)?;
-					trying = true;
 					boundary_reached = true;
 					continue;
 				}
 			}
+
+			break;
 		}
 
 		Ok(())
