@@ -543,6 +543,143 @@ mod tests
 		);
 	}
 
+	fn create_three_blocks(h: u64, tx: &mut ::metadata::Transaction)
+	{
+		{
+			let items_to_insert =
+				[
+					(Timestamp(500),  500.0),
+					(Timestamp(510),  510.0),
+					(Timestamp(520),  520.0),
+					(Timestamp(530),  530.0),
+				];
+			tx.insert_into_series(h, generator_f64(&items_to_insert)).unwrap();
+		}
+		{
+			let items_to_insert =
+				[
+					(Timestamp(400),  400.0),
+					(Timestamp(410),  410.0),
+					(Timestamp(420),  420.0),
+					(Timestamp(430),  430.0),
+				];
+			tx.insert_into_series(h, generator_f64(&items_to_insert)).unwrap();
+		}
+		{
+			let items_to_insert =
+				[
+					(Timestamp(300),  300.0),
+					(Timestamp(310),  310.0),
+					(Timestamp(320),  320.0),
+					(Timestamp(330),  330.0),
+				];
+			tx.insert_into_series(h, generator_f64(&items_to_insert)).unwrap();
+		}
+	}
+
+	#[test]
+	fn erase_ranges1()
+	{
+		let tmp = n();
+		eprintln!("created in {:?}", tmp.path());
+
+		let m = Db::open(tmp.path().to_path_buf());
+		let mut txw = m.write_transaction();
+		let h = txw.create_series("horse", "F").unwrap();
+
+		create_three_blocks(h, &mut txw);
+		txw.erase_range(h, Timestamp(400), Timestamp(499)).unwrap();
+		assert_eq!(
+			format!("{:?}", read_f64s(&txw, h, 0, 1000)),
+			"[(Timestamp(300), 300.0), (Timestamp(310), 310.0), \
+			(Timestamp(320), 320.0), (Timestamp(330), 330.0), \
+			(Timestamp(500), 500.0), (Timestamp(510), 510.0), \
+			(Timestamp(520), 520.0), (Timestamp(530), 530.0)]"
+		);
+	}
+	#[test]
+	fn erase_ranges2()
+	{
+		let tmp = n();
+		eprintln!("created in {:?}", tmp.path());
+
+		let m = Db::open(tmp.path().to_path_buf());
+		let mut txw = m.write_transaction();
+		let h = txw.create_series("horse", "F").unwrap();
+
+		create_three_blocks(h, &mut txw);
+		txw.erase_range(h, Timestamp(410), Timestamp(420)).unwrap();
+		assert_eq!(
+			format!("{:?}", read_f64s(&txw, h, 0, 1000)),
+			"[(Timestamp(300), 300.0), (Timestamp(310), 310.0), \
+			(Timestamp(320), 320.0), (Timestamp(330), 330.0), \
+			(Timestamp(400), 400.0), \
+			(Timestamp(430), 430.0), \
+			(Timestamp(500), 500.0), (Timestamp(510), 510.0), \
+			(Timestamp(520), 520.0), (Timestamp(530), 530.0)]"
+		);
+	}
+	#[test]
+	fn erase_ranges3()
+	{
+		let tmp = n();
+		eprintln!("created in {:?}", tmp.path());
+
+		let m = Db::open(tmp.path().to_path_buf());
+		let mut txw = m.write_transaction();
+		let h = txw.create_series("horse", "F").unwrap();
+
+		create_three_blocks(h, &mut txw);
+		txw.erase_range(h, Timestamp(400), Timestamp(400)).unwrap();
+		assert_eq!(
+			format!("{:?}", read_f64s(&txw, h, 0, 1000)),
+			"[(Timestamp(300), 300.0), (Timestamp(310), 310.0), \
+			(Timestamp(320), 320.0), (Timestamp(330), 330.0), \
+			(Timestamp(410), 410.0), \
+			(Timestamp(420), 420.0), (Timestamp(430), 430.0), \
+			(Timestamp(500), 500.0), (Timestamp(510), 510.0), \
+			(Timestamp(520), 520.0), (Timestamp(530), 530.0)]"
+		);
+	}
+
+	#[test]
+	fn erase_ranges4()
+	{
+		let tmp = n();
+		eprintln!("created in {:?}", tmp.path());
+
+		let m = Db::open(tmp.path().to_path_buf());
+		let mut txw = m.write_transaction();
+		let h = txw.create_series("horse", "F").unwrap();
+
+		create_three_blocks(h, &mut txw);
+		txw.erase_range(h, Timestamp(420), Timestamp(510)).unwrap();
+		assert_eq!(
+			format!("{:?}", read_f64s(&txw, h, 0, 1000)),
+			"[(Timestamp(300), 300.0), (Timestamp(310), 310.0), \
+			(Timestamp(320), 320.0), (Timestamp(330), 330.0), \
+			(Timestamp(400), 400.0), (Timestamp(410), 410.0), \
+			(Timestamp(520), 520.0), (Timestamp(530), 530.0)]"
+		);
+	}
+	#[test]
+	fn erase_ranges5()
+	{
+		let tmp = n();
+		eprintln!("created in {:?}", tmp.path());
+
+		let m = Db::open(tmp.path().to_path_buf());
+		let mut txw = m.write_transaction();
+		let h = txw.create_series("horse", "F").unwrap();
+
+		create_three_blocks(h, &mut txw);
+		txw.erase_range(h, Timestamp(310), Timestamp(520)).unwrap();
+		assert_eq!(
+			format!("{:?}", read_f64s(&txw, h, 0, 1000)),
+			"[(Timestamp(300), 300.0), (Timestamp(530), 530.0)]"
+		);
+	}
+
 	fn create_two_on(m: &Db)
 	{
 		{

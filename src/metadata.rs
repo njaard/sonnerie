@@ -321,6 +321,126 @@ impl<'db> Transaction<'db>
 		}
 	}
 
+	pub fn erase_range(
+		&mut self,
+		series_id: u64,
+		first_erase: Timestamp,
+		last_erase: Timestamp,
+	) -> Result<(), String>
+	{
+		if !self.writing
+		{
+			Err("attempt to write in a \
+				read-only transaction".to_string())?;
+		}
+		let mut save = Savepoint::new(&self.metadata.db)?;
+
+		let blocks = self.blocks_for_range(
+			series_id,
+			first_erase,
+			last_erase,
+		);
+		if blocks.is_empty() { return Ok(()); }
+		let format = self.series_format(series_id);
+		let mut buffer = vec!();
+
+		for block in blocks
+		{
+			let mut s = self.metadata.db.prepare_cached(
+				"delete from series_blocks
+				where series_id=?
+				and first_timestamp=?
+				"
+			).unwrap();
+			s.execute(&[
+				&(series_id as i64),
+				&block.first_timestamp.to_sqlite(),
+			]).unwrap();
+
+			if block.first_timestamp < first_erase
+				|| block.last_timestamp > last_erase
+			{ // we have to keep some of this block's contents
+				buffer.resize(block.size as usize, 0u8);
+				self.metadata.blocks.read()
+					.read(block.offset, &mut buffer[..]);
+
+				// there are three strategies for saving some
+				// of this block's contents:
+				// 1. We keep a little from the start and a little from the end
+				// 2. We keep some of the beginning and toss the rest
+				// 3. We keep some of the end and toss the rest
+
+				if first_erase > block.first_timestamp && last_erase < block.last_timestamp
+				{
+					let (keeping1, _, _, remainder)
+						= split_raw_at_ts(&*format, &buffer, first_erase, true);
+
+					let (_, _, _, keeping2)
+						= split_raw_at_ts(&*format, remainder, last_erase, false);
+
+					assert!(keeping1.len() > 0);
+					assert!(keeping2.len() > 0);
+
+					let newblock = self.create_new_block(
+						series_id,
+						block.first_timestamp,
+						block.last_timestamp,
+						keeping1.len() + keeping2.len(),
+						format.preferred_block_size() as usize
+					);
+					self.metadata.blocks.write()
+						.write(
+							newblock.offset,
+							&keeping1
+						);
+					self.metadata.blocks.write()
+						.write(
+							newblock.offset + keeping1.len() as u64,
+							&keeping2
+						);
+				}
+				else if first_erase > block.first_timestamp
+				{
+					let (keeping, last_keeping_ts, _, _)
+						= split_raw_at_ts(&*format, &buffer, first_erase, true);
+					assert!(keeping.len() > 0);
+					let newblock = self.create_new_block(
+						series_id,
+						block.first_timestamp,
+						last_keeping_ts,
+						keeping.len(),
+						format.preferred_block_size() as usize
+					);
+					self.metadata.blocks.write()
+						.write(
+							newblock.offset,
+							&keeping
+						);
+				}
+				else if last_erase < block.last_timestamp
+				{
+					let (_, _, first_keeping_ts, keeping)
+						= split_raw_at_ts(&*format, &buffer, last_erase, false);
+					assert!(keeping.len() > 0);
+					let newblock = self.create_new_block(
+						series_id,
+						first_keeping_ts,
+						block.last_timestamp,
+						keeping.len(),
+						format.preferred_block_size() as usize
+					);
+					self.metadata.blocks.write()
+						.write(
+							newblock.offset,
+							&keeping
+						);
+
+				}
+			}
+		}
+		save.commit()?;
+		Ok(())
+	}
 
 	/// Inserts many values into a series
 	///
@@ -396,7 +516,6 @@ impl<'db> Transaction<'db>
 			if done { break; }
 		}
 	}
-
 
 	/// creates a block in the metadata (does not populate the block)
 	///
@@ -807,7 +926,7 @@ impl<'m, Generator> Inserter<'m, Generator>
 		let resize_buffer_to;
 		{
 			let (one, _, first_ts, two)
-				= split_raw_at_ts(&*self.format, &buffer2, at);
+				= split_raw_at_ts(&*self.format, &buffer2, at, false);
 
 			assert!(one.len()>0);
 			assert!(two.len()>0);
@@ -858,6 +977,7 @@ fn split_raw_at_ts<'a>(
 	format: &RowFormat,
 	data: &'a [u8],
 	at: Timestamp,
+	inclusive: bool,
 ) -> (&'a [u8], Timestamp, Timestamp, &'a [u8])
 {
 	let stride = format.row_size();
@@ -866,7 +986,7 @@ fn split_raw_at_ts<'a>(
 	while pos < data.len()
 	{
 		let t = Timestamp(BigEndian::read_u64(&data[pos..pos+8]));
-		if t > at
+		if (inclusive && t >= at) || (!inclusive && t > at)
 		{
 			return (&data[0..pos], prev, t, &data[pos..]);
 		}
