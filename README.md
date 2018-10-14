@@ -196,6 +196,10 @@ The file format and protocol are subject to change between different 0.x version
 Once a 1.0 is released, no backwards incompatible changes will be permitted
 before Sonnerie 2.0.
 
+# Changelog
+
+Refer to [Changelog.md](Changelog.md).
+
 # Roadmap
 
 * Online incremental backups

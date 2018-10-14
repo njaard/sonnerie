@@ -7,6 +7,7 @@ description = "A client api to Sonnerie, a timeseries database"
 repository = "https://github.com/njaard/sonnerie"
 keywords = ["timeseries", "database", "protocol"]
 documentation = "https://docs.rs/sonnerie-api/"
+readme = "README.md"
 
 [dependencies]
 chrono = "0.4.6"

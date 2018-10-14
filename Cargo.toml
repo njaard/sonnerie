@@ -2,7 +2,7 @@
 name = "sonnerie"
 version = "0.2.0"
 authors = ["Charles Samuels <kalle@eventures.vc>", "e.ventures Management LLC"]
-description = "A simple timeseries database"
+description = "An easy timeseries database"
 license = "BSD-2-Clause"
 readme = "README.md"
 repository = "https://github.com/njaard/sonnerie"
