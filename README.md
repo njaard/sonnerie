@@ -188,10 +188,7 @@ You can do a *full* online backup as such, maintaining the following order:
 
 (This method will no longer apply once compacting is implemented).
 
-## Editing
-
-Modifying existing data will be implemented shortly. It will result
-in wasted disk space and increased fragmentation.
+Note that this method works even if you use erasure or insertion.
 
 ## Semver
 
@@ -201,7 +198,6 @@ before Sonnerie 2.0.
 
 # Roadmap
 
-* Non-append insertion and editing
 * Online incremental backups
 * Compacting (not useful without insertion and appending)
 * Compression

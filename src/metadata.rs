@@ -304,7 +304,7 @@ impl<'db> Transaction<'db>
 		&self,
 		like: &str,
 		mut callback: F,
-	)
+	) -> Result<(), String>
 		where F: FnMut(&str, u64)
 	{
 		let mut c = self.metadata.db.prepare_cached(
@@ -319,10 +319,11 @@ impl<'db> Transaction<'db>
 				row.get::<_,i64>(1) as u64,
 			);
 		}
+		Ok(())
 	}
 
 	pub fn erase_range(
-		&mut self,
+		&self,
 		series_id: u64,
 		first_erase: Timestamp,
 		last_erase: Timestamp,
@@ -863,6 +864,8 @@ impl<'m, Generator> Inserter<'m, Generator>
 
 			break;
 		}
+		// disable incorrect warning?
+		let _ = boundary_reached;
 
 		Ok(())
 	}

@@ -707,7 +707,7 @@ mod tests
 
 		let txr = m.read_transaction();
 		let mut count = 0usize;
-		txr.series_like("horse%", |_,_| count +=1 );
+		txr.series_like("horse%", |_,_| count +=1 ).unwrap();
 
 		assert_eq!(count, 2);
 	}

@@ -222,6 +222,46 @@ impl<'db> Session<'db>
 				writeln!(writer, "error: not in a transaction").unwrap();
 			}
 		}
+		else if cmd == "erase-range"
+		{
+			// erase-range <name> <ts1> <ts2>
+			let (name,remainder) = split_one(remainder)
+				.ok_or_else( || "command requires series name".to_string() )?;
+			let (ts1,remainder) = split_one(remainder)
+				.ok_or_else( || "command requires timestamp".to_string() )?;
+			let ts1 = parse_time(&ts1)?;
+			let (ts2,_) = split_one(remainder)
+				.ok_or_else( || "command requires second timestamp".to_string() )?;
+			let ts2 = parse_time(&ts2)?;
+
+			let tx = self.transaction.as_mut()
+				.ok_or_else(|| "not in transaction".to_string())?;
+			let series_id = cache_last_series_id(tx, &name)
+				.ok_or_else(|| format!("no series \"{}\"", name))?;
+			tx.erase_range(series_id, ts1, ts2).unwrap();
+			writeln!(writer, "erased values").unwrap();
+		}
+		else if cmd == "erase-range-like"
+		{
+			// erase-range-like <name-like> <ts1> <ts2>
+			let (like,remainder) = split_one(remainder)
+				.ok_or_else( || "command requires series like".to_string() )?;
+			let (ts1,remainder) = split_one(remainder)
+				.ok_or_else( || "command requires timestamp".to_string() )?;
+			let ts1 = parse_time(&ts1)?;
+			let (ts2,_) = split_one(remainder)
+				.ok_or_else( || "command requires second timestamp".to_string() )?;
+			let ts2 = parse_time(&ts2)?;
+			let tx = self.transaction.as_mut()
+				.ok_or_else(|| "not in transaction".to_string())?;
+			let erase_range =
+				|_: &str, series_id: u64|
+				{
+					tx.erase_range(series_id, ts1, ts2).unwrap();
+				};
+			tx.series_like(&like, erase_range)?;
+			writeln!(writer, "erased values").unwrap();
+		}
 		else if cmd == "create-add"
 		{
 			// create-add
@@ -383,10 +423,7 @@ impl<'db> Session<'db>
 							);
 						};
 
-					tx.series_like(
-						like,
-						print_res,
-					);
+					tx.series_like(like, print_res)?;
 				}
 				writeln!(writer, "").unwrap();
 			}

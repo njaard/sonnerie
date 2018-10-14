@@ -629,7 +629,7 @@ impl Client
 		Ok(r)
 	}
 
-	/// Add many rows, automatically creating the series of necessary.
+	/// Add many rows, automatically creating the series if necessary.
 	///
 	/// Returns an object that can accept each row.
 	/// The timestamps must be sorted ascending.
@@ -681,6 +681,81 @@ impl Client
 		let from = NaiveDateTime::from_timestamp(0,0);
 		let to = max_time();
 		self.dump_range(like, &from, &to, results)
+	}
+
+	/// Erase a range of values from a series
+	///
+	/// * `series_name` is the name of the series. If no such
+	/// series exists, this function fails
+	/// * `first_time` is the lower bound of timestamps
+	/// to delete from.
+	/// * `last_time` is the upper bound of timestamps (inclusive)
+	/// to delete from.
+	///
+	/// Succeeds if the series was found, but there were no samples
+	/// in that range.
+	pub fn erase_range(
+		&mut self,
+		series_name: &str,
+		first_time: &NaiveDateTime,
+		last_time: &NaiveDateTime,
+	) -> Result<()>
+	{
+		let _maybe = TransactionLock::read(self)?;
+		let mut w = self.writer.borrow_mut();
+		let mut r = self.reader.borrow_mut();
+		writeln!(
+			&mut w,
+			"erase-range {} {} {}",
+			escape(series_name),
+			format_time(first_time),
+			format_time(last_time),
+		)?;
+		w.flush()?;
+		let mut out = String::new();
+		r.read_line(&mut out)?;
+		check_error(&mut out)?;
+
+		Ok(())
+	}
+
+	/// Erase a range of values from each series whose
+	/// matches a pattern.
+	///
+	/// * `like` is a string with `%` as a wildcard. For example,
+	/// `"192.168.%"` selects all series whose names start with
+	/// `192.168.`. If the `%` appears near the end, then the
+	/// operation is more efficient.
+	/// * `first_time` is the lower bound of timestamps
+	/// to delete from.
+	/// * `last_time` is the upper bound of timestamps (inclusive)
+	/// to delete from.
+	///
+	/// Succeeds even if no series or timestamps were found
+	/// within the given constraints.
+	pub fn erase_range_like(
+		&mut self,
+		like: &str,
+		first_time: &NaiveDateTime,
+		last_time: &NaiveDateTime,
+	) -> Result<()>
+	{
+		let _maybe = TransactionLock::read(self)?;
+		let mut w = self.writer.borrow_mut();
+		let mut r = self.reader.borrow_mut();
+		writeln!(
+			&mut w,
+			"erase-range-like {} {} {}",
+			escape(like),
+			format_time(first_time),
+			format_time(last_time),
+		)?;
+		w.flush()?;
+		let mut out = String::new();
+		r.read_line(&mut out)?;
+		check_error(&mut out)?;
+
+		Ok(())
 	}
 
 	/// Read many values from many series
