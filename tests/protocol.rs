@@ -207,3 +207,31 @@ fn protocol_basic6()
 		>
 	");
 }
+
+#[test]
+fn protocol_erase_like()
+{
+	Instance::new().check_transcript("
+		begin write
+		*
+		create-add
+		horse1 fu 999 10 1
+		horse1 fu 1000 11 2
+		horse1 fu 1001 12 3
+		horse2 fu 1001 22 1
+		horse3 fu 1001 22 2
+		horse4 fu 1001 22 3
+
+		*
+		read horse1 0 1001
+		> 999\t10.00000000000000000 1
+		> 1000\t11.00000000000000000 2
+		> 1001\t12.00000000000000000 3
+		>
+		erase-range-like horse% 0 1000
+		*
+		read horse1 0 1001
+		> 1001\t12.00000000000000000 3
+		>
+	");
+}
