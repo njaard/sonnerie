@@ -684,48 +684,6 @@ impl<'db> Transaction<'db>
 		(before, after)
 	}
 
-	/*
-	fn last_block_for_series(
-		&self,
-		series_id: u64,
-	) -> Option<Block>
-	{
-		let mut s = self.metadata.db.prepare_cached("
-			select
-				first_timestamp,
-				last_timestamp,
-				offset,
-				capacity,
-				size
-			from series_blocks
-			where
-				series_id=?
-			order by first_timestamp desc
-			limit 1
-		").unwrap();
-
-		let mut rows = s.query(&[&(series_id as i64)]).unwrap();
-
-		if let Some(row) = rows.next()
-		{
-			let row = row.unwrap();
-			let b = Block
-			{
-				first_timestamp: Timestamp::from_sqlite(row.get(0)),
-				last_timestamp: Timestamp::from_sqlite(row.get(1)),
-				offset: row.get::<_,i64>(2) as u64,
-				capacity: row.get::<_,i64>(3) as u64,
-				size: row.get::<_,i64>(4) as u64,
-			};
-			Some(b)
-		}
-		else
-		{
-			None
-		}
-	}
-	*/
-
 	pub fn commit(mut self)
 	{
 		if self.writing
