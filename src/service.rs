@@ -206,6 +206,51 @@ impl<'db> Session<'db>
 				writeln!(writer, "error: not in a transaction").unwrap();
 			}
 		}
+		else if cmd == "read-direction-like"
+		{
+			// read-direction-like <name-like> <forward|backward> <ts>
+			let (like,remainder) = split_one(remainder)
+				.ok_or_else( || "command requires series like".to_string() )?;
+			let (dir,remainder) = split_one(remainder)
+				.ok_or_else( || "command requires direction".to_string() )?;
+
+			let reverse;
+			if dir == "forward"
+				{ reverse = false; }
+			else if dir == "backward"
+				{ reverse = true; }
+			else
+				{ return Err("direction must be \"forward\" or \"backward\"".to_string()); }
+			let (ts,_) = split_one(remainder)
+				.ok_or_else( || "command requires timestamp".to_string() )?;
+			let ts = parse_time(&ts)?;
+
+			let tx = self.transaction.as_mut()
+				.ok_or_else(|| "not in transaction".to_string())?;
+
+			let mut all_series = vec!();
+
+			tx.series_like(
+				&like,
+				|name: String, series_id: u64|
+					all_series.push( (series_id, name) )
+			)?;
+
+			tx.read_direction_multi(
+				all_series.drain(..),
+				ts,
+				reverse,
+				|name, ts, format, data|
+				{
+					write!(writer, "{} {}\t", escape(&name), ts.0).unwrap();
+					format.to_protocol_format(data, writer).unwrap();
+					writeln!(writer, "").unwrap();
+				}
+			);
+
+			writeln!(writer, "").unwrap();
+
+		}
 		else if cmd == "format"
 		{
 			let (name,_) = split_one(remainder)
@@ -255,7 +300,7 @@ impl<'db> Session<'db>
 			let tx = self.transaction.as_mut()
 				.ok_or_else(|| "not in transaction".to_string())?;
 			let erase_range =
-				|_: &str, series_id: u64|
+				|_: String, series_id: u64|
 				{
 					tx.erase_range(series_id, ts1, ts2).unwrap();
 				};
@@ -408,7 +453,7 @@ impl<'db> Session<'db>
 			{
 				{
 					let print_res =
-						|name: &str, series_id: u64|
+						|name: String, series_id: u64|
 						{
 							tx.read_series(
 								series_id,

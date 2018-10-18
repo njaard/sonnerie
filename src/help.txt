@@ -30,6 +30,10 @@ erase-range SERIES TS1 TS2
 erase-range-like LIKE TS1 TS2
     erase all values between TS1 and TS2 on every
     series whose name matches sqlite's LIKE operator.
+read-direction-like LIKE DIRECTION TS
+    read the first value before or after TS (inclusive)
+    on all the series whose names match LIKE with sqlite's
+    LIKE operater. Direction must be forward or backward.
 format SERIES
     outputs the format of the given series
 help

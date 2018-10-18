@@ -1,6 +1,7 @@
 extern crate rusqlite;
 extern crate byteorder;
 extern crate antidote;
+extern crate libc;
 
 #[derive(Debug,Clone,Copy,PartialEq,PartialOrd)]
 pub struct Timestamp(pub u64);
@@ -21,6 +22,7 @@ pub struct Metadata
 {
 	db: rusqlite::Connection,
 	blocks: Arc<RwLock<Blocks>>,
+	blocks_raw_fd: ::std::os::unix::io::RawFd,
 	pub next_offset: Cell<u64>,
 	pub generation: u64,
 }
@@ -41,11 +43,14 @@ impl Metadata
 				| rusqlite::OpenFlags::SQLITE_OPEN_READ_WRITE,
 		).unwrap();
 		db.execute_batch("PRAGMA case_sensitive_like=ON;").unwrap();
+
+		let fd = blocks.read().as_raw_fd();
 		Metadata
 		{
 			db: db,
 			next_offset: Cell::new(next_offset),
 			blocks: blocks,
+			blocks_raw_fd: fd,
 			generation: 1,
 		}
 	}
@@ -103,11 +108,14 @@ impl Metadata
 				commit;
 			"
 		).unwrap();
+
+		let fd = blocks.read().as_raw_fd();
 		Metadata
 		{
 			db: db,
 			next_offset: Cell::new(next_offset),
 			blocks: blocks,
+			blocks_raw_fd: fd,
 			generation: 1,
 		}
 	}
@@ -305,7 +313,7 @@ impl<'db> Transaction<'db>
 		like: &str,
 		mut callback: F,
 	) -> Result<(), String>
-		where F: FnMut(&str, u64)
+		where F: FnMut(String, u64)
 	{
 		let mut c = self.metadata.db.prepare_cached(
 			"select name, series_id from series where name like ?"
@@ -315,7 +323,7 @@ impl<'db> Transaction<'db>
 		{
 			let row = row.unwrap();
 			callback(
-				&row.get::<_,String>(0),
+				row.get::<_,String>(0),
 				row.get::<_,i64>(1) as u64,
 			);
 		}
@@ -682,6 +690,198 @@ impl<'db> Transaction<'db>
 			after = None;
 		}
 		(before, after)
+	}
+
+	pub fn read_direction_multi<Something, It, Output>(
+		&self,
+		mut ids: It,
+		timestamp: Timestamp,
+		reverse: bool,
+		mut out: Output,
+	)
+		where It: Iterator<Item=(u64, Something)>,
+		Output: FnMut(Something, &Timestamp, &RowFormat, &[u8]),
+		Something: Sized
+	{
+		let mut ids_group = Vec::with_capacity(32);
+		let mut blocks_group = Vec::with_capacity(32);
+		let fd = self.metadata.blocks_raw_fd;
+
+		// get blocks and readahead
+		loop
+		{
+			ids_group.clear();
+			while ids_group.len() < 32
+			{
+				if let Some(n) = ids.next()
+					{ ids_group.push(n); }
+				else
+					{ break; }
+			}
+			if ids_group.is_empty() { break; }
+
+			blocks_group.clear();
+
+			for (id,something) in ids_group.drain(..)
+			{
+				if let Some(b) = self.first_block_direction(id, timestamp, reverse)
+				{
+					unsafe
+					{
+						libc::posix_fadvise(
+							fd,
+							b.offset as i64,
+							b.size as i64,
+							libc::POSIX_FADV_WILLNEED
+						);
+					}
+					blocks_group.push( (id, something, b) );
+				}
+			}
+
+			let mut block_data = vec!();
+
+			for (id, something, block) in blocks_group.drain(..)
+			{
+				let format = self.series_format(id);
+				block_data.resize(block.size as usize, 0u8);
+				self.metadata.blocks.read()
+					.read(block.offset, &mut block_data[..]);
+
+				if reverse
+				{
+					for sample in block_data.chunks(format.row_size()).rev()
+					{
+						let t = Timestamp(BigEndian::read_u64(&sample[0..8]));
+						if t <= timestamp
+						{
+							out(something, &t, &*format, &sample[8..]);
+							break;
+						}
+					}
+				}
+				else
+				{
+					for sample in block_data.chunks(format.row_size())
+					{
+						let t = Timestamp(BigEndian::read_u64(&sample[0..8]));
+						if t >= timestamp
+						{
+							out(something, &t, &*format, &sample[8..]);
+							break;
+						}
+					}
+				}
+			}
+		}
+	}
+
+	fn first_block_direction(
+		&self,
+		series_id: u64,
+		timestamp: Timestamp,
+		reverse: bool,
+	) -> Option<Block>
+	{
+		if reverse
+		{
+			let mut s = self.metadata.db.prepare_cached("
+				select
+					first_timestamp,
+					last_timestamp,
+					offset,
+					capacity,
+					size
+				from series_blocks
+				where
+					series_id=? and
+					first_timestamp <= ?
+				order by first_timestamp desc
+				limit 1
+			").unwrap();
+			let mut rows = s.query(&[
+				&(series_id as i64),
+				&timestamp.to_sqlite(),
+			]).unwrap();
+			if let Some(row) = rows.next()
+			{
+				let row = row.unwrap();
+				let b = Block
+				{
+					first_timestamp: Timestamp::from_sqlite(row.get(0)),
+					last_timestamp: Timestamp::from_sqlite(row.get(1)),
+					offset: row.get::<_,i64>(2) as u64,
+					capacity: row.get::<_,i64>(3) as u64,
+					size: row.get::<_,i64>(4) as u64,
+				};
+				Some(b)
+			}
+			else
+			{
+				None
+			}
+		}
+		else
+		{
+			let mut s = self.metadata.db.prepare_cached("
+				select * from
+				(
+					select
+						first_timestamp,
+						last_timestamp,
+						offset,
+						capacity,
+						size
+					from series_blocks
+					where
+						series_id=? and first_timestamp <= ?
+					order by first_timestamp desc
+					limit 1
+				)
+				union select * from
+				(
+					select
+						first_timestamp,
+						last_timestamp,
+						offset,
+						capacity,
+						size
+					from series_blocks
+					where
+						series_id=? and first_timestamp >= ?
+					order by first_timestamp asc
+					limit 1
+				)
+			").unwrap();
+			let mut rows = s.query(&[
+				&(series_id as i64),
+				&timestamp.to_sqlite(),
+				&(series_id as i64),
+				&timestamp.to_sqlite(),
+			]).unwrap();
+			while let Some(row) = rows.next()
+			{
+				let row = row.unwrap();
+				let b = Block
+				{
+					first_timestamp: Timestamp::from_sqlite(row.get(0)),
+					last_timestamp: Timestamp::from_sqlite(row.get(1)),
+					offset: row.get::<_,i64>(2) as u64,
+					capacity: row.get::<_,i64>(3) as u64,
+					size: row.get::<_,i64>(4) as u64,
+				};
+
+				if b.last_timestamp < timestamp
+				{
+					continue;
+				}
+				else
+				{
+					return Some(b);
+				}
+			}
+			None
+		}
 	}
 
 	pub fn commit(mut self)

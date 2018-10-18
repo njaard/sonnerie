@@ -53,6 +53,11 @@ impl Blocks
 	{
 		self.disk_wal.take();
 	}
+
+	pub fn as_raw_fd(&self) -> ::std::os::unix::io::RawFd
+	{
+		self.file.as_raw_fd()
+	}
 }
 
 

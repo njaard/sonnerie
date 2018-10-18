@@ -235,3 +235,39 @@ fn protocol_erase_like()
 		>
 	");
 }
+
+#[test]
+fn protocol_read_direction()
+{
+	Instance::new().check_transcript("
+		begin write
+		*
+		create-add
+		horse1 u 999 1
+		horse1 u 1000 2
+		horse2 u 1001 4
+		horse3 u 1001 5
+		horse4 u 1001 6
+		pony fu 1001 7
+
+		*
+		read-direction-like horse% forward 500
+		> horse1 999\t1
+		> horse2 1001\t4
+		> horse3 1001\t5
+		> horse4 1001\t6
+		>
+		read-direction-like horse% forward 999
+		> horse1 999\t1
+		> horse2 1001\t4
+		> horse3 1001\t5
+		> horse4 1001\t6
+		>
+		read-direction-like horse% backward 1001
+		> horse1 1000\t2
+		> horse2 1001\t4
+		> horse3 1001\t5
+		> horse4 1001\t6
+		>
+	");
+}

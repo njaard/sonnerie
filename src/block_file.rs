@@ -26,6 +26,13 @@ impl BlockFile
 		}
 	}
 
+	pub fn as_raw_fd(&self)
+		-> ::std::os::unix::io::RawFd
+	{
+		use ::std::os::unix::io::AsRawFd;
+		self.file.as_raw_fd()
+	}
+
 	/// write exactly the given data, or panic
 	pub fn write(&self, position: u64, data: &[u8])
 	{

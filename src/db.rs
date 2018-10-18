@@ -502,6 +502,59 @@ mod tests
 	}
 
 	#[test]
+	fn read_direction_multi_block()
+	{
+		let tmp = n();
+		eprintln!("created in {:?}", tmp.path());
+		{
+			let m = Db::open(tmp.path().to_path_buf());
+			let mut tx = m.write_transaction();
+			let h = tx.create_series("horse", "F").unwrap();
+			let mut items_to_insert = vec!();
+			for x in 10..=30000
+			{
+				items_to_insert.push((Timestamp(x*10), (x*10) as f64));
+			}
+			tx.insert_into_series(h, generator_f64(&items_to_insert)).unwrap();
+
+			let get =
+				|ts: Timestamp, reverse: bool|
+					-> Option<(Timestamp, f64)>
+				{
+					let mut v = vec![(h, "horse".to_string())];
+
+					let mut out = None;
+
+					tx.read_direction_multi(
+						v.drain(..),
+						ts,
+						reverse,
+						|_, ts, format, data|
+						{
+							if out.is_some() { panic!("two values"); }
+							let mut o = ::std::io::Cursor::new(vec!());
+							format.to_protocol_format(data, &mut o).unwrap();
+							let o = String::from_utf8(o.into_inner()).unwrap();
+							let v = o.parse().unwrap();
+							out = Some((*ts, v));
+						}
+					);
+
+					out
+				};
+
+			assert_eq!(get(Timestamp(1), false).unwrap(), (Timestamp(100), 100.0));
+			assert_eq!(get(Timestamp(1000), false).unwrap(), (Timestamp(1000), 1000.0));
+			assert_eq!(get(Timestamp(2555), false).unwrap(), (Timestamp(2560), 2560.0));
+			assert_eq!(get(Timestamp(2550), false).unwrap(), (Timestamp(2550), 2550.0));
+			assert!(get(Timestamp(5), true).is_none());
+			assert_eq!(get(Timestamp(300009), true).unwrap(), (Timestamp(300000), 300000.0));
+			assert_eq!(get(Timestamp(299999), true).unwrap(), (Timestamp(299990), 299990.0));
+
+		}
+	}
+
+	#[test]
 	fn insertion_bulk()
 	{
 		let tmp = n();
