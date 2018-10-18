@@ -88,6 +88,14 @@ impl std::fmt::Debug for ProtocolError
 	}
 }
 
+/// Indicates what direction to search chronologically.
+///
+/// Used in the function `read_direction_like`.
+pub enum Direction
+{
+	Forward,
+	Backward,
+}
 
 pub use chrono::NaiveDateTime;
 
@@ -681,6 +689,120 @@ impl Client
 		let from = NaiveDateTime::from_timestamp(0,0);
 		let to = max_time();
 		self.dump_range(like, &from, &to, results)
+	}
+
+	/// Read the first value when searching from a specific timestamp
+	///
+	/// Selects many series with an SQL-like "LIKE" operator
+	/// and outputs the dumps the value with a timestamp that
+	/// is either less than or equal to, or greater than
+	/// or equal to the given timestamp.
+	///
+	/// Returns at most one value per series.
+	///
+	/// * `like` is a string with `%` as a wildcard. For example,
+	/// `"192.168.%"` selects all series whose names start with
+	/// `192.168.`. If the `%` appears near the end, then the
+	/// query is very efficient.
+	/// * `timestamp` is the lower or upper bound of timestamps to
+	/// consider.
+	/// * `direction` indicates whether to search to the future
+	/// of `timestamp` (`Direction::Forward`) or to the past of
+	/// `timestamp` (`Direction::Backward`).
+	/// * `results` is a function which receives each value.
+	///
+	/// by specifying `max_time()` for `timestamp` and a `direction`
+	/// of `Direction::Backward`, you can get the most recent value
+	/// for each series.
+	///
+	/// Specify the types of the parameters to `results`, due to
+	/// [a Rust compiler bug](https://github.com/rust-lang/rust/issues/41078).
+	///
+	/// The values are always generated first for each series
+	/// in ascending order and then each timestamp in ascending order.
+	/// (In other words, each series gets its own group of samples
+	/// before moving to the following series).
+	pub fn read_direction_like<F>(
+		&mut self,
+		like: &str,
+		timestamp: &NaiveDateTime,
+		direction: Direction,
+		mut results: F,
+	) -> Result<()>
+		where F: FnMut(&str, NaiveDateTime, &[Column])
+	{
+		let _maybe = TransactionLock::read(self)?;
+		let mut w = self.writer.borrow_mut();
+		let mut r = self.reader.borrow_mut();
+
+		let dir;
+		match direction
+		{
+			Direction::Forward => dir="forward",
+			Direction::Backward => dir="backward",
+		}
+
+		writeln!(
+			&mut w,
+			"read-direction-like {} {} {}",
+			escape(like),
+			dir,
+			format_time(timestamp),
+		)?;
+		w.flush()?;
+
+		let mut out = String::new();
+
+		loop
+		{
+			out.clear();
+			r.read_line(&mut out)?;
+			check_error(&mut out)?;
+
+			let (series_name, remainder) = split_one(&out)
+				.ok_or_else(||
+					Error::new(
+						ErrorKind::InvalidData,
+						ProtocolError::new(format!("reading series name")),
+					)
+				)?;
+			if series_name.is_empty() { break; }
+			let (ts, mut remainder) = split_one(&remainder)
+				.ok_or_else(||
+					Error::new(
+						ErrorKind::InvalidData,
+						ProtocolError::new(format!("reading timestamp")),
+					)
+				)?;
+
+			// TODO: reuse allocations for split_columns and columns
+			let mut split_columns = vec!();
+			while !remainder.is_empty()
+			{
+				let s = split_one(remainder);
+				if s.is_none()
+				{
+					return Err(Error::new(
+						ErrorKind::InvalidData,
+						ProtocolError::new(format!("reading columns")),
+					));
+				}
+				let s = s.unwrap();
+				split_columns.push( s.0 );
+				remainder = s.1;
+			}
+
+			let mut columns = vec!();
+			for c in &split_columns
+			{
+				columns.push( Column { serialized: c } );
+			}
+
+			let ts = parse_time(&ts)?;
+
+			results(&series_name, ts, &columns);
+		}
+		Ok(())
 	}
 
 	/// Erase a range of values from a series
