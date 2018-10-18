@@ -208,8 +208,6 @@ Refer to [Changelog.md](Changelog.md).
 * An HTTP-based protocol (won't be quite complete)
 * Most recent values
 * Store variable-sized data (a string or blob per timestamp)
-* Read by upper or lower bound: over many series, efficiently
-read the first value that is before or after a specific timestamp.
 
 # Copyright
 

@@ -1,8 +1,10 @@
 
-# 0.3: 2018-10-14
+# 0.3: 2018-10-18
 * Allow insertion not after the last sample in a series,
 including between two samples and before the first sample, chronologically.
 * Allow erasing a range of samples (`erase_range` and `erase_range_like`).
+* Read by upper or lower bound: over many series, efficiently
+read the first value that is before or after a specific timestamp.
 
 # 0.2: 2018-09-17
 * Change file format
