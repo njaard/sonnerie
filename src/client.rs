@@ -4,7 +4,7 @@ extern crate rustyline;
 extern crate clap;
 extern crate chrono;
 
-use self::sonnerie_api::{NaiveDateTime,Column};
+use self::sonnerie_api::{NaiveDateTime,Column,Direction};
 
 use std::net::TcpStream;
 
@@ -133,6 +133,32 @@ pub fn run(args: &::clap::ArgMatches, address: &str)
 					.short("t")
 					.takes_value(true)
 					.help("ending at (and including) this date")
+				)
+		)
+		.subcommand(
+			SubCommand::with_name("read-direction-like")
+				.about("read a value before or after a timestamp")
+				.arg(Arg::with_name("like")
+					.help("for series names SQL-like this string (\"%\" is the wildcard)")
+					.takes_value(true)
+					.required(true)
+				)
+				.arg(Arg::with_name("time")
+					.help("timestamp must be before or after this (inclusive)")
+					.takes_value(true)
+					.required(true)
+				)
+				.arg(Arg::with_name("forward")
+					.long("forward")
+					.short("f")
+					.help("search forward from timestamp")
+					.required_unless("backward")
+				)
+				.arg(Arg::with_name("backward")
+					.long("backward")
+					.short("b")
+					.help("search backward from timestamp")
+					.required_unless("forward")
 				)
 		)
 		.subcommand(
@@ -399,6 +425,57 @@ fn command<'client>(
 						};
 
 					res = client.dump_range(like, &from, &to, display);
+				}
+				if let Err(_) = res
+				{
+					writeln!(stdin, "(unexpected failure)")
+						.unwrap();
+					return Some(false);
+				}
+			}
+
+			child.wait().unwrap();
+		},
+		("read-direction-like", Some(cmd)) =>
+		{
+			let like = cmd.value_of("like").unwrap_or("%");
+
+			let date;
+			if let Some(v) = parse_human_times(cmd.value_of("time").unwrap())
+				{ date = v; }
+			else
+			{
+				eprintln!("couldn't parse time");
+				return Some(false);
+			}
+
+			let dir;
+			if cmd.is_present("forward")
+				{ dir = Direction::Forward; }
+			else if cmd.is_present("backward")
+				{ dir = Direction::Backward; }
+			else
+				{ panic!("not possible?"); }
+
+			let mut child = run_pager();
+
+			{
+				let mut stdin = ::std::io::BufWriter::new(child.stdin.take().expect("Failed to open stdin"));
+
+				let res;
+				{
+					let display =
+						|name: &str, ts, cols: &[Column]|
+						{
+							write!(stdin, "{}\t{}", name, ts).unwrap();
+							for col in cols
+							{
+								write!(stdin, " {}", col).unwrap();
+							}
+							writeln!(stdin, "").unwrap();
+						};
+
+					res = client.read_direction_like(like, &date, dir, display);
 				}
 				if let Err(_) = res
 				{
