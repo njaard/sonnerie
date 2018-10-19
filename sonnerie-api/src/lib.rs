@@ -119,12 +119,13 @@ impl<'c> TransactionLock<'c>
 	fn read(c: &'c Client)
 		-> Result<TransactionLock<'c>>
 	{
+		let mut beginning = false;
 		if !c.in_tx.get()
-			{ c.begin_read()?; }
+			{ beginning=true; c.begin_read()?; }
 		Ok(TransactionLock
 		{
 			c: c,
-			need_rollback: !c.in_tx.get(),
+			need_rollback: beginning
 		})
 	}
 }
@@ -140,6 +141,8 @@ impl<'c> Drop for TransactionLock<'c>
 			let _ = w.flush();
 			let mut error = String::new();
 			let _ = self.c.reader.borrow_mut().read_line(&mut error);
+			self.c.in_tx.set(false);
+			self.c.writing.set(false);
 		}
 	}
 }
