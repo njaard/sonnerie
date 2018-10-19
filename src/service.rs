@@ -494,8 +494,9 @@ fn parse_time(t: &str) -> Result<Timestamp, String>
 
 use std::net::TcpListener;
 
-pub fn service_tcp(listener: TcpListener, db: Db)
+pub fn service_tcp(listener: TcpListener, mut db: Db)
 {
+	db.start_merge_thread();
 	let db = Arc::new(db);
 	
 	for stream in listener.incoming()
@@ -533,8 +534,9 @@ pub fn service_tcp(listener: TcpListener, db: Db)
 
 use std::os::unix::net::UnixListener;
 
-pub fn service_unix(listener: UnixListener, db: Db)
+pub fn service_unix(listener: UnixListener, mut db: Db)
 {
+	db.start_merge_thread();
 	let db = Arc::new(db);
 
 	for stream in listener.incoming()

@@ -80,70 +80,6 @@ impl Db
 		let unflushed_wal_files =
 			Arc::new(Mutex::new(unflushed_wal_files));
 
-		let merging_thread;
-		{
-			let blocks = blocks.clone();
-			let unflushed_wal_files = unflushed_wal_files.clone();
-			let merge_state = merge_state.clone();
-			merging_thread =
-				::std::thread::spawn(
-					move ||
-					{
-						let mut exit = false;
-						let mut previously_merged_to: u64 = 0;
-
-						while !exit
-						{
-							let now_merging;
-
-							{
-								let mut l = merge_state.0.lock();
-								while l.merging_min == previously_merged_to && !l.stop
-								{
-									l = merge_state.1.wait(l);
-								}
-								exit = l.stop;
-								now_merging = l.merging_min;
-							}
-
-							::wal::merge(
-								&blocks.read().wal,
-								&blocks.read().file,
-							);
-
-							{
-								previously_merged_to = now_merging;
-								blocks.read().file.sync();
-
-								loop
-								{
-									let mut u = unflushed_wal_files.lock();
-									if let Some((fg, _)) = u.front().cloned()
-									{
-										if fg <= now_merging
-										{
-											let f = u.pop_front();
-											drop(u);
-											let f = f.unwrap();
-											::std::fs::remove_file(&f.1)
-												.unwrap();
-										}
-										else
-										{
-											break;
-										}
-									}
-									else
-									{
-										break;
-									}
-								}
-							}
-						}
-					}
-				);
-		};
-
 		Db
 		{
 			merge_state: merge_state,
@@ -151,10 +87,78 @@ impl Db
 			metadatapath: metadatapath,
 			unflushed_wal_files: unflushed_wal_files,
 			blocks: blocks,
-			merging_thread: Some(merging_thread),
+			merging_thread: None,
 			max_generation: Mutex::new(max_generation),
 			next_offset: Mutex::new(4096),
 		}
+	}
+
+	pub fn start_merge_thread(&mut self)
+	{
+		assert!(self.merging_thread.is_none());
+		let blocks = self.blocks.clone();
+		let unflushed_wal_files = self.unflushed_wal_files.clone();
+		let merge_state = self.merge_state.clone();
+		let th = ::std::thread::Builder::new()
+			.name("sonnerie-merge".into());
+		let merging_thread = th.spawn(
+			move ||
+			{
+				let mut exit = false;
+				let mut previously_merged_to: u64 = 0;
+
+				while !exit
+				{
+					let now_merging;
+
+					{
+						let mut l = merge_state.0.lock();
+						while l.merging_min == previously_merged_to && !l.stop
+						{
+							l = merge_state.1.wait(l);
+						}
+						exit = l.stop;
+						now_merging = l.merging_min;
+					}
+
+					::wal::merge(
+						&blocks.read().wal,
+						&blocks.read().file,
+					);
+
+					{
+						previously_merged_to = now_merging;
+						blocks.read().file.sync();
+
+						loop
+						{
+							let mut u = unflushed_wal_files.lock();
+							if let Some((fg, _)) = u.front().cloned()
+							{
+								if fg <= now_merging
+								{
+									let f = u.pop_front();
+									drop(u);
+									let f = f.unwrap();
+									::std::fs::remove_file(&f.1)
+										.unwrap();
+								}
+								else
+								{
+									break;
+								}
+							}
+							else
+							{
+								break;
+							}
+						}
+					}
+				}
+			}
+		).expect("failed to spawn merging thread");
+
+		self.merging_thread = Some(merging_thread);
 	}
 
 	pub fn read_transaction(&self) -> Transaction

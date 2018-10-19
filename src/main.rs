@@ -14,6 +14,7 @@ mod row_format;
 extern crate rusqlite;
 extern crate clap;
 extern crate nix;
+extern crate daemonize;
 
 use std::fs::create_dir;
 
@@ -92,7 +93,10 @@ fn main()
 
 			if ! args.is_present("no-fork")
 			{
-				nix::unistd::daemon(true, true).expect("failed to daemonize");
+				daemonize::Daemonize::new()
+					.working_directory(".")
+					.start()
+					.expect("failed to daemonize");
 			}
 			service::service_unix(listener, db);
 		}
@@ -105,7 +109,10 @@ fn main()
 
 			if ! args.is_present("no-fork")
 			{
-				nix::unistd::daemon(true, true).expect("failed to daemonize");
+				daemonize::Daemonize::new()
+					.working_directory(".")
+					.start()
+					.expect("failed to daemonize");
 			}
 			service::service_tcp(listener, db);
 		}

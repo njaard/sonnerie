@@ -23,6 +23,7 @@ rustyline = "2"
 shlex = "0.1.1"
 sonnerie-api = {version="0.3.0", path="sonnerie-api"}
 escape_string = {version="0.1.0", path="escape_string"}
+daemonize= "0.3"
 
 [dev-dependencies]
 tempfile = "3"

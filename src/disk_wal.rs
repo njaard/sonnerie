@@ -105,26 +105,28 @@ impl Drop for DiskWalWriter
 /// but unmerged transactions.
 pub struct DiskWalReader
 {
+	filename: PathBuf,
 	file: BufReader<::std::fs::File>,
 	generation: u64,
 }
 
 impl DiskWalReader
 {
-	pub fn open(file: &Path) -> DiskWalReader
+	pub fn open(filename: &Path) -> DiskWalReader
 	{
 		let mut file = BufReader::new(
-			::std::fs::File::open(file).unwrap()
+			::std::fs::File::open(filename).unwrap()
 		);
 
 		let mut header = [0u8; 512];
 		file.read_exact(&mut header).unwrap();
 		if !header.starts_with(&MAGIC)
-			{ panic!("invalid file"); }
+			{ panic!("invalid wal file: {:?}", filename); }
 		let generation =
 			BigEndian::read_u64(&header[MAGIC.len()..MAGIC.len()+8]);
 		DiskWalReader
 		{
+			filename: filename.to_path_buf(),
 			file: file,
 			generation: generation,
 		}
@@ -155,15 +157,32 @@ impl DiskWalReader
 				{ break; }
 			else if code == 0x07010503
 			{
-				let position = f.read_u64::<BigEndian>().unwrap();
-				let len = f.read_u64::<BigEndian>().unwrap();
+				let position = f.read_u64::<BigEndian>();
+				if let Err(e) = position.as_ref()
+				{
+					if e.kind() == ::std::io::ErrorKind::UnexpectedEof
+						{ break; }
+				}
+				let position = position.unwrap();
+				let len = f.read_u64::<BigEndian>();
+				if let Err(e) = len.as_ref()
+				{
+					if e.kind() == ::std::io::ErrorKind::UnexpectedEof
+						{ break; }
+				}
+				let len = len.unwrap();
 				buf.resize(len as usize, 0u8);
-				f.read_exact(&mut buf).unwrap();
+				let e = f.read_exact(&mut buf);
+				if let Err(e) = e
+				{
+					if e.kind() == ::std::io::ErrorKind::UnexpectedEof
+						{ break; }
+				}
 				into.write(position as usize, &buf);
 			}
 			else
 			{
-				panic!("invalid wal file");
+				panic!("invalid wal file: {:?}", self.filename);
 			}
 		}
 	}
