@@ -18,7 +18,7 @@ nix = "0.11"
 range = "0.3.1"
 antidote = "1"
 chrono = "0.4.6"
-intrusive-collections = "0.7.4"
+intrusive-collections = "0.7.5"
 rustyline = "2"
 shlex = "0.1.1"
 sonnerie-api = {version="0.3.0", path="sonnerie-api"}
