@@ -49,15 +49,15 @@ unsafe impl Sync for WalPart {}
 
 type PartBTree = RBTree<WalPartAdapter>;
 
-unsafe fn cursor_get_mut<'a, A: Adapter<Link = Link> + 'a>(
-	cursor: CursorMut<'a, A>
-) -> Option<&'a mut A::Value>
+unsafe fn cursor_get_mut<'a, 'b, A: Adapter<Link = Link> + 'a>(
+	cursor: &'a CursorMut<'a, A>
+) -> Option<&'b mut A::Value>
 {
-
+	let c = cursor.get();
 	::std::mem::transmute::<
 		Option<&'a A::Value>,
-		Option<&'a mut A::Value>
-	>(cursor.get())
+		Option<&'b mut A::Value>
+	>(c)
 }
 
 
@@ -352,23 +352,15 @@ impl MemoryWal
 	{
 		let before_part = parts
 			.upper_bound_mut(Bound::Excluded(&position));
-		unsafe { cursor_get_mut(before_part) }
+		unsafe { cursor_get_mut(&before_part) }
 	}
 	fn after_mut(parts: &mut PartBTree, position: usize)
 		-> Option<&mut WalPart>
 	{
 		let after_part = parts
 			.lower_bound_mut(Bound::Included(&position));
-		unsafe { cursor_get_mut(after_part) }
+		unsafe { cursor_get_mut(&after_part) }
 	}
-/*
-	fn before(parts: &PartBTree, position: usize)
-		-> Option<&WalPart>
-	{
-		let before_part = parts
-			.upper_bound(Bound::Excluded(&position));
-		before_part.get()
-	} */
 	fn after(parts: &PartBTree, position: usize)
 		-> Option<&WalPart>
 	{

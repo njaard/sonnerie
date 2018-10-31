@@ -209,7 +209,8 @@ impl Drop for Db
 			self.merge_state.1.notify_one();
 		}
 
-		self.merging_thread.take().unwrap().join().unwrap();
+		self.merging_thread.take()
+			.expect("merging thread must exist").join().unwrap();
 	}
 }
 
@@ -252,9 +253,12 @@ mod tests
 	extern crate tempfile;
 	use ::db::{Db,Timestamp};
 
-	fn n() -> tempfile::TempDir
+	fn n() -> (tempfile::TempDir, Db)
 	{
-		tempfile::TempDir::new().unwrap()
+		let tmp = tempfile::TempDir::new().unwrap();
+		let mut m = Db::open(tmp.path().to_path_buf());
+		m.start_merge_thread();
+		(tmp, m)
 	}
 
 	fn read_f64s(tx: &::metadata::Transaction, series_id: u64, timestamp1: u64, timestamp2: u64)
@@ -308,9 +312,8 @@ mod tests
 	#[test]
 	fn dbmeta1()
 	{
-		let tmp = n();
+		let (tmp,m) = n();
 		eprintln!("created in {:?}", tmp.path());
-		let m = Db::open(tmp.path().to_path_buf());
 		{
 			let mut txw = m.write_transaction();
 			let h = txw.create_series("horse", "F").unwrap();
@@ -345,17 +348,18 @@ mod tests
 	#[test]
 	fn save_disk_wal()
 	{
-		let tmp = n();
+		let (tmp,m) = n();
 		{
-			let m = Db::open(tmp.path().to_path_buf());
 			let mut txw = m.write_transaction();
 			let h = txw.create_series("horse", "F").unwrap();
 			insert_f64(&mut txw, h, Timestamp(1000), 42.0);
 			insert_f64(&mut txw, h, Timestamp(1001), 43.0);
 			txw.commit();
 		}
+		drop(m);
 		{
-			let m = Db::open(tmp.path().to_path_buf());
+			let mut m = Db::open(tmp.path().to_path_buf());
+			m.start_merge_thread();
 			let txr = m.read_transaction();
 			let h = txr.series_id("horse").unwrap();
 			assert_eq!(
@@ -368,9 +372,8 @@ mod tests
 	#[test]
 	fn two_series()
 	{
-		let tmp = n();
+		let (_tmp,m) = n();
 		{
-			let m = Db::open(tmp.path().to_path_buf());
 			let mut txw = m.write_transaction();
 			let h1 = txw.create_series("horse1", "F").unwrap();
 			let h2 = txw.create_series("horse2", "F").unwrap();
@@ -392,9 +395,8 @@ mod tests
 	#[test]
 	fn select_weird_ranges()
 	{
-		let tmp = n();
+		let (_tmp,m) = n();
 		{
-			let m = Db::open(tmp.path().to_path_buf());
 			let mut txw = m.write_transaction();
 			let h = txw.create_series("horse", "F").unwrap();
 			insert_f64(&mut txw, h, Timestamp(1000), 1.0);
@@ -415,31 +417,28 @@ mod tests
 	#[test]
 	fn boundary_crossing()
 	{
-		let tmp = n();
+		let (_tmp,m) = n();
+		let mut txw = m.write_transaction();
+		let h = txw.create_series("horse", "F").unwrap();
+		for x in 1..30000
 		{
-			let m = Db::open(tmp.path().to_path_buf());
-			let mut txw = m.write_transaction();
-			let h = txw.create_series("horse", "F").unwrap();
-			for x in 1..30000
-			{
-				insert_f64(&mut txw, h, Timestamp(x), x as f64);
-			}
-			assert_eq!(
-				format!("{:?}", read_f64s(&txw, h, 10012, 10012)),
-				"[(Timestamp(10012), 10012.0)]"
-			);
+			insert_f64(&mut txw, h, Timestamp(x), x as f64);
+		}
+		assert_eq!(
+			format!("{:?}", read_f64s(&txw, h, 10012, 10012)),
+			"[(Timestamp(10012), 10012.0)]"
+		);
 
-			for start in (1..25000).step_by(11)
+		for start in (1..25000).step_by(11)
+		{
+			for len in 1..17
 			{
-				for len in 1..17
+				let s = read_f64s(&txw, h, start, start+len-1);
+				assert_eq!(s.len(), len as usize);
+				for (idx,a) in s.iter().enumerate()
 				{
-					let s = read_f64s(&txw, h, start, start+len-1);
-					assert_eq!(s.len(), len as usize);
-					for (idx,a) in s.iter().enumerate()
-					{
-						assert_eq!((a.0).0 as u64, start+idx as u64);
-						assert_eq!(a.1, (start+idx as u64) as f64);
-					}
+					assert_eq!((a.0).0 as u64, start+idx as u64);
+					assert_eq!(a.1, (start+idx as u64) as f64);
 				}
 			}
 		}
@@ -472,34 +471,31 @@ mod tests
 	#[test]
 	fn boundary_crossing_bulk_load()
 	{
-		let tmp = n();
+		let (tmp,m) = n();
 		eprintln!("created in {:?}", tmp.path());
+		let mut txw = m.write_transaction();
+		let h = txw.create_series("horse", "F").unwrap();
+		let mut items_to_insert = vec!();
+		for x in 1..30000
 		{
-			let m = Db::open(tmp.path().to_path_buf());
-			let mut txw = m.write_transaction();
-			let h = txw.create_series("horse", "F").unwrap();
-			let mut items_to_insert = vec!();
-			for x in 1..30000
-			{
-				items_to_insert.push((Timestamp(x), (x*10) as f64));
-			}
-			txw.insert_into_series(h, generator_f64(&items_to_insert)).unwrap();
-			assert_eq!(
-				format!("{:?}", read_f64s(&txw, h, 10012, 10012)),
-				"[(Timestamp(10012), 100120.0)]"
-			);
+			items_to_insert.push((Timestamp(x), (x*10) as f64));
+		}
+		txw.insert_into_series(h, generator_f64(&items_to_insert)).unwrap();
+		assert_eq!(
+			format!("{:?}", read_f64s(&txw, h, 10012, 10012)),
+			"[(Timestamp(10012), 100120.0)]"
+		);
 
-			for start in (1..25000).step_by(11)
+		for start in (1..25000).step_by(11)
+		{
+			for len in 1..17
 			{
-				for len in 1..17
+				let s = read_f64s(&txw, h, start, start+len-1);
+				assert_eq!(s.len(), len as usize);
+				for (idx,a) in s.iter().enumerate()
 				{
-					let s = read_f64s(&txw, h, start, start+len-1);
-					assert_eq!(s.len(), len as usize);
-					for (idx,a) in s.iter().enumerate()
-					{
-						assert_eq!(a.0 .0 as u64, start+idx as u64);
-						assert_eq!(a.1, ((start+idx as u64)*10) as f64);
-					}
+					assert_eq!(a.0 .0 as u64, start+idx as u64);
+					assert_eq!(a.1, ((start+idx as u64)*10) as f64);
 				}
 			}
 		}
@@ -508,63 +504,58 @@ mod tests
 	#[test]
 	fn read_direction_multi_block()
 	{
-		let tmp = n();
+		let (tmp,m) = n();
 		eprintln!("created in {:?}", tmp.path());
+		let mut tx = m.write_transaction();
+		let h = tx.create_series("horse", "F").unwrap();
+		let mut items_to_insert = vec!();
+		for x in 10..=30000
 		{
-			let m = Db::open(tmp.path().to_path_buf());
-			let mut tx = m.write_transaction();
-			let h = tx.create_series("horse", "F").unwrap();
-			let mut items_to_insert = vec!();
-			for x in 10..=30000
-			{
-				items_to_insert.push((Timestamp(x*10), (x*10) as f64));
-			}
-			tx.insert_into_series(h, generator_f64(&items_to_insert)).unwrap();
-
-			let get =
-				|ts: Timestamp, reverse: bool|
-					-> Option<(Timestamp, f64)>
-				{
-					let mut v = vec![(h, "horse".to_string())];
-
-					let mut out = None;
-
-					tx.read_direction_multi(
-						v.drain(..),
-						ts,
-						reverse,
-						|_, ts, format, data|
-						{
-							if out.is_some() { panic!("two values"); }
-							let mut o = ::std::io::Cursor::new(vec!());
-							format.to_protocol_format(data, &mut o).unwrap();
-							let o = String::from_utf8(o.into_inner()).unwrap();
-							let v = o.parse().unwrap();
-							out = Some((*ts, v));
-						}
-					);
-
-					out
-				};
-
-			assert_eq!(get(Timestamp(1), false).unwrap(), (Timestamp(100), 100.0));
-			assert_eq!(get(Timestamp(1000), false).unwrap(), (Timestamp(1000), 1000.0));
-			assert_eq!(get(Timestamp(2555), false).unwrap(), (Timestamp(2560), 2560.0));
-			assert_eq!(get(Timestamp(2550), false).unwrap(), (Timestamp(2550), 2550.0));
-			assert!(get(Timestamp(5), true).is_none());
-			assert_eq!(get(Timestamp(300009), true).unwrap(), (Timestamp(300000), 300000.0));
-			assert_eq!(get(Timestamp(299999), true).unwrap(), (Timestamp(299990), 299990.0));
-
+			items_to_insert.push((Timestamp(x*10), (x*10) as f64));
 		}
+		tx.insert_into_series(h, generator_f64(&items_to_insert)).unwrap();
+
+		let get =
+			|ts: Timestamp, reverse: bool|
+				-> Option<(Timestamp, f64)>
+			{
+				let mut v = vec![(h, "horse".to_string())];
+
+				let mut out = None;
+
+				tx.read_direction_multi(
+					v.drain(..),
+					ts,
+					reverse,
+					|_, ts, format, data|
+					{
+						if out.is_some() { panic!("two values"); }
+						let mut o = ::std::io::Cursor::new(vec!());
+						format.to_protocol_format(data, &mut o).unwrap();
+						let o = String::from_utf8(o.into_inner()).unwrap();
+						let v = o.parse().unwrap();
+						out = Some((*ts, v));
+					}
+				);
+
+				out
+			};
+
+		assert_eq!(get(Timestamp(1), false).unwrap(), (Timestamp(100), 100.0));
+		assert_eq!(get(Timestamp(1000), false).unwrap(), (Timestamp(1000), 1000.0));
+		assert_eq!(get(Timestamp(2555), false).unwrap(), (Timestamp(2560), 2560.0));
+		assert_eq!(get(Timestamp(2550), false).unwrap(), (Timestamp(2550), 2550.0));
+		assert!(get(Timestamp(5), true).is_none());
+		assert_eq!(get(Timestamp(300009), true).unwrap(), (Timestamp(300000), 300000.0));
+		assert_eq!(get(Timestamp(299999), true).unwrap(), (Timestamp(299990), 299990.0));
 	}
 
 	#[test]
 	fn insertion_bulk()
 	{
-		let tmp = n();
+		let (tmp,m) = n();
 		eprintln!("created in {:?}", tmp.path());
 
-		let m = Db::open(tmp.path().to_path_buf());
 		let mut txw = m.write_transaction();
 		let h = txw.create_series("horse", "F").unwrap();
 
@@ -637,10 +628,9 @@ mod tests
 	#[test]
 	fn erase_ranges1()
 	{
-		let tmp = n();
+		let (tmp,m) = n();
 		eprintln!("created in {:?}", tmp.path());
 
-		let m = Db::open(tmp.path().to_path_buf());
 		let mut txw = m.write_transaction();
 		let h = txw.create_series("horse", "F").unwrap();
 
@@ -657,10 +647,9 @@ mod tests
 	#[test]
 	fn erase_ranges2()
 	{
-		let tmp = n();
+		let (tmp,m) = n();
 		eprintln!("created in {:?}", tmp.path());
 
-		let m = Db::open(tmp.path().to_path_buf());
 		let mut txw = m.write_transaction();
 		let h = txw.create_series("horse", "F").unwrap();
 
@@ -679,10 +668,9 @@ mod tests
 	#[test]
 	fn erase_ranges3()
 	{
-		let tmp = n();
+		let (tmp,m) = n();
 		eprintln!("created in {:?}", tmp.path());
 
-		let m = Db::open(tmp.path().to_path_buf());
 		let mut txw = m.write_transaction();
 		let h = txw.create_series("horse", "F").unwrap();
 
@@ -702,10 +690,9 @@ mod tests
 	#[test]
 	fn erase_ranges4()
 	{
-		let tmp = n();
+		let (tmp,m) = n();
 		eprintln!("created in {:?}", tmp.path());
 
-		let m = Db::open(tmp.path().to_path_buf());
 		let mut txw = m.write_transaction();
 		let h = txw.create_series("horse", "F").unwrap();
 
@@ -722,10 +709,9 @@ mod tests
 	#[test]
 	fn erase_ranges5()
 	{
-		let tmp = n();
+		let (tmp,m) = n();
 		eprintln!("created in {:?}", tmp.path());
 
-		let m = Db::open(tmp.path().to_path_buf());
 		let mut txw = m.write_transaction();
 		let h = txw.create_series("horse", "F").unwrap();
 
@@ -758,8 +744,7 @@ mod tests
 	#[test]
 	fn dump_some()
 	{
-		let tmp = n();
-		let m = Db::open(tmp.path().to_path_buf());
+		let (_tmp,m) = n();
 		create_two_on(&m);
 
 		let txr = m.read_transaction();
@@ -772,8 +757,7 @@ mod tests
 	#[test]
 	fn two_tx()
 	{
-		let tmp = n();
-		let m = Db::open(tmp.path().to_path_buf());
+		let (_tmp,m) = n();
 		create_two_on(&m);
 
 		let txr = m.read_transaction();
@@ -792,13 +776,12 @@ mod tests
 	#[test]
 	fn two_tx_reopen()
 	{
-		let tmp = n();
-		{
-			let m = Db::open(tmp.path().to_path_buf());
-			create_two_on(&m);
-		}
+		let (tmp,m) = n();
+		create_two_on(&m);
+		drop(m);
 
-		let m = Db::open(tmp.path().to_path_buf());
+		let mut m = Db::open(tmp.path().to_path_buf());
+		m.start_merge_thread();
 		let txr = m.read_transaction();
 		let h1 = txr.series_id("horse1").unwrap();
 		let h2 = txr.series_id("horse2").unwrap();
@@ -815,17 +798,18 @@ mod tests
 	#[test]
 	fn discard_disk_wal()
 	{
-		let tmp = n();
+		let (tmp,m) = n();
 		{
-			let m = Db::open(tmp.path().to_path_buf());
 			let mut txw = m.write_transaction();
 			let h = txw.create_series("horse", "F").unwrap();
 			insert_f64(&mut txw, h, Timestamp(1000), 42.0);
 			insert_f64(&mut txw, h, Timestamp(1001), 43.0);
 			// don't commit
 		}
+		drop(m);
 		{
-			let m = Db::open(tmp.path().to_path_buf());
+			let mut m = Db::open(tmp.path().to_path_buf());
+			m.start_merge_thread();
 			let txr = m.read_transaction();
 			assert!(txr.series_id("horse").is_none());
 		}
@@ -835,46 +819,37 @@ mod tests
 	#[should_panic]
 	fn write_should_panic()
 	{
-		let tmp = n();
-		{
-			let m = Db::open(tmp.path().to_path_buf());
-			let mut txr = m.read_transaction();
-			txr.create_series("horse", "F").unwrap();
-		}
+		let (_tmp,m) = n();
+		let mut txr = m.read_transaction();
+		txr.create_series("horse", "F").unwrap();
 	}
 
 	#[test]
 	#[should_panic]
 	fn duplicate_seq()
 	{
-		let tmp = n();
-		{
-			let m = Db::open(tmp.path().to_path_buf());
-			let mut txw = m.write_transaction();
-			let h = txw.create_series("horse", "F").unwrap();
-			insert_f64(&mut txw, h, Timestamp(1000), 42.0);
-			insert_f64(&mut txw, h, Timestamp(1000), 43.0);
-			txw.commit();
-		}
+		let (_tmp,m) = n();
+		let mut txw = m.write_transaction();
+		let h = txw.create_series("horse", "F").unwrap();
+		insert_f64(&mut txw, h, Timestamp(1000), 42.0);
+		insert_f64(&mut txw, h, Timestamp(1000), 43.0);
+		txw.commit();
 	}
 
 	#[test]
 	#[should_panic]
 	fn duplicate_at_once()
 	{
-		let tmp = n();
-		{
-			let m = Db::open(tmp.path().to_path_buf());
-			let mut txw = m.write_transaction();
-			let h = txw.create_series("horse", "F").unwrap();
-			txw.insert_into_series(
-				h,
-				generator_f64(&[
-					(Timestamp(1000), 42.0),
-					(Timestamp(1000), 43.0),
-				])
-			).unwrap();
-		}
+		let (_tmp,m) = n();
+		let mut txw = m.write_transaction();
+		let h = txw.create_series("horse", "F").unwrap();
+		txw.insert_into_series(
+			h,
+			generator_f64(&[
+				(Timestamp(1000), 42.0),
+				(Timestamp(1000), 43.0),
+			])
+		).unwrap();
 	}
 
 	#[test]
@@ -882,25 +857,21 @@ mod tests
 	fn backwards_illegal()
 	{
 		// this will one day be permitted
-		let tmp = n();
-		{
-			let m = Db::open(tmp.path().to_path_buf());
-			let mut txw = m.write_transaction();
-			let h = txw.create_series("horse", "F").unwrap();
-			txw.insert_into_series(
-				h,
-				generator_f64(&[
-					(Timestamp(1000), 42.0),
-					(Timestamp(999), 42.0),
-				])
-			).unwrap();
-		}
+		let (_tmp,m) = n();
+		let mut txw = m.write_transaction();
+		let h = txw.create_series("horse", "F").unwrap();
+		txw.insert_into_series(
+			h,
+			generator_f64(&[
+				(Timestamp(1000), 42.0),
+				(Timestamp(999), 42.0),
+			])
+		).unwrap();
 	}
 	#[test]
 	fn backwards_two()
 	{
-		let tmp = n();
-		let m = Db::open(tmp.path().to_path_buf());
+		let (_tmp,m) = n();
 		let mut txw = m.write_transaction();
 		let h = txw.create_series("horse", "F").unwrap();
 		insert_f64(&mut txw, h, Timestamp(1000), 42.0);
@@ -915,8 +886,7 @@ mod tests
 	#[test]
 	fn backwards_break()
 	{
-		let tmp = n();
-		let m = Db::open(tmp.path().to_path_buf());
+		let (_tmp,m) = n();
 		let mut txw = m.write_transaction();
 		let h = txw.create_series("horse", "F").unwrap();
 		insert_f64(&mut txw, h, Timestamp(1000), 40.0);
@@ -931,15 +901,15 @@ mod tests
 	#[test]
 	fn blocks_exact_file()
 	{
-		let tmp = n();
+		let (tmp,m) = n();
 		{
-			let m = Db::open(tmp.path().to_path_buf());
 			let mut txw = m.write_transaction();
 			let h = txw.create_series("horse", "F").unwrap();
 			insert_f64(&mut txw, h, Timestamp(42), 42.0);
 			insert_f64(&mut txw, h, Timestamp(43), 43.0);
 			txw.commit();
 		}
+		drop(m);
 
 		use std::io::Seek;
 		use std::io::Read;
@@ -961,7 +931,7 @@ mod tests
 	#[test]
 	fn generation_increases()
 	{
-		let tmp = n();
+		let (tmp, m) = n();
 
 		let read_generation =
 			|| -> i64
@@ -975,7 +945,6 @@ mod tests
 				).unwrap()
 			};
 
-		let m = Db::open(tmp.path().to_path_buf());
 		{
 			let mut txw = m.write_transaction();
 			let h = txw.create_series("horse", "F").unwrap();
