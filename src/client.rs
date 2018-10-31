@@ -6,6 +6,8 @@ extern crate chrono;
 
 use self::sonnerie_api::{NaiveDateTime,Column,Direction};
 
+use client::chrono::naive::NaiveDate;
+
 use std::net::TcpStream;
 
 use std::process::{Child,Stdio,Command};
@@ -529,48 +531,29 @@ fn command<'client>(
 
 fn run_pager() -> Child
 {
-	if let Ok(p) = ::std::env::var("PAGER")
-	{
-		let child = Command::new(p)
-			.stdin(Stdio::piped())
-			.spawn();
-		if let Ok(c) = child
-			{ return c; }
-	}
-	let child = Command::new("less")
-		.arg("-FX")
-		.stdin(Stdio::piped())
-		.spawn();
-	if let Ok(c) = child
-		{ return c; }
-	let child = Command::new("more")
-		.stdin(Stdio::piped())
-		.spawn();
-	if let Ok(c) = child
-		{ return c; }
-	let child = Command::new("cat")
-		.stdin(Stdio::piped())
-		.spawn();
-	if let Ok(c) = child
-		{ return c; }
-
-	panic!("failed to run any kind of pager, even cat");
+	::std::env::var("PAGER")
+		.ok()
+		.and_then(|p| Command::new(p).stdin(Stdio::piped()).spawn().ok())
+		.or_else(
+			||
+			{
+				Command::new("less")
+					.arg("-FX")
+					.stdin(Stdio::piped())
+					.spawn()
+					.ok()
+			}
+		)
+		.or_else(|| Command::new("more").stdin(Stdio::piped()).spawn().ok())
+		.or_else(|| Command::new("cat").stdin(Stdio::piped()).spawn().ok())
+		.expect("failed to run any kind of pager, even cat")
 }
 
 fn parse_human_times(t: &str)
 	-> Option<NaiveDateTime>
 {
-	if let Ok(a) = NaiveDateTime::parse_from_str(
-		t, "%Y-%m-%d %H:%M:%S%.f"
-	)
-		{ return Some(a); };
-	if let Ok(a) = NaiveDateTime::parse_from_str(
-		t, "%Y-%m-%dT%H:%M:%S%.f"
-	)
-		{ return Some(a); };
-	if let Ok(a) = NaiveDateTime::parse_from_str(
-		&format!("{} 00:00:00", t), "%Y-%m-%d %H:%M:%S"
-	)
-		{ return Some(a); };
-	None
+	NaiveDateTime::parse_from_str(t, "%Y-%m-%d %H:%M:%S%.f")
+		.or_else(|_| NaiveDateTime::parse_from_str(t, "%Y-%m-%dT%H:%M:%S%.f"))
+		.or_else(|_| NaiveDate::parse_from_str(t, "%Y-%m-%d").map(|d| d.and_hms(0, 0, 0)))
+		.ok()
 }
