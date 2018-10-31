@@ -33,7 +33,7 @@ Memory is used for write-combining, write-ahead-logs are used to
 keep commits fast while still durable.
 
 Fundamentally, the database is append-only. Edits and insertions
-are costly (and not yet implemented!).
+are costly.
 
 ## Why
 
