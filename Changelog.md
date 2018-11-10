@@ -1,4 +1,9 @@
 
+# 0.3.2: 2018-11-10
+* Change default block sizes
+* Correct a very ugly corruption bug
+* Improve timestamp parsing (thank you [https://github.com/barskern](barskern))
+
 # 0.3: 2018-10-18
 * Allow insertion not after the last sample in a series,
 including between two samples and before the first sample, chronologically.
