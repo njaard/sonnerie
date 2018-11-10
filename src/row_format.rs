@@ -15,7 +15,8 @@ pub trait RowFormat
 
 	fn preferred_block_size(&self) -> usize
 	{
-		4096/(self.row_size())
+		// create blocks big enough for 512 records
+		512*self.row_size()
 	}
 	fn row_size(&self) -> usize;
 }

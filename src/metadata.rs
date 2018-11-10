@@ -995,6 +995,10 @@ impl<'m, Generator> Inserter<'m, Generator>
 					{
 						self.break_previous_block_at(at);
 					}
+					else if previous_block.size == previous_block.capacity
+					{
+						self.creating_at = Some(at);
+					}
 				}
 				else
 				{

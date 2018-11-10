@@ -502,6 +502,42 @@ mod tests
 	}
 
 	#[test]
+	fn block_overflows()
+	{
+		let (tmp,m) = n();
+		eprintln!("created in {:?}", tmp.path());
+		let mut txw = m.write_transaction();
+		let h1 = txw.create_series("horse1", "F").unwrap();
+		let h2 = txw.create_series("horse2", "F").unwrap();
+		{
+			let mut items_to_insert = vec!();
+			for x in 1..513
+			{
+				items_to_insert.push((Timestamp(x), (x) as f64));
+			}
+			txw.insert_into_series(h1, generator_f64(&items_to_insert)).unwrap();
+			txw.insert_into_series(h2, generator_f64(&items_to_insert)).unwrap();
+		}
+		{
+			let mut items_to_insert = vec!();
+			for x in 540..541
+			{
+				items_to_insert.push((Timestamp(x), (x) as f64));
+			}
+			txw.insert_into_series(h1, generator_f64(&items_to_insert)).unwrap();
+		}
+		assert_eq!(
+			format!("{:?}", read_f64s(&txw, h1, 1, 1)),
+			"[(Timestamp(1), 1.0)]"
+		);
+		assert_eq!(
+			format!("{:?}", read_f64s(&txw, h2, 1, 1)),
+			"[(Timestamp(1), 1.0)]"
+		);
+
+	}
+
+	#[test]
 	fn read_direction_multi_block()
 	{
 		let (tmp,m) = n();
