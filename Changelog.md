@@ -1,3 +1,5 @@
+# 0.3.4: 2018-11-12
+* Don't store the wrong end-of-data offset
 
 # 0.3.3: 2018-11-12
 * Don't forget the end of my file, overwriting old
