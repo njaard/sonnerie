@@ -909,12 +909,12 @@ impl<'db> Transaction<'db>
 			self.metadata.blocks.write().commit();
 			self.finishing_on.unwrap()
 				.committing(&self.metadata);
+			self.metadata.db.execute("delete from end_offset", &[]).unwrap();
+			self.metadata.db.execute(
+				"insert into end_offset values(?)", &[&(self.metadata.next_offset.get() as i64)]
+			).unwrap();
 		}
 		self.committed = true;
-		self.metadata.db.execute("delete from end_offset", &[]).unwrap();
-		self.metadata.db.execute(
-			"insert into end_offset values(?)", &[&(self.metadata.next_offset.get() as i64)]
-		).unwrap();
 		self.metadata.db.execute("commit", &[]).unwrap();
 	}
 }

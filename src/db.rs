@@ -548,6 +548,75 @@ mod tests
 	}
 
 	#[test]
+	fn stored_offset()
+	{
+		let (tmp,m) = n();
+		{
+			let m = m;
+			eprintln!("created in {:?}", tmp.path());
+			let mut txw = m.write_transaction();
+			let h = txw.create_series("horse1", "F").unwrap();
+			{
+				let mut items_to_insert = vec!();
+				for x in 1..513
+				{
+					items_to_insert.push((Timestamp(x), (x) as f64));
+				}
+				txw.insert_into_series(h, generator_f64(&items_to_insert)).unwrap();
+			}
+			txw.commit();
+		}
+		{
+			let db = ::rusqlite::Connection::open(tmp.path().join("meta")).unwrap();
+			let offset: i64 = db.query_row(
+				"select offset from end_offset",
+				&[], |a| a.get(0)
+			).unwrap();
+			assert_eq!(offset, 4096+8192);
+		}
+
+		{
+			let mut m = Db::open(tmp.path().to_path_buf());
+			m.start_merge_thread();
+			let mut txw = m.write_transaction();
+			let h = txw.create_series("horse2", "F").unwrap();
+			{
+				let mut items_to_insert = vec!();
+				for x in 1..513
+				{
+					items_to_insert.push((Timestamp(x), (x) as f64));
+				}
+				txw.insert_into_series(h, generator_f64(&items_to_insert)).unwrap();
+			}
+			txw.commit();
+		}
+
+		{
+			let db = ::rusqlite::Connection::open(tmp.path().join("meta")).unwrap();
+			let offset: i64 = db.query_row(
+				"select offset from end_offset",
+				&[], |a| a.get(0)
+			).unwrap();
+			assert_eq!(offset, 4096+8192*2);
+		}
+		{
+			let mut m = Db::open(tmp.path().to_path_buf());
+			m.start_merge_thread();
+			let txr = m.read_transaction();
+			txr.commit();
+		}
+
+		{
+			let db = ::rusqlite::Connection::open(tmp.path().join("meta")).unwrap();
+			let offset: i64 = db.query_row(
+				"select offset from end_offset",
+				&[], |a| a.get(0)
+			).unwrap();
+			assert_eq!(offset, 4096+8192*2);
+		}
+	}
+
+	#[test]
 	fn restart_offset()
 	{
 		let (tmp,m) = n();
