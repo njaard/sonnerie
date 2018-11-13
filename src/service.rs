@@ -505,11 +505,6 @@ pub fn service_tcp(listener: TcpListener, mut db: Db)
 		{
 			Ok(stream) =>
 			{
-				println!(
-					"Connection from {}",
-					stream.peer_addr().unwrap()
-				);
-
 				let db = db.clone();
 				thread::spawn(
 					move ||
@@ -545,8 +540,6 @@ pub fn service_unix(listener: UnixListener, mut db: Db)
 		{
 			Ok(stream) =>
 			{
-				println!("Connection");
-
 				let db = db.clone();
 				thread::spawn(
 					move ||
