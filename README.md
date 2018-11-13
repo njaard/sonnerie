@@ -196,6 +196,23 @@ The file format and protocol are subject to change between different 0.x version
 Once a 1.0 is released, no backwards incompatible changes will be permitted
 before Sonnerie 2.0.
 
+## Implementation details
+
+Metadata is stored in an sqlite3 database. Metadata is things
+like block locations and the names of series. Actual timeseries
+data is stored in a very large file named "`blocks`". They're called
+"blocks" because each series is stored in pieces of chronological samples.
+
+Sonnerie may not be well suited for SSDs. This is because the design
+expects that for each sample (on different series), one of those blocks
+will have to be modified, and SSDs don't like you to write to the same
+part of the drive many times. An SSD-friendly design would have us write in
+blocks that each store data from many disparate series and then optimizing
+to read simultanously from many of those blocks.
+
+Nevertheless, if you find that you write many consecutive values to a single
+series in a single transaction, then Sonnerie will suit an SSD.
+
 # Changelog
 
 Refer to [Changelog.md](Changelog.md).
