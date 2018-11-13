@@ -1,4 +1,9 @@
 
+# 0.3.3: 2018-11-12
+* Don't forget the end of my file, overwriting old
+blocks in the process
+* Optimize read transactions
+
 # 0.3.2: 2018-11-10
 * Change default block sizes
 * Correct a very ugly corruption bug
