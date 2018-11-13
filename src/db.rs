@@ -54,10 +54,12 @@ impl Db
 		let blocks = Arc::new(RwLock::new(Blocks::new(file, wal)));
 
 		let mut max_generation;
+		let next_offset;
 
 		{
-			let metadata = Metadata::new(4096, &metadatapath, blocks.clone());
+			let metadata = Metadata::new(&metadatapath, blocks.clone());
 			max_generation = metadata.last_generation();
+			next_offset = metadata.next_offset.get();
 		}
 
 		if let Some((gen, _)) = unflushed_wal_files.back()
@@ -89,7 +91,7 @@ impl Db
 			blocks: blocks,
 			merging_thread: None,
 			max_generation: Mutex::new(max_generation),
-			next_offset: Mutex::new(4096),
+			next_offset: Mutex::new(next_offset),
 		}
 	}
 
@@ -163,7 +165,7 @@ impl Db
 
 	pub fn read_transaction(&self) -> Transaction
 	{
-		let metadata = Metadata::new(0, &self.metadatapath, self.blocks.clone());
+		let metadata = Metadata::open(0, &self.metadatapath, self.blocks.clone());
 		metadata.as_read_transaction()
 	}
 
@@ -535,6 +537,64 @@ mod tests
 			"[(Timestamp(1), 1.0)]"
 		);
 
+		txw.commit();
+
+		let db = ::rusqlite::Connection::open(tmp.path().join("meta")).unwrap();
+		let count: i64 = db.query_row(
+			"select count(*) from series_blocks where series_id=1",
+			&[], |a| a.get(0)
+		).unwrap();
+		assert_eq!(count, 2);
+	}
+
+	#[test]
+	fn restart_offset()
+	{
+		let (tmp,m) = n();
+		{
+			eprintln!("created in {:?}", tmp.path());
+			let mut txw = m.write_transaction();
+			let h = txw.create_series("horse1", "F").unwrap();
+			{
+				let mut items_to_insert = vec!();
+				for x in 1..513
+				{
+					items_to_insert.push((Timestamp(x), (x) as f64));
+				}
+				txw.insert_into_series(h, generator_f64(&items_to_insert)).unwrap();
+			}
+			txw.commit();
+			drop(n);
+		}
+		{
+			let mut m = Db::open(tmp.path().to_path_buf());
+			m.start_merge_thread();
+			let mut txw = m.write_transaction();
+			let h = txw.create_series("horse2", "F").unwrap();
+			{
+				let mut items_to_insert = vec!();
+				for x in 1..513
+				{
+					items_to_insert.push((Timestamp(x), (x) as f64));
+				}
+				txw.insert_into_series(h, generator_f64(&items_to_insert)).unwrap();
+			}
+			txw.commit();
+			drop(n);
+		}
+
+		let db = ::rusqlite::Connection::open(tmp.path().join("meta")).unwrap();
+		let count: i64 = db.query_row(
+			"select count(*) from series_blocks where offset=4096",
+			&[], |a| a.get(0)
+		).unwrap();
+		assert_eq!(count, 1);
+		let db = ::rusqlite::Connection::open(tmp.path().join("meta")).unwrap();
+		let count: i64 = db.query_row(
+			"select count(*) from series_blocks where offset=4096+8192",
+			&[], |a| a.get(0)
+		).unwrap();
+		assert_eq!(count, 1);
 	}
 
 	#[test]

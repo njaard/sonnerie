@@ -58,7 +58,7 @@ impl Metadata
 	/// open or create a metadata file.
 	///
 	/// This is called only once at startup
-	pub fn new(next_offset: u64, f: &Path, blocks: Arc<RwLock<Blocks>>)
+	pub fn new(f: &Path, blocks: Arc<RwLock<Blocks>>)
 		-> Metadata
 	{
 		let db = rusqlite::Connection::open_with_flags(
@@ -89,6 +89,7 @@ impl Metadata
 					generation integer,
 					format text
 				);
+				create table if not exists end_offset (offset);
 
 				create index if not exists series_name on series (name collate binary);
 				create index if not exists series_gen on series (generation);
@@ -108,6 +109,23 @@ impl Metadata
 				commit;
 			"
 		).unwrap();
+
+		let next_offset: i64 = db.query_row(
+			"select offset from end_offset limit 1",
+			&[],
+			|r| r.get(0)
+		).unwrap_or_else(
+			|_|
+			{
+				let next_offset: Option<i64> = db.query_row(
+					"select max(offset+capacity) from series_blocks",
+					&[],
+					|r| r.get(0)
+				).unwrap();
+				next_offset.unwrap_or(4096)
+			}
+		);
+		let next_offset = next_offset as u64;
 
 		let fd = blocks.read().as_raw_fd();
 		Metadata
@@ -893,6 +911,10 @@ impl<'db> Transaction<'db>
 				.committing(&self.metadata);
 		}
 		self.committed = true;
+		self.metadata.db.execute("delete from end_offset", &[]).unwrap();
+		self.metadata.db.execute(
+			"insert into end_offset values(?)", &[&(self.metadata.next_offset.get() as i64)]
+		).unwrap();
 		self.metadata.db.execute("commit", &[]).unwrap();
 	}
 }
@@ -970,6 +992,7 @@ impl<'m, Generator> Inserter<'m, Generator>
 	fn handle_last_item(&mut self, len_before_adding: usize, at: Timestamp)
 		-> Result<(), String>
 	{
+		let row_size = self.format.row_size() as u64;
 		let mut boundary_reached = self.creating_at.is_none();
 		loop
 		{
@@ -995,7 +1018,7 @@ impl<'m, Generator> Inserter<'m, Generator>
 					{
 						self.break_previous_block_at(at);
 					}
-					else if previous_block.size == previous_block.capacity
+					else if previous_block.size+row_size > previous_block.capacity
 					{
 						self.creating_at = Some(at);
 					}
