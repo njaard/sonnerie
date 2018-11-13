@@ -223,7 +223,6 @@ Refer to [Changelog.md](Changelog.md).
 * Compacting (not useful without insertion and appending)
 * Compression
 * An HTTP-based protocol (won't be quite complete)
-* Most recent values
 * Store variable-sized data (a string or blob per timestamp)
 
 # Copyright
