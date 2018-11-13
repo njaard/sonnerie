@@ -43,6 +43,7 @@ impl Metadata
 				| rusqlite::OpenFlags::SQLITE_OPEN_READ_WRITE,
 		).unwrap();
 		db.execute_batch("PRAGMA case_sensitive_like=ON;").unwrap();
+		db.execute_batch("PRAGMA busy_timeout = 600000;").unwrap();
 
 		let fd = blocks.read().as_raw_fd();
 		Metadata
@@ -69,6 +70,7 @@ impl Metadata
 		).unwrap();
 		db.execute_batch("PRAGMA journal_mode=WAL;").unwrap();
 		db.execute_batch("PRAGMA case_sensitive_like=ON;").unwrap();
+		db.execute_batch("PRAGMA busy_timeout = 600000;").unwrap();
 
 		db.execute_batch(
 			"
@@ -172,7 +174,7 @@ impl Metadata
 	)
 		-> Transaction<'db>
 	{
-		self.db.execute("begin", &[]).unwrap();
+		self.db.execute("begin immediate", &[]).unwrap();
 		self.generation = new_generation;
 		Transaction
 		{
