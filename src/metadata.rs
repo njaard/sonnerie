@@ -605,14 +605,16 @@ impl<'db> Transaction<'db>
 		new_size: u64,
 	)
 	{
-		self.metadata.db.execute(
+		let mut stmt = self.metadata.db.prepare_cached(
 			"update series_blocks
 			set
 				size=?, last_timestamp=?,
 				generation=?
 			where
 				series_id=? and first_timestamp=?
-			",
+			"
+		).unwrap();
+		stmt.execute(
 			&[
 				&(new_size as i64), &new_last_timestamp.to_sqlite(),
 				&(self.metadata.generation as i64),
