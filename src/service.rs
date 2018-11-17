@@ -322,87 +322,109 @@ impl<'db> Session<'db>
 					writeln!(writer, "error: not in a transaction").unwrap();
 					return Ok(());
 				};
+			writeln!(writer, "accepting rows").unwrap();
+			writer.flush().unwrap();
 
 			let line_reader = &mut self.input_lines;
 
+			let mut process_line =
+				|line: String| -> Result<(), String>
+				{
+					let (name,remainder) = split_one(&line)
+						.ok_or_else( || "command requires series name".to_string() )?;
+					let (format,remainder) = split_one(remainder)
+						.ok_or_else( || "command requires format".to_string() )?;
+					let (ts,values) = split_one(remainder)
+						.ok_or_else( || "command requires timestamp".to_string() )?;
+					let ts = parse_time(&ts)?;
+
+					let id = tx.create_series(&name, &format)
+						.ok_or_else( || format!("format for '{}' is different", format))?;
+
+					let mut done = false;
+					tx.insert_into_series(
+						id,
+						|fmt, bytes|
+						{
+							if done { return Ok(None); }
+							done = true;
+							fmt.to_stored_format(&ts, &values, bytes)?;
+							Ok(Some(ts))
+						}
+					)?;
+					Ok(())
+				};
+
+			let mut err = Ok(());
 			for line in line_reader
 			{
-				let line = line.map_err(|e| format!("failed to read input: {}", e))?;
-				let (name,remainder) = split_one(&line)
-					.ok_or_else( || "command requires series name".to_string() )?;
-				if name.is_empty() { break; }
-				let (format,remainder) = split_one(remainder)
-					.ok_or_else( || "command requires format".to_string() )?;
-				let (ts,values) = split_one(remainder)
-					.ok_or_else( || "command requires timestamp".to_string() )?;
-				let ts = parse_time(&ts)?;
-
-				let id = tx.create_series(&name, &format)
-					.ok_or_else( || format!("format for '{}' is different", format))?;
-
-				let mut done = false;
-				tx.insert_into_series(
-					id,
-					|fmt, bytes|
-					{
-						if done { return Ok(None); }
-						done = true;
-						fmt.to_stored_format(&ts, &values, bytes)?;
-						Ok(Some(ts))
-					}
-				)?;
+				let line = line.expect("failed to read input: {}");
+				if line.is_empty() { break; }
+				if err.is_ok()
+				{
+					err = process_line(line);
+				}
 			}
+
+			err?;
+
 			writeln!(writer, "inserted values").unwrap();
 		}
 		else if cmd == "add"
 		{
-			let args = split(remainder);
-			if args.is_none() { Err("failed to parse arguments")?; }
-			let args = args.unwrap();
-			if args.len() != 1 { return Err("command requires exactly \
-				one parameter".to_string()); }
 			// add <name>
 			// <ts> <vals>
 			// ...
 			// (one blank line)
-			let name = &args[0];
+			let (name,remainder) = split_one(&remainder)
+				.ok_or_else( || "command requires series name".to_string() )?;
+
+			if !remainder.is_empty()
+				{ return Err("command requires exactly one parameter".to_string()); }
+
+			let tx =
+				if let Some(tx) = self.transaction.as_mut()
+					{ tx }
+				else
+				{
+					writeln!(writer, "error: not in a transaction").unwrap();
+					return Ok(());
+				};
+
+			let series_id = tx.series_id(&name)
+				.ok_or_else(|| format!("no series \"{}\"", name))?;
+
+			writeln!(writer, "accepting rows").unwrap();
+			writer.flush().unwrap();
 
 			let line_reader = &mut self.input_lines;
 
-			if let Some(tx) = self.transaction.as_mut()
-			{
-				let series_id = tx.series_id(name)
-					.ok_or_else(|| format!("no series \"{}\"", name))?;
-
-				let e = tx.insert_into_series(
-					series_id,
-					|format, bytes|
-					{
-						let line = line_reader.next()
-							.ok_or_else(|| format!("failed to read input"))?
-							.map_err(|e| format!("failed to read input: {}", e))?;
-						let split_one = split_one(&line)
-							.ok_or_else(|| format!("failed to parse line"))?;
-
-						if split_one.0.is_empty() { return Ok(None); }
-						let ts = parse_time(&split_one.0)?;
-						format.to_stored_format(&ts, &split_one.1, bytes)?;
-						Ok(Some(ts))
-					}
-				);
-				if let Err(e) = e
+			let e = tx.insert_into_series(
+				series_id,
+				|format, bytes|
 				{
-					writeln!(writer, "error: {}", e).unwrap();
+					let line = line_reader.next().unwrap().unwrap();
+					if line.is_empty() { return Ok(None); };
+
+					let (ts, row) = split_one(&line)
+						.ok_or_else(|| format!("failed to parse line"))?;
+
+					let ts = parse_time(&ts)?;
+					format.to_stored_format(&ts, &row, bytes)?;
+					Ok(Some(ts))
 				}
-				else
-				{
-					writeln!(writer, "inserted values").unwrap();
-				}
-			}
-			else
+			);
+			if let Err(e) = e
 			{
-				writeln!(writer, "error: not in a transaction").unwrap();
+				loop
+				{
+					let line = line_reader.next().unwrap().unwrap();
+					if line.is_empty() { break; };
+					// discard line
+				}
+				return Err(e);
 			}
+
 		}
 		else if cmd == "add1"
 		{

@@ -215,6 +215,7 @@ fn protocol_erase_like()
 		begin write
 		*
 		create-add
+		> accepting rows
 		horse1 fu 999 10 1
 		horse1 fu 1000 11 2
 		horse1 fu 1001 12 3
@@ -243,6 +244,7 @@ fn protocol_read_direction()
 		begin write
 		*
 		create-add
+		> accepting rows
 		horse1 u 999 1
 		horse1 u 1000 2
 		horse2 u 1001 4

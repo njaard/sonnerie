@@ -622,12 +622,17 @@ impl Client
 	{
 		self.check_write_tx()?;
 		let mut w = self.writer.borrow_mut();
-		let r = self.reader.borrow_mut();
+		let mut r = self.reader.borrow_mut();
 		writeln!(
 			&mut w,
 			"add {}",
 			escape(series_name),
 		)?;
+
+		w.flush()?;
+		let mut msg = String::new();
+		r.read_line(&mut msg)?;
+		check_error(&mut msg)?;
 
 		let r =
 			RowAdder
@@ -650,8 +655,13 @@ impl Client
 	{
 		self.check_write_tx()?;
 		let mut w = self.writer.borrow_mut();
-		let r = self.reader.borrow_mut();
+		let mut r = self.reader.borrow_mut();
 		writeln!(&mut w, "create-add")?;
+		w.flush()?;
+
+		let mut msg = String::new();
+		r.read_line(&mut msg)?;
+		check_error(&mut msg)?;
 
 		let r =
 			CreateAdder
