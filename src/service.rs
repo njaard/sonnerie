@@ -141,7 +141,19 @@ impl<'db> Session<'db>
 			}
 			else if args.len()==1 && args[0] == "write"
 			{
+				unsafe
+				{
+					const PR_SET_NAME: libc::c_int = 15;
+					let name = std::ffi::CStr::from_ptr("waiting for write lock\0".as_ptr() as *const i8);
+					libc::prctl(PR_SET_NAME, name.as_ptr() as libc::c_ulong, 0, 0, 0);
+				}
 				self.transaction = Some( db.write_transaction() );
+				unsafe
+				{
+					const PR_SET_NAME: libc::c_int = 15;
+					let name = std::ffi::CStr::from_ptr("write lock\0".as_ptr() as *const i8);
+					libc::prctl(PR_SET_NAME, name.as_ptr() as libc::c_ulong, 0, 0, 0);
+				}
 				writeln!(writer, "started transaction").unwrap();
 			}
 			else
@@ -153,6 +165,12 @@ impl<'db> Session<'db>
 		{ // commit a transaction
 			if let Some(a) = self.transaction.take()
 			{
+				unsafe
+				{
+					const PR_SET_NAME: libc::c_int = 15;
+					let name = std::ffi::CStr::from_ptr("committed\0".as_ptr() as *const i8);
+					libc::prctl(PR_SET_NAME, name.as_ptr() as libc::c_ulong, 0, 0, 0);
+				}
 				a.commit();
 				writeln!(writer, "transaction completed").unwrap();
 			}
