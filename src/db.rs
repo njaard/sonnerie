@@ -41,7 +41,11 @@ impl Db
 {
 	pub fn open(path: PathBuf) -> Db
 	{
-		let metadatapath = path.join("meta");
+		Db::open2(path.clone(), path.clone())
+	}
+	pub fn open2(path: PathBuf, metadatadir: PathBuf) -> Db
+	{
+		let metadatapath = metadatadir.join("meta");
 
 		let mut wal = MemoryWal::new();
 

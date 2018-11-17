@@ -50,6 +50,12 @@ fn main()
 						.takes_value(true)
 						.required(true)
 					)
+					.arg(Arg::with_name("metadatadir")
+						.long("metadatadir")
+						.value_name("DIR")
+						.help("Changes the directory that stores metadata from \"data\" to an alternate")
+						.takes_value(true)
+					)
 			)
 			.subcommand(
 				SubCommand::with_name("client")
@@ -76,7 +82,11 @@ fn main()
 	{
 		let path = args.value_of("data").expect("require a database dir (--data)");
 		let _ = create_dir(path);
-		let db = db::Db::open(Path::new(path).to_path_buf());
+		let metadata = args.value_of("metadatadir").unwrap_or(path);
+		let db = db::Db::open2(
+			Path::new(path).to_path_buf(),
+			Path::new(metadata).to_path_buf(),
+		);
 
 		if address.starts_with("/") || address.starts_with("unix:")
 		{
