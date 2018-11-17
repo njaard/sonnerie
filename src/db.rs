@@ -39,6 +39,7 @@ pub struct Db
 
 impl Db
 {
+	#[allow(dead_code)] // only used in tests
 	pub fn open(path: PathBuf) -> Db
 	{
 		Db::open2(path.clone(), path.clone())
