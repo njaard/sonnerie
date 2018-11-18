@@ -2,6 +2,8 @@ use wal;
 use disk_wal::DiskWalWriter;
 use block_file::BlockFile;
 
+pub use metadata::Mutex;
+
 /// Permit reads of blocks
 ///
 /// Attempts to read from the block file, then
@@ -12,7 +14,7 @@ pub struct Blocks
 {
 	pub file: BlockFile,
 	pub wal: wal::MemoryWal,
-	disk_wal: Option<DiskWalWriter>,
+	disk_wal: Mutex<Option<DiskWalWriter>>,
 }
 
 impl Blocks
@@ -23,21 +25,24 @@ impl Blocks
 		{
 			file: file,
 			wal: wal,
-			disk_wal: None,
+			disk_wal: Mutex::new(None),
 		}
 	}
 
-	pub fn set_disk_wal(&mut self, w: DiskWalWriter)
+	pub fn set_disk_wal(&self, w: DiskWalWriter)
 	{
-		self.disk_wal = Some(w);
+		let mut m = self.disk_wal.lock();
+		*m = Some(w);
 	}
 
 	// write only to wal_not_written
 	// (someone else will actually flush wal_not_written)
-	pub fn write(&mut self, position: u64, data: &[u8])
+	pub fn write(&self, position: u64, data: &[u8])
 	{
-		let d = self.disk_wal.as_mut().unwrap();
-		d.write(position, data);
+		{
+			let mut m = self.disk_wal.lock();
+			m.as_mut().unwrap().write(position, data);
+		}
 		self.wal.write(position as usize, data);
 	}
 
@@ -49,9 +54,9 @@ impl Blocks
 		self.wal.read(position as usize, data);
 	}
 
-	pub fn commit(&mut self)
+	pub fn commit(&self)
 	{
-		self.disk_wal.take();
+		self.disk_wal.lock().take();
 	}
 
 	pub fn as_raw_fd(&self) -> ::std::os::unix::io::RawFd

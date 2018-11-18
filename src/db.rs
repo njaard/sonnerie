@@ -11,7 +11,6 @@ use ::std::path::{Path,PathBuf};
 use ::std::collections::VecDeque;
 
 use ::std::sync::Arc;
-use metadata::RwLock;
 use self::antidote::{Mutex,Condvar};
 
 pub use metadata::Timestamp;
@@ -28,7 +27,7 @@ pub struct Db
 	path: PathBuf,
 	/// .0 is the generation, and sorted by that
 	unflushed_wal_files: Arc<Mutex<VecDeque<(u64,PathBuf)>>>,
-	blocks: Arc<RwLock<Blocks>>,
+	blocks: Arc<Blocks>,
 	merge_state: Arc<(Mutex<MergeState>, Condvar)>,
 
 	merging_thread: Option<::std::thread::JoinHandle<()>>,
@@ -56,7 +55,7 @@ impl Db
 		let blockfilename = path.join("blocks");
 		let file = BlockFile::new(&blockfilename);
 
-		let blocks = Arc::new(RwLock::new(Blocks::new(file, wal)));
+		let blocks = Arc::new(Blocks::new(file, wal));
 
 		let mut max_generation;
 		let next_offset;
@@ -129,13 +128,13 @@ impl Db
 					}
 
 					::wal::merge(
-						&blocks.read().wal,
-						&blocks.read().file,
+						&blocks.wal,
+						&blocks.file,
 					);
 
 					{
 						previously_merged_to = now_merging;
-						blocks.read().file.sync();
+						blocks.file.sync();
 
 						loop
 						{
@@ -180,8 +179,7 @@ impl Db
 
 		let (walwriter, file) = DiskWalWriter::new(g, &self.path);
 
-		self.blocks.write()
-			.set_disk_wal(walwriter);
+		self.blocks.set_disk_wal(walwriter);
 		let metadata = Metadata::open(
 			*self.next_offset.lock(), &self.metadatapath, self.blocks.clone()
 		);

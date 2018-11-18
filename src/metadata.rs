@@ -14,6 +14,7 @@ use std::path::Path;
 
 use std::sync::Arc;
 pub use self::antidote::RwLock;
+pub use self::antidote::Mutex;
 use std::cell::Cell;
 
 /// Maintain all the information needed to locate data
@@ -21,7 +22,7 @@ use std::cell::Cell;
 pub struct Metadata
 {
 	db: rusqlite::Connection,
-	blocks: Arc<RwLock<Blocks>>,
+	blocks: Arc<Blocks>,
 	blocks_raw_fd: ::std::os::unix::io::RawFd,
 	pub next_offset: Cell<u64>,
 	pub generation: u64,
@@ -34,7 +35,7 @@ impl Metadata
 	/// `next_offset` is the end of the block data where new blocks are created
 	/// `f` is the filename of the existing metadata file
 	/// `blocks` is shared between threads
-	pub fn open(next_offset: u64, f: &Path, blocks: Arc<RwLock<Blocks>>)
+	pub fn open(next_offset: u64, f: &Path, blocks: Arc<Blocks>)
 		-> Metadata
 	{
 		let db = rusqlite::Connection::open_with_flags(
@@ -45,7 +46,7 @@ impl Metadata
 		db.execute_batch("PRAGMA case_sensitive_like=ON;").unwrap();
 		db.execute_batch("PRAGMA busy_timeout = 600000;").unwrap();
 
-		let fd = blocks.read().as_raw_fd();
+		let fd = blocks.as_raw_fd();
 		Metadata
 		{
 			db: db,
@@ -59,7 +60,7 @@ impl Metadata
 	/// open or create a metadata file.
 	///
 	/// This is called only once at startup
-	pub fn new(f: &Path, blocks: Arc<RwLock<Blocks>>)
+	pub fn new(f: &Path, blocks: Arc<Blocks>)
 		-> Metadata
 	{
 		let db = rusqlite::Connection::open_with_flags(
@@ -129,7 +130,7 @@ impl Metadata
 		);
 		let next_offset = next_offset as u64;
 
-		let fd = blocks.read().as_raw_fd();
+		let fd = blocks.as_raw_fd();
 		Metadata
 		{
 			db: db,
@@ -390,7 +391,7 @@ impl<'db> Transaction<'db>
 				|| block.last_timestamp > last_erase
 			{ // we have to keep some of this block's contents
 				buffer.resize(block.size as usize, 0u8);
-				self.metadata.blocks.read()
+				self.metadata.blocks
 					.read(block.offset, &mut buffer[..]);
 
 				// there are three strategies for saving some
@@ -417,12 +418,12 @@ impl<'db> Transaction<'db>
 						keeping1.len() + keeping2.len(),
 						format.preferred_block_size() as usize
 					);
-					self.metadata.blocks.write()
+					self.metadata.blocks
 						.write(
 							newblock.offset,
 							&keeping1
 						);
-					self.metadata.blocks.write()
+					self.metadata.blocks
 						.write(
 							newblock.offset + keeping1.len() as u64,
 							&keeping2
@@ -440,7 +441,7 @@ impl<'db> Transaction<'db>
 						keeping.len(),
 						format.preferred_block_size() as usize
 					);
-					self.metadata.blocks.write()
+					self.metadata.blocks
 						.write(
 							newblock.offset,
 							&keeping
@@ -458,7 +459,7 @@ impl<'db> Transaction<'db>
 						keeping.len(),
 						format.preferred_block_size() as usize
 					);
-					self.metadata.blocks.write()
+					self.metadata.blocks
 						.write(
 							newblock.offset,
 							&keeping
@@ -525,7 +526,7 @@ impl<'db> Transaction<'db>
 		for block in blocks
 		{
 			block_data.resize(block.size as usize, 0u8);
-			self.metadata.blocks.read()
+			self.metadata.blocks
 				.read(block.offset, &mut block_data[..]);
 
 			for sample in block_data.chunks(format.row_size())
@@ -767,7 +768,7 @@ impl<'db> Transaction<'db>
 			{
 				let format = self.series_format(id);
 				block_data.resize(block.size as usize, 0u8);
-				self.metadata.blocks.read()
+				self.metadata.blocks
 					.read(block.offset, &mut block_data[..]);
 
 				if reverse
@@ -910,7 +911,7 @@ impl<'db> Transaction<'db>
 	{
 		if self.writing
 		{
-			self.metadata.blocks.write().commit();
+			self.metadata.blocks.commit();
 			self.finishing_on.unwrap()
 				.committing(&self.metadata);
 			self.metadata.db.execute("delete from end_offset", &[]).unwrap();
@@ -1072,7 +1073,7 @@ impl<'m, Generator> Inserter<'m, Generator>
 				self.preferred_block_size as usize, // TODO: depending on if it's the last block
 			);
 			self.creating_at = None;
-			self.tx.metadata.blocks.write()
+			self.tx.metadata.blocks
 				.write(
 					new_block.offset,
 					&self.buffer[0..len_before_adding]
@@ -1088,7 +1089,7 @@ impl<'m, Generator> Inserter<'m, Generator>
 				last_ts,
 				b.size + len_before_adding as u64,
 			);
-			self.tx.metadata.blocks.write()
+			self.tx.metadata.blocks
 				.write(
 					b.offset + b.size,
 					&self.buffer[0..len_before_adding]
@@ -1112,7 +1113,7 @@ impl<'m, Generator> Inserter<'m, Generator>
 
 		let mut buffer2 = vec!();
 		buffer2.resize(block.size as usize, 0u8);
-		self.tx.metadata.blocks.read()
+		self.tx.metadata.blocks
 			.read(block.offset, &mut buffer2[..]);
 
 		let resize_buffer_to;
@@ -1142,7 +1143,7 @@ impl<'m, Generator> Inserter<'m, Generator>
 					self.preferred_block_size as usize, // TODO: depending on if it's the last block
 				);
 
-				self.tx.metadata.blocks.write()
+				self.tx.metadata.blocks
 					.write(
 						twoblock.offset,
 						&two
