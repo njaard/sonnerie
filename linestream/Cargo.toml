@@ -1,0 +1,12 @@
+[package]
+name = "linestream"
+version = "0.1.0"
+authors = ["Charles Samuels <kalle@eventures.vc>"]
+license = "BSD-2-Clause"
+description = "Read lines from a socket"
+repository = "https://github.com/njaard/sonnerie"
+keywords = ["lines", "stream", "socket", "nonblocking"]
+#documentation = "https://docs.rs/linestream/"
+
+[dependencies]
+nix = "0.11"

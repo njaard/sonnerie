@@ -19,7 +19,7 @@ pub fn run(args: &::clap::ArgMatches, address: &str)
 	let stream = TcpStream::connect(address)
 		.expect("failed to connect");
 
-	let mut client = sonnerie_api::Client::new(stream)
+	let mut client = sonnerie_api::Client::new_tcp(stream)
 		.expect("initiating connection");
 
 	let mut in_tx=false;

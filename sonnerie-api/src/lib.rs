@@ -34,8 +34,10 @@
 
 extern crate chrono;
 extern crate escape_string;
+extern crate linestream;
 
-use std::io::{BufReader,BufWriter,BufRead,Write,Read};
+use linestream::LineStream;
+use std::io::{BufWriter,BufRead,Write};
 use std::io::{Result, ErrorKind, Error};
 use std::fmt;
 
@@ -103,7 +105,7 @@ pub use chrono::NaiveDateTime;
 pub struct Client
 {
 	writer: RefCell<Box<Write>>,
-	reader: RefCell<Box<BufRead>>,
+	reader: RefCell<LineStream>,
 	in_tx: Cell<bool>,
 	writing: Cell<bool>,
 }
@@ -156,11 +158,11 @@ impl Client
 	///
 	/// Failure may be caused by Sonnerie not sending its protocol "Hello"
 	/// on connection.
-	pub fn from_streams<R: 'static + Read, W: 'static + Write>(
+	pub fn from_streams<R: 'static + linestream::NBSocket, W: 'static + Write>(
 		reader: R, writer: W
 	) -> Result<Client>
 	{
-		let mut reader = BufReader::new(reader);
+		let mut reader = LineStream::new(reader)?;
 		let writer = BufWriter::new(writer);
 
 		let mut intro = String::new();
@@ -177,7 +179,7 @@ impl Client
 			Client
 			{
 				writer: RefCell::new(Box::new(writer)),
-				reader: RefCell::new(Box::new(reader)),
+				reader: RefCell::new(reader),
 				in_tx: Cell::new(false),
 				writing: Cell::new(false),
 			}
@@ -185,7 +187,17 @@ impl Client
 	}
 
 	/// Use a specific TCP connection to make a connection.
-	pub fn new(connection: std::net::TcpStream)
+	pub fn new_tcp(connection: std::net::TcpStream)
+		-> Result<Client>
+	{
+		Self::from_streams(
+			connection.try_clone()?,
+			connection
+		)
+	}
+
+	/// Use a specific Unix Domain Socket connection to make a connection.
+	pub fn new_unix(connection: std::os::unix::net::UnixStream)
 		-> Result<Client>
 	{
 		Self::from_streams(
@@ -1031,7 +1043,7 @@ fn parse_time(text: &str) -> Result<NaiveDateTime>
 pub struct RowAdder<'client>
 {
 	w: RefMut<'client, Box<Write>>,
-	r: RefMut<'client, Box<BufRead>>,
+	r: RefMut<'client, LineStream>,
 	done: bool,
 }
 
@@ -1099,7 +1111,7 @@ impl<'client> Drop for RowAdder<'client>
 pub struct CreateAdder<'client>
 {
 	w: RefMut<'client, Box<Write>>,
-	r: RefMut<'client, Box<BufRead>>,
+	r: RefMut<'client, LineStream>,
 	done: bool,
 }
 

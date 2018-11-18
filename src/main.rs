@@ -15,6 +15,7 @@ extern crate rusqlite;
 extern crate clap;
 extern crate nix;
 extern crate daemonize;
+extern crate linestream;
 
 use std::fs::create_dir;
 

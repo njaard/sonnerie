@@ -2,8 +2,10 @@ extern crate escape_string;
 extern crate chrono;
 
 use std::thread;
-use std::io::{Read,Write,BufReader,BufRead,BufWriter};
+use std::io::{Write,BufRead,BufWriter};
 use std::sync::Arc;
+
+use linestream::LineStream;
 
 use db::Db;
 use db::Timestamp;
@@ -14,7 +16,7 @@ use self::escape_string::{split_one, split, escape};
 struct Session<'db>
 {
 	db: &'db Db,
-	input_lines: ::std::io::Lines<BufReader<Box<Read>>>,
+	input_lines: ::std::io::Lines<LineStream>,
 	writer: BufWriter<Box<Write>>,
 	transaction: Option<Transaction<'db>>,
 	cache_last_series_id: Option<(String,u64)>,
@@ -22,10 +24,9 @@ struct Session<'db>
 
 impl<'db> Session<'db>
 {
-	fn new(r: Box<Read>, w: Box<Write>, db: &'db Db)
+	fn new(reader: LineStream, w: Box<Write>, db: &'db Db)
 		-> Session<'db>
 	{
-		let reader = BufReader::new(r);
 		let writer = BufWriter::new(w);
 		let input_lines = reader.lines();
 
@@ -45,11 +46,11 @@ impl<'db> Session<'db>
 
 		loop
 		{
-			self.writer.flush().unwrap();
+			self.writer.flush().expect("flushing outgoing message");
 			let line = self.input_lines.next();
 			if line.is_none()
 				{ break; }
-			let line = line.unwrap().unwrap();
+			let line = line.expect("no input").expect("reading input line");
 
 			let cmd = split_one(&line);
 			if cmd.is_none()
@@ -553,7 +554,8 @@ pub fn service_tcp(listener: TcpListener, mut db: Db)
 
 						// connection succeeded
 						let mut c = Session::new(
-							Box::new(r), Box::new(stream), &db
+							LineStream::new(r).expect("create linestream"),
+							Box::new(stream), &db
 						);
 						c.run();
 					}
@@ -588,7 +590,8 @@ pub fn service_unix(listener: UnixListener, mut db: Db)
 
 						// connection succeeded
 						let mut c = Session::new(
-							Box::new(r), Box::new(stream), &db
+							LineStream::new(r).expect("create linestream"),
+							Box::new(stream), &db
 						);
 						c.run();
 					}

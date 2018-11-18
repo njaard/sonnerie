@@ -11,5 +11,6 @@ readme = "README.md"
 
 [dependencies]
 chrono = "0.4.6"
-escape_string = "0.1.0"
+escape_string = {version="0.1.0", path="../escape_string"}
+linestream = {version="0.1.0", path="../linestream"}
 
