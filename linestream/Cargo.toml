@@ -9,4 +9,4 @@ keywords = ["lines", "stream", "socket", "nonblocking"]
 #documentation = "https://docs.rs/linestream/"
 
 [dependencies]
-nix = "0.11"
+libc = "0.2"

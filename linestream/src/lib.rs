@@ -5,8 +5,8 @@
 //! socket to nonblocking and then block until a single
 //! full line is available, but no more.
 
-extern crate nix;
-use nix::sys::select::*;
+extern crate libc;
+
 use std::os::unix::io::{RawFd,AsRawFd};
 use std::io::{Read,BufRead,BufReader};
 use std::io::ErrorKind::WouldBlock;
@@ -14,7 +14,7 @@ use std::io::ErrorKind::WouldBlock;
 use std::net::TcpStream;
 use std::os::unix::net::UnixStream;
 
-use std::io::{Error,ErrorKind,Result};
+use std::io::Result;
 
 pub struct LineStream
 {
@@ -37,12 +37,19 @@ impl LineStream
 
 	fn wait(&self) -> Result<()>
 	{
-		eprintln!("waiting");
-		let mut set = FdSet::new();
-		set.insert(self.fd);
-		select(self.fd+1, Some(&mut set), None, None, None)
-			.map_err( |e| Error::new(ErrorKind::Other, e))?;
-		eprintln!("done waiting");
+		unsafe
+		{
+			let mut fdset = std::mem::uninitialized();
+			libc::FD_ZERO(&mut fdset);
+			libc::FD_SET(self.fd, &mut fdset);
+			libc::select(
+				self.fd+1,
+				&mut fdset as *mut libc::fd_set,
+				std::ptr::null_mut(),
+				std::ptr::null_mut(),
+				std::ptr::null_mut(),
+			);
+		}
 		Ok(())
 	}
 }
