@@ -2,10 +2,10 @@ extern crate escape_string;
 extern crate chrono;
 
 use std::thread;
-use std::io::{Write,BufRead,BufWriter};
+use std::io::{Write,BufRead};
 use std::sync::Arc;
 
-use linestream::LineStream;
+use linestream::{LineStream,BlockingWriting};
 
 use db::Db;
 use db::Timestamp;
@@ -17,24 +17,23 @@ struct Session<'db>
 {
 	db: &'db Db,
 	input_lines: ::std::io::Lines<LineStream>,
-	writer: BufWriter<Box<Write>>,
+	writer: BlockingWriting,
 	transaction: Option<Transaction<'db>>,
 	cache_last_series_id: Option<(String,u64)>,
 }
 
 impl<'db> Session<'db>
 {
-	fn new(reader: LineStream, w: Box<Write>, db: &'db Db)
+	fn new(reader: LineStream, w: BlockingWriting, db: &'db Db)
 		-> Session<'db>
 	{
-		let writer = BufWriter::new(w);
 		let input_lines = reader.lines();
 
 		Session
 		{
-			db: db,
-			input_lines: input_lines,
-			writer: writer,
+			db,
+			input_lines,
+			writer: w,
 			transaction: None,
 			cache_last_series_id: None,
 		}
@@ -554,8 +553,9 @@ pub fn service_tcp(listener: TcpListener, mut db: Db)
 
 						// connection succeeded
 						let mut c = Session::new(
-							LineStream::new(r).expect("create linestream"),
-							Box::new(stream), &db
+							LineStream::new(r),
+							BlockingWriting::new(stream),
+							&db,
 						);
 						c.run();
 					}
@@ -590,8 +590,9 @@ pub fn service_unix(listener: UnixListener, mut db: Db)
 
 						// connection succeeded
 						let mut c = Session::new(
-							LineStream::new(r).expect("create linestream"),
-							Box::new(stream), &db
+							LineStream::new(r),
+							BlockingWriting::new(stream),
+							&db,
 						);
 						c.run();
 					}

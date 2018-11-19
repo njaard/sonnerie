@@ -8,7 +8,7 @@
 extern crate libc;
 
 use std::os::unix::io::{RawFd,AsRawFd};
-use std::io::{Read,BufRead,BufReader};
+use std::io::{Write,Read,BufRead,BufReader,BufWriter};
 use std::io::ErrorKind::WouldBlock;
 
 use std::net::TcpStream;
@@ -24,15 +24,14 @@ pub struct LineStream
 
 impl LineStream
 {
-	pub fn new<S: 'static + NBSocket>(stream: S) -> Result<LineStream>
+	pub fn new<S: 'static+Read+NBSocket>(stream: S) -> LineStream
 	{
-		stream.set_nonblocking(true)?;
 		let fd = stream.as_raw_fd();
-		Ok(Self
+		Self
 		{
 			stream: BufReader::new(Box::new(stream)),
 			fd,
-		})
+		}
 	}
 
 	fn wait(&self) -> Result<()>
@@ -135,7 +134,106 @@ impl BufRead for LineStream
     }
 }
 
-pub trait NBSocket : Read+AsRawFd
+/// Write to a non-blocking socket as if it were blocking
+pub struct BlockingWriting
+{
+	stream: BufWriter<Box<Write>>,
+	fd: RawFd,
+}
+
+impl BlockingWriting
+{
+	pub fn new<S: 'static+Write+NBSocket>(stream: S)
+		-> BlockingWriting
+	{
+		let fd = stream.as_raw_fd();
+		Self
+		{
+			stream: BufWriter::new(Box::new(stream)),
+			fd,
+		}
+	}
+
+	fn wait(&self) -> Result<()>
+	{
+		unsafe
+		{
+			let mut fdset = std::mem::uninitialized();
+			libc::FD_ZERO(&mut fdset);
+			libc::FD_SET(self.fd, &mut fdset);
+			libc::select(
+				self.fd+1,
+				std::ptr::null_mut(),
+				&mut fdset as *mut libc::fd_set,
+				std::ptr::null_mut(),
+				std::ptr::null_mut(),
+			);
+		}
+		Ok(())
+	}
+}
+
+impl Write for BlockingWriting
+{
+	fn write(&mut self, buf: &[u8]) -> Result<usize>
+	{
+		let mut pos = 0;
+		loop
+		{
+			let e = self.stream.write(&buf[pos..]);
+			match e
+			{
+				Err(e) =>
+				{
+					if e.kind() == WouldBlock
+					{
+						self.wait()?;
+					}
+					else
+					{
+						return Err(e);
+					}
+				},
+				Ok(c) =>
+				{
+					pos += c;
+					if c == 0
+						{ break; }
+				},
+			}
+		}
+		Ok(pos)
+	}
+
+	fn flush(&mut self) -> Result<()>
+	{
+		loop
+		{
+			let e = self.stream.flush();
+			match e
+			{
+				Err(e) =>
+				{
+					if e.kind() == WouldBlock
+					{
+						self.wait()?;
+					}
+					else
+					{
+						return Err(e);
+					}
+				},
+				Ok(()) =>
+				{
+					break;
+				},
+			}
+		}
+		Ok(())
+	}
+}
+
+pub trait NBSocket : AsRawFd
 {
 	fn set_nonblocking(&self, nonblocking: bool) -> Result<()>;
 }
@@ -155,3 +253,4 @@ impl NBSocket for UnixStream
 		self.set_nonblocking(nonblocking)
 	}
 }
+

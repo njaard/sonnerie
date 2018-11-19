@@ -36,8 +36,8 @@ extern crate chrono;
 extern crate escape_string;
 extern crate linestream;
 
-use linestream::LineStream;
-use std::io::{BufWriter,BufRead,Write};
+use linestream::{BlockingWriting,LineStream};
+use std::io::{BufRead,Write,Read};
 use std::io::{Result, ErrorKind, Error};
 use std::fmt;
 
@@ -104,7 +104,7 @@ pub use chrono::NaiveDateTime;
 /// Sonnerie Client API
 pub struct Client
 {
-	writer: RefCell<Box<Write>>,
+	writer: RefCell<BlockingWriting>,
 	reader: RefCell<LineStream>,
 	in_tx: Cell<bool>,
 	writing: Cell<bool>,
@@ -158,12 +158,13 @@ impl Client
 	///
 	/// Failure may be caused by Sonnerie not sending its protocol "Hello"
 	/// on connection.
-	pub fn from_streams<R: 'static + linestream::NBSocket, W: 'static + Write>(
+	pub fn from_streams<R: 'static+Read+linestream::NBSocket, W: 'static+Write+linestream::NBSocket>(
 		reader: R, writer: W
 	) -> Result<Client>
 	{
-		let mut reader = LineStream::new(reader)?;
-		let writer = BufWriter::new(writer);
+		reader.set_nonblocking(true)?;
+		let mut reader = LineStream::new(reader);
+		let writer = BlockingWriting::new(writer);
 
 		let mut intro = String::new();
 		reader.read_line(&mut intro)?;
@@ -178,7 +179,7 @@ impl Client
 		Ok(
 			Client
 			{
-				writer: RefCell::new(Box::new(writer)),
+				writer: RefCell::new(writer),
 				reader: RefCell::new(reader),
 				in_tx: Cell::new(false),
 				writing: Cell::new(false),
@@ -1042,7 +1043,7 @@ fn parse_time(text: &str) -> Result<NaiveDateTime>
 /// An object returned by [`Client::add_rows`](struct.Client.html#method.add_rows).
 pub struct RowAdder<'client>
 {
-	w: RefMut<'client, Box<Write>>,
+	w: RefMut<'client, BlockingWriting>,
 	r: RefMut<'client, LineStream>,
 	done: bool,
 }
@@ -1065,7 +1066,7 @@ impl<'client> RowAdder<'client>
 		write!(&mut self.w, "{} ", format_time(t))?;
 		for v in cols.iter()
 		{
-			v.serialize(self.w.as_mut())?;
+			v.serialize(&mut *self.w)?;
 		}
 		writeln!(&mut self.w, "")?;
 
@@ -1110,7 +1111,7 @@ impl<'client> Drop for RowAdder<'client>
 /// A function returned by [`Client::create_and_add`](struct.Client.html#method.create_and_add).
 pub struct CreateAdder<'client>
 {
-	w: RefMut<'client, Box<Write>>,
+	w: RefMut<'client, BlockingWriting>,
 	r: RefMut<'client, LineStream>,
 	done: bool,
 }
@@ -1140,7 +1141,7 @@ impl<'client> CreateAdder<'client>
 		write!(&mut self.w, "{} {} {} ", escape(name), escape(format), format_time(t))?;
 		for v in cols.iter()
 		{
-			v.serialize(self.w.as_mut())?;
+			v.serialize(&mut *self.w)?;
 		}
 		writeln!(&mut self.w, "")?;
 
