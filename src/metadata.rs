@@ -44,7 +44,7 @@ impl Metadata
 				| rusqlite::OpenFlags::SQLITE_OPEN_READ_WRITE,
 		).unwrap();
 		db.execute_batch("PRAGMA case_sensitive_like=ON;").unwrap();
-		db.execute_batch("PRAGMA busy_timeout = 600000;").unwrap();
+		db.execute_batch("PRAGMA busy_timeout = 7200000;").unwrap();
 
 		let fd = blocks.as_raw_fd();
 		Metadata
