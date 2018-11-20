@@ -82,7 +82,6 @@ impl Db
 			Condvar::new()
 		));
 
-
 		let unflushed_wal_files =
 			Arc::new(Mutex::new(unflushed_wal_files));
 
@@ -214,8 +213,14 @@ impl Drop for Db
 			self.merge_state.1.notify_one();
 		}
 
-		self.merging_thread.take()
-			.expect("merging thread must exist").join().unwrap();
+		if let Some(m) = self.merging_thread.take()
+		{
+			m.join().unwrap();
+		}
+		else
+		{
+			eprintln!("warning: no merging thread");
+		}
 	}
 }
 
@@ -261,8 +266,8 @@ mod tests
 	fn n() -> (tempfile::TempDir, Db)
 	{
 		let tmp = tempfile::TempDir::new().unwrap();
-		let mut m = Db::open(tmp.path().to_path_buf());
-		m.start_merge_thread();
+		let m = Db::open(tmp.path().to_path_buf());
+		//m.start_merge_thread();
 		(tmp, m)
 	}
 
@@ -759,6 +764,45 @@ mod tests
 		);
 	}
 
+	#[test]
+	fn insertion_twice()
+	{
+		let (_tmp,m) = n();
+
+		let h;
+
+		{
+			let mut txw = m.write_transaction();
+			h = txw.create_series("horse", "F").unwrap();
+			let items_to_insert =
+				[
+					(Timestamp(1000),  1000.0),
+					(Timestamp(1010),  1010.0),
+					(Timestamp(1020),  1020.0),
+				];
+			txw.insert_into_series(h, generator_f64(&items_to_insert)).unwrap();
+			txw.commit();
+		}
+		{
+			let mut txw = m.write_transaction();
+			let items_to_insert =
+				[
+					(Timestamp(1030),  1030.0),
+					(Timestamp(1040),  1040.0),
+					(Timestamp(1050),  1050.0),
+				];
+			txw.insert_into_series(h, generator_f64(&items_to_insert)).unwrap();
+			txw.commit();
+		}
+		let txr = m.read_transaction();
+		assert_eq!(
+			format!("{:?}", read_f64s(&txr, h, 900, 2000)),
+			"[(Timestamp(1000), 1000.0), (Timestamp(1010), 1010.0), \
+			(Timestamp(1020), 1020.0), (Timestamp(1030), 1030.0), \
+			(Timestamp(1040), 1040.0), (Timestamp(1050), 1050.0)]"
+		);
+	}
+
 	fn create_three_blocks(h: u64, tx: &mut ::metadata::Transaction)
 	{
 		{
@@ -1069,7 +1113,7 @@ mod tests
 	#[test]
 	fn blocks_exact_file()
 	{
-		let (tmp,m) = n();
+		let (tmp,mut m) = n();
 		{
 			let mut txw = m.write_transaction();
 			let h = txw.create_series("horse", "F").unwrap();
@@ -1077,6 +1121,7 @@ mod tests
 			insert_f64(&mut txw, h, Timestamp(43), 43.0);
 			txw.commit();
 		}
+		m.start_merge_thread();
 		drop(m);
 
 		use std::io::Seek;
@@ -1094,6 +1139,67 @@ mod tests
 				0, 0, 0, 0, 0, 0, 0, 43, 64, 69, 128
 			]
 		);
+	}
+
+	fn blocks_10k_knives_basic(do_restart: bool)
+	{
+		let (tmp,mut m) = n();
+		if !do_restart
+			{ m.start_merge_thread(); }
+		{
+			let mut txw = m.write_transaction();
+			for idx in 1..10001
+			{
+				let h = txw.create_series(&format!("k{}", idx), "F").unwrap();
+				insert_f64(&mut txw, h, Timestamp(100), 100.0);
+				insert_f64(&mut txw, h, Timestamp(101), 101.0);
+				insert_f64(&mut txw, h, Timestamp(102), 102.0);
+				insert_f64(&mut txw, h, Timestamp(103), 103.0);
+				insert_f64(&mut txw, h, Timestamp(104), 104.0);
+				insert_f64(&mut txw, h, Timestamp(105), 105.0);
+			}
+			txw.commit();
+		}
+		{
+			let mut txw = m.write_transaction();
+			for h in 1..10001
+			{
+				insert_f64(&mut txw, h, Timestamp(106), 106.0);
+			}
+			txw.commit();
+		}
+
+		if do_restart
+		{
+			let m2 = Db::open(tmp.path().to_path_buf());
+			m = m2;
+		}
+
+		{
+			let txr = m.read_transaction();
+			for h in 1..10001
+			{
+				let v = read_f64s(&txr, h, 100, 106);
+				assert_eq!(v.get(0).map(|(_,v)| *v), Some(100.0));
+				assert_eq!(v.get(1).map(|(_,v)| *v), Some(101.0));
+				assert_eq!(v.get(2).map(|(_,v)| *v), Some(102.0));
+				assert_eq!(v.get(3).map(|(_,v)| *v), Some(103.0));
+				assert_eq!(v.get(4).map(|(_,v)| *v), Some(104.0));
+				assert_eq!(v.get(5).map(|(_,v)| *v), Some(105.0));
+				assert_eq!(v.get(6).map(|(_,v)| *v), Some(106.0));
+				assert_eq!(v.get(7).map(|(_,v)| *v), None);
+			}
+		}
+	}
+	#[test]
+	fn blocks_10k_knives_restart()
+	{
+		blocks_10k_knives_basic(true);
+	}
+	#[test]
+	fn blocks_10k_knives_atonce()
+	{
+		blocks_10k_knives_basic(false);
 	}
 
 	#[test]

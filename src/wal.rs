@@ -373,13 +373,38 @@ impl MemoryWal
 #[cfg(test)]
 mod tests
 {
+	extern crate tempfile;
 	use ::wal::MemoryWal;
+	use ::block_file::BlockFile;
+	use ::wal::merge;
 
 	fn r(w: &MemoryWal, pos: usize, len: usize) -> Vec<u8>
 	{
 		let mut b = vec![0u8; len];
 		w.read(pos, &mut b);
 		b.to_vec()
+	}
+
+	fn blockfile() -> (tempfile::TempDir, BlockFile)
+	{
+		let tmp = tempfile::TempDir::new().unwrap();
+		let b = BlockFile::new(&tmp.path().join("bl"));
+		(tmp, b)
+	}
+
+	#[test]
+	fn wal_to_disk()
+	{
+		let w = MemoryWal::new();
+		w.write(0, b"abc");
+		w.write(3, b"def");
+		w.write(9, b"XXX");
+
+		let (_tmp, b) = blockfile();
+		merge(&w, &b);
+		let mut out = [0u8; 12];
+		b.read(0, &mut out);
+		assert_eq!(&out, b"abcdef\0\0\0XXX");
 	}
 
 	#[test]
@@ -407,6 +432,14 @@ mod tests
 		w.write(10, b"abc");
 		w.write(11, b"lmn");
 		assert_eq!(r(&w, 10, 4), b"almn");
+	}
+	#[test]
+	fn rw4()
+	{
+		let w = MemoryWal::new();
+		w.write(20, b"abc");
+		w.write(10, b"lmn");
+		assert_eq!(r(&w, 10, 13), b"lmn\0\0\0\0\0\0\0abc");
 	}
 	#[test]
 	fn wal_overlap()
