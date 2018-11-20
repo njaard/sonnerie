@@ -355,12 +355,12 @@ fn command<'client>(
 						let mut stdin = child.stdin.as_mut().expect("Failed to open stdin");
 						for (ts,cols) in samples
 						{
-							write!(stdin, "{}  ", ts).unwrap();
+							let _ = write!(stdin, "{}  ", ts);
 							for col in cols
 							{
-								write!(stdin, " {}", col).unwrap();
+								let _ = write!(stdin, " {}", col);
 							}
-							writeln!(stdin, "").unwrap();
+							let _ = writeln!(stdin, "");
 						}
 					}
 					child.stdin.take();
@@ -418,20 +418,19 @@ fn command<'client>(
 					let display =
 						|name: &str, ts, cols: &[Column]|
 						{
-							write!(stdin, "{}\t{}", name, ts).unwrap();
+							let _ = write!(stdin, "{}\t{}", name, ts);
 							for col in cols
 							{
-								write!(stdin, " {}", col).unwrap();
+								let _ = write!(stdin, " {}", col);
 							}
-							writeln!(stdin, "").unwrap();
+							let _ = writeln!(stdin, "");
 						};
 
 					res = client.dump_range(like, &from, &to, display);
 				}
 				if let Err(_) = res
 				{
-					writeln!(stdin, "(unexpected failure)")
-						.unwrap();
+					let _ = writeln!(stdin, "(unexpected failure)");
 					return Some(false);
 				}
 			}
@@ -469,20 +468,19 @@ fn command<'client>(
 					let display =
 						|name: &str, ts, cols: &[Column]|
 						{
-							write!(stdin, "{}\t{}", name, ts).unwrap();
+							let _ = write!(stdin, "{}\t{}", name, ts);
 							for col in cols
 							{
-								write!(stdin, " {}", col).unwrap();
+								let _ = write!(stdin, " {}", col);
 							}
-							writeln!(stdin, "").unwrap();
+							let _ = writeln!(stdin, "");
 						};
 
 					res = client.read_direction_like(like, &date, dir, display);
 				}
 				if let Err(_) = res
 				{
-					writeln!(stdin, "(unexpected failure)")
-						.unwrap();
+					let _ = writeln!(stdin, "(unexpected failure)");
 					return Some(false);
 				}
 			}
