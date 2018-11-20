@@ -271,8 +271,11 @@ mod tests
 		(tmp, m)
 	}
 
-	fn read_f64s(tx: &::metadata::Transaction, series_id: u64, timestamp1: u64, timestamp2: u64)
-		-> Vec<(Timestamp, f64)>
+	fn read_vals<T>(tx: &::metadata::Transaction, series_id: u64, timestamp1: u64, timestamp2: u64)
+		-> Vec<(Timestamp, T)>
+	where
+		T: std::str::FromStr + std::fmt::Debug,
+		<T as std::str::FromStr>::Err: std::fmt::Debug
 	{
 		let mut results = vec!();
 
@@ -291,9 +294,11 @@ mod tests
 	}
 
 	/// inserts a single value into a series
-	fn insert_f64(
-		tx: &mut ::metadata::Transaction, series_id: u64, ts: Timestamp, value: f64,
+	fn insert_val<T>(
+		tx: &mut ::metadata::Transaction, series_id: u64, ts: Timestamp, value: T,
 	)
+	where T: std::str::FromStr + std::fmt::Debug + std::fmt::Display,
+		<T as std::str::FromStr>::Err: std::fmt::Debug
 	{
 		let mut has = true;
 		tx.insert_into_series(
@@ -327,28 +332,28 @@ mod tests
 		{
 			let mut txw = m.write_transaction();
 			let h = txw.create_series("horse", "F").unwrap();
-			insert_f64(&mut txw, h, Timestamp(1000), 42.0);
-			insert_f64(&mut txw, h, Timestamp(1001), 43.0);
+			insert_val::<f64>(&mut txw, h, Timestamp(1000), 42.0);
+			insert_val::<f64>(&mut txw, h, Timestamp(1001), 43.0);
 
 			assert_eq!(
-				format!("{:?}", read_f64s(&txw, h, 1000, 1001)),
+				format!("{:?}", read_vals::<f64>(&txw, h, 1000, 1001)),
 				"[(Timestamp(1000), 42.0), (Timestamp(1001), 43.0)]"
 			);
 
 			let txr = m.read_transaction();
 			assert_eq!(
-				format!("{:?}", read_f64s(&txr, h, 1000, 1001)),
+				format!("{:?}", read_vals::<f64>(&txr, h, 1000, 1001)),
 				"[]"
 			);
 
 			txw.commit();
 			assert_eq!(
-				format!("{:?}", read_f64s(&txr, h, 1000, 1001)),
+				format!("{:?}", read_vals::<f64>(&txr, h, 1000, 1001)),
 				"[]"
 			);
 			let txr2 = m.read_transaction();
 			assert_eq!(
-				format!("{:?}", read_f64s(&txr2, h, 1000, 1001)),
+				format!("{:?}", read_vals::<f64>(&txr2, h, 1000, 1001)),
 				"[(Timestamp(1000), 42.0), (Timestamp(1001), 43.0)]"
 			);
 
@@ -362,8 +367,8 @@ mod tests
 		{
 			let mut txw = m.write_transaction();
 			let h = txw.create_series("horse", "F").unwrap();
-			insert_f64(&mut txw, h, Timestamp(1000), 42.0);
-			insert_f64(&mut txw, h, Timestamp(1001), 43.0);
+			insert_val::<f64>(&mut txw, h, Timestamp(1000), 42.0);
+			insert_val::<f64>(&mut txw, h, Timestamp(1001), 43.0);
 			txw.commit();
 		}
 		drop(m);
@@ -373,7 +378,7 @@ mod tests
 			let txr = m.read_transaction();
 			let h = txr.series_id("horse").unwrap();
 			assert_eq!(
-				format!("{:?}", read_f64s(&txr, h, 1000, 1001)),
+				format!("{:?}", read_vals::<f64>(&txr, h, 1000, 1001)),
 				"[(Timestamp(1000), 42.0), (Timestamp(1001), 43.0)]"
 			);
 		}
@@ -387,16 +392,16 @@ mod tests
 			let mut txw = m.write_transaction();
 			let h1 = txw.create_series("horse1", "F").unwrap();
 			let h2 = txw.create_series("horse2", "F").unwrap();
-			insert_f64(&mut txw, h1, Timestamp(1000), 101.0);
-			insert_f64(&mut txw, h1, Timestamp(1001), 102.0);
-			insert_f64(&mut txw, h2, Timestamp(1000), 201.0);
-			insert_f64(&mut txw, h2, Timestamp(1001), 202.0);
+			insert_val::<f64>(&mut txw, h1, Timestamp(1000), 101.0);
+			insert_val::<f64>(&mut txw, h1, Timestamp(1001), 102.0);
+			insert_val::<f64>(&mut txw, h2, Timestamp(1000), 201.0);
+			insert_val::<f64>(&mut txw, h2, Timestamp(1001), 202.0);
 			assert_eq!(
-				format!("{:?}", read_f64s(&txw, h1, 1000, 1001)),
+				format!("{:?}", read_vals::<f64>(&txw, h1, 1000, 1001)),
 				"[(Timestamp(1000), 101.0), (Timestamp(1001), 102.0)]"
 			);
 			assert_eq!(
-				format!("{:?}", read_f64s(&txw, h2, 1000, 1001)),
+				format!("{:?}", read_vals::<f64>(&txw, h2, 1000, 1001)),
 				"[(Timestamp(1000), 201.0), (Timestamp(1001), 202.0)]"
 			);
 		}
@@ -409,16 +414,16 @@ mod tests
 		{
 			let mut txw = m.write_transaction();
 			let h = txw.create_series("horse", "F").unwrap();
-			insert_f64(&mut txw, h, Timestamp(1000), 1.0);
-			insert_f64(&mut txw, h, Timestamp(1001), 2.0);
-			insert_f64(&mut txw, h, Timestamp(1002), 3.0);
-			insert_f64(&mut txw, h, Timestamp(1003), 4.0);
+			insert_val::<f64>(&mut txw, h, Timestamp(1000), 1.0);
+			insert_val::<f64>(&mut txw, h, Timestamp(1001), 2.0);
+			insert_val::<f64>(&mut txw, h, Timestamp(1002), 3.0);
+			insert_val::<f64>(&mut txw, h, Timestamp(1003), 4.0);
 			assert_eq!(
-				format!("{:?}", read_f64s(&txw, h, 1001, 1003)),
+				format!("{:?}", read_vals::<f64>(&txw, h, 1001, 1003)),
 				"[(Timestamp(1001), 2.0), (Timestamp(1002), 3.0), (Timestamp(1003), 4.0)]"
 			);
 			assert_eq!(
-				format!("{:?}", read_f64s(&txw, h, 1001, 1001)),
+				format!("{:?}", read_vals::<f64>(&txw, h, 1001, 1001)),
 				"[(Timestamp(1001), 2.0)]"
 			);
 		}
@@ -432,10 +437,10 @@ mod tests
 		let h = txw.create_series("horse", "F").unwrap();
 		for x in 1..30000
 		{
-			insert_f64(&mut txw, h, Timestamp(x), x as f64);
+			insert_val::<f64>(&mut txw, h, Timestamp(x), x as f64);
 		}
 		assert_eq!(
-			format!("{:?}", read_f64s(&txw, h, 10012, 10012)),
+			format!("{:?}", read_vals::<f64>(&txw, h, 10012, 10012)),
 			"[(Timestamp(10012), 10012.0)]"
 		);
 
@@ -443,7 +448,7 @@ mod tests
 		{
 			for len in 1..17
 			{
-				let s = read_f64s(&txw, h, start, start+len-1);
+				let s = read_vals::<f64>(&txw, h, start, start+len-1);
 				assert_eq!(s.len(), len as usize);
 				for (idx,a) in s.iter().enumerate()
 				{
@@ -492,7 +497,7 @@ mod tests
 		}
 		txw.insert_into_series(h, generator_f64(&items_to_insert)).unwrap();
 		assert_eq!(
-			format!("{:?}", read_f64s(&txw, h, 10012, 10012)),
+			format!("{:?}", read_vals::<f64>(&txw, h, 10012, 10012)),
 			"[(Timestamp(10012), 100120.0)]"
 		);
 
@@ -500,7 +505,7 @@ mod tests
 		{
 			for len in 1..17
 			{
-				let s = read_f64s(&txw, h, start, start+len-1);
+				let s = read_vals::<f64>(&txw, h, start, start+len-1);
 				assert_eq!(s.len(), len as usize);
 				for (idx,a) in s.iter().enumerate()
 				{
@@ -537,11 +542,11 @@ mod tests
 			txw.insert_into_series(h1, generator_f64(&items_to_insert)).unwrap();
 		}
 		assert_eq!(
-			format!("{:?}", read_f64s(&txw, h1, 1, 1)),
+			format!("{:?}", read_vals::<f64>(&txw, h1, 1, 1)),
 			"[(Timestamp(1), 1.0)]"
 		);
 		assert_eq!(
-			format!("{:?}", read_f64s(&txw, h2, 1, 1)),
+			format!("{:?}", read_vals::<f64>(&txw, h2, 1, 1)),
 			"[(Timestamp(1), 1.0)]"
 		);
 
@@ -755,7 +760,7 @@ mod tests
 			txw.insert_into_series(h, generator_f64(&items_to_insert)).unwrap();
 		}
 		assert_eq!(
-			format!("{:?}", read_f64s(&txw, h, 900, 2000)),
+			format!("{:?}", read_vals::<f64>(&txw, h, 900, 2000)),
 			"[(Timestamp(900), 900.0), (Timestamp(901), 901.0), \
 			(Timestamp(902), 902.0), (Timestamp(1000), 1000.0), \
 			(Timestamp(1010), 1010.0), (Timestamp(1011), 1011.0), \
@@ -796,7 +801,7 @@ mod tests
 		}
 		let txr = m.read_transaction();
 		assert_eq!(
-			format!("{:?}", read_f64s(&txr, h, 900, 2000)),
+			format!("{:?}", read_vals::<f64>(&txr, h, 900, 2000)),
 			"[(Timestamp(1000), 1000.0), (Timestamp(1010), 1010.0), \
 			(Timestamp(1020), 1020.0), (Timestamp(1030), 1030.0), \
 			(Timestamp(1040), 1040.0), (Timestamp(1050), 1050.0)]"
@@ -849,7 +854,7 @@ mod tests
 		create_three_blocks(h, &mut txw);
 		txw.erase_range(h, Timestamp(400), Timestamp(499)).unwrap();
 		assert_eq!(
-			format!("{:?}", read_f64s(&txw, h, 0, 1000)),
+			format!("{:?}", read_vals::<f64>(&txw, h, 0, 1000)),
 			"[(Timestamp(300), 300.0), (Timestamp(310), 310.0), \
 			(Timestamp(320), 320.0), (Timestamp(330), 330.0), \
 			(Timestamp(500), 500.0), (Timestamp(510), 510.0), \
@@ -868,7 +873,7 @@ mod tests
 		create_three_blocks(h, &mut txw);
 		txw.erase_range(h, Timestamp(410), Timestamp(420)).unwrap();
 		assert_eq!(
-			format!("{:?}", read_f64s(&txw, h, 0, 1000)),
+			format!("{:?}", read_vals::<f64>(&txw, h, 0, 1000)),
 			"[(Timestamp(300), 300.0), (Timestamp(310), 310.0), \
 			(Timestamp(320), 320.0), (Timestamp(330), 330.0), \
 			(Timestamp(400), 400.0), \
@@ -889,7 +894,7 @@ mod tests
 		create_three_blocks(h, &mut txw);
 		txw.erase_range(h, Timestamp(400), Timestamp(400)).unwrap();
 		assert_eq!(
-			format!("{:?}", read_f64s(&txw, h, 0, 1000)),
+			format!("{:?}", read_vals::<f64>(&txw, h, 0, 1000)),
 			"[(Timestamp(300), 300.0), (Timestamp(310), 310.0), \
 			(Timestamp(320), 320.0), (Timestamp(330), 330.0), \
 			(Timestamp(410), 410.0), \
@@ -911,7 +916,7 @@ mod tests
 		create_three_blocks(h, &mut txw);
 		txw.erase_range(h, Timestamp(420), Timestamp(510)).unwrap();
 		assert_eq!(
-			format!("{:?}", read_f64s(&txw, h, 0, 1000)),
+			format!("{:?}", read_vals::<f64>(&txw, h, 0, 1000)),
 			"[(Timestamp(300), 300.0), (Timestamp(310), 310.0), \
 			(Timestamp(320), 320.0), (Timestamp(330), 330.0), \
 			(Timestamp(400), 400.0), (Timestamp(410), 410.0), \
@@ -930,7 +935,7 @@ mod tests
 		create_three_blocks(h, &mut txw);
 		txw.erase_range(h, Timestamp(310), Timestamp(520)).unwrap();
 		assert_eq!(
-			format!("{:?}", read_f64s(&txw, h, 0, 1000)),
+			format!("{:?}", read_vals::<f64>(&txw, h, 0, 1000)),
 			"[(Timestamp(300), 300.0), (Timestamp(530), 530.0)]"
 		);
 	}
@@ -940,15 +945,15 @@ mod tests
 		{
 			let mut txw = m.write_transaction();
 			let h1 = txw.create_series("horse1", "F").unwrap();
-			insert_f64(&mut txw, h1, Timestamp(1000), 101.0);
-			insert_f64(&mut txw, h1, Timestamp(1001), 102.0);
+			insert_val::<f64>(&mut txw, h1, Timestamp(1000), 101.0);
+			insert_val::<f64>(&mut txw, h1, Timestamp(1001), 102.0);
 			txw.commit();
 		}
 		{
 			let mut txw = m.write_transaction();
 			let h2 = txw.create_series("horse2", "F").unwrap();
-			insert_f64(&mut txw, h2, Timestamp(1000), 201.0);
-			insert_f64(&mut txw, h2, Timestamp(1001), 202.0);
+			insert_val::<f64>(&mut txw, h2, Timestamp(1000), 201.0);
+			insert_val::<f64>(&mut txw, h2, Timestamp(1001), 202.0);
 			txw.commit();
 		}
 	}
@@ -976,11 +981,11 @@ mod tests
 		let h1 = txr.series_id("horse1").unwrap();
 		let h2 = txr.series_id("horse2").unwrap();
 		assert_eq!(
-			format!("{:?}", read_f64s(&txr, h1, 1000, 1001)),
+			format!("{:?}", read_vals::<f64>(&txr, h1, 1000, 1001)),
 			"[(Timestamp(1000), 101.0), (Timestamp(1001), 102.0)]"
 		);
 		assert_eq!(
-			format!("{:?}", read_f64s(&txr, h2, 1000, 1001)),
+			format!("{:?}", read_vals::<f64>(&txr, h2, 1000, 1001)),
 			"[(Timestamp(1000), 201.0), (Timestamp(1001), 202.0)]"
 		);
 	}
@@ -998,11 +1003,11 @@ mod tests
 		let h1 = txr.series_id("horse1").unwrap();
 		let h2 = txr.series_id("horse2").unwrap();
 		assert_eq!(
-			format!("{:?}", read_f64s(&txr, h1, 1000, 1001)),
+			format!("{:?}", read_vals::<f64>(&txr, h1, 1000, 1001)),
 			"[(Timestamp(1000), 101.0), (Timestamp(1001), 102.0)]"
 		);
 		assert_eq!(
-			format!("{:?}", read_f64s(&txr, h2, 1000, 1001)),
+			format!("{:?}", read_vals::<f64>(&txr, h2, 1000, 1001)),
 			"[(Timestamp(1000), 201.0), (Timestamp(1001), 202.0)]"
 		);
 	}
@@ -1014,8 +1019,8 @@ mod tests
 		{
 			let mut txw = m.write_transaction();
 			let h = txw.create_series("horse", "F").unwrap();
-			insert_f64(&mut txw, h, Timestamp(1000), 42.0);
-			insert_f64(&mut txw, h, Timestamp(1001), 43.0);
+			insert_val::<f64>(&mut txw, h, Timestamp(1000), 42.0);
+			insert_val::<f64>(&mut txw, h, Timestamp(1001), 43.0);
 			// don't commit
 		}
 		drop(m);
@@ -1043,8 +1048,8 @@ mod tests
 		let (_tmp,m) = n();
 		let mut txw = m.write_transaction();
 		let h = txw.create_series("horse", "F").unwrap();
-		insert_f64(&mut txw, h, Timestamp(1000), 42.0);
-		insert_f64(&mut txw, h, Timestamp(1000), 43.0);
+		insert_val::<f64>(&mut txw, h, Timestamp(1000), 42.0);
+		insert_val::<f64>(&mut txw, h, Timestamp(1000), 43.0);
 		txw.commit();
 	}
 
@@ -1086,11 +1091,11 @@ mod tests
 		let (_tmp,m) = n();
 		let mut txw = m.write_transaction();
 		let h = txw.create_series("horse", "F").unwrap();
-		insert_f64(&mut txw, h, Timestamp(1000), 42.0);
-		insert_f64(&mut txw, h, Timestamp(998), 40.0);
-		insert_f64(&mut txw, h, Timestamp(999), 41.0);
+		insert_val::<f64>(&mut txw, h, Timestamp(1000), 42.0);
+		insert_val::<f64>(&mut txw, h, Timestamp(998), 40.0);
+		insert_val::<f64>(&mut txw, h, Timestamp(999), 41.0);
 		assert_eq!(
-			format!("{:?}", read_f64s(&txw, h, 999, 1001)),
+			format!("{:?}", read_vals::<f64>(&txw, h, 999, 1001)),
 			"[(Timestamp(999), 41.0), (Timestamp(1000), 42.0)]"
 		);
 	}
@@ -1101,11 +1106,11 @@ mod tests
 		let (_tmp,m) = n();
 		let mut txw = m.write_transaction();
 		let h = txw.create_series("horse", "F").unwrap();
-		insert_f64(&mut txw, h, Timestamp(1000), 40.0);
-		insert_f64(&mut txw, h, Timestamp(1002), 42.0);
-		insert_f64(&mut txw, h, Timestamp(1001), 41.0);
+		insert_val::<f64>(&mut txw, h, Timestamp(1000), 40.0);
+		insert_val::<f64>(&mut txw, h, Timestamp(1002), 42.0);
+		insert_val::<f64>(&mut txw, h, Timestamp(1001), 41.0);
 		assert_eq!(
-			format!("{:?}", read_f64s(&txw, h, 1000, 1002)),
+			format!("{:?}", read_vals::<f64>(&txw, h, 1000, 1002)),
 			"[(Timestamp(1000), 40.0), (Timestamp(1001), 41.0), (Timestamp(1002), 42.0)]"
 		);
 	}
@@ -1117,8 +1122,8 @@ mod tests
 		{
 			let mut txw = m.write_transaction();
 			let h = txw.create_series("horse", "F").unwrap();
-			insert_f64(&mut txw, h, Timestamp(42), 42.0);
-			insert_f64(&mut txw, h, Timestamp(43), 43.0);
+			insert_val::<f64>(&mut txw, h, Timestamp(42), 42.0);
+			insert_val::<f64>(&mut txw, h, Timestamp(43), 43.0);
 			txw.commit();
 		}
 		m.start_merge_thread();
@@ -1151,12 +1156,12 @@ mod tests
 			for idx in 1..10001
 			{
 				let h = txw.create_series(&format!("k{}", idx), "F").unwrap();
-				insert_f64(&mut txw, h, Timestamp(100), 100.0);
-				insert_f64(&mut txw, h, Timestamp(101), 101.0);
-				insert_f64(&mut txw, h, Timestamp(102), 102.0);
-				insert_f64(&mut txw, h, Timestamp(103), 103.0);
-				insert_f64(&mut txw, h, Timestamp(104), 104.0);
-				insert_f64(&mut txw, h, Timestamp(105), 105.0);
+				insert_val::<f64>(&mut txw, h, Timestamp(100), 100.0);
+				insert_val::<f64>(&mut txw, h, Timestamp(101), 101.0);
+				insert_val::<f64>(&mut txw, h, Timestamp(102), 102.0);
+				insert_val::<f64>(&mut txw, h, Timestamp(103), 103.0);
+				insert_val::<f64>(&mut txw, h, Timestamp(104), 104.0);
+				insert_val::<f64>(&mut txw, h, Timestamp(105), 105.0);
 			}
 			txw.commit();
 		}
@@ -1164,7 +1169,7 @@ mod tests
 			let mut txw = m.write_transaction();
 			for h in 1..10001
 			{
-				insert_f64(&mut txw, h, Timestamp(106), 106.0);
+				insert_val::<f64>(&mut txw, h, Timestamp(106), 106.0);
 			}
 			txw.commit();
 		}
@@ -1179,7 +1184,7 @@ mod tests
 			let txr = m.read_transaction();
 			for h in 1..10001
 			{
-				let v = read_f64s(&txr, h, 100, 106);
+				let v = read_vals::<f64>(&txr, h, 100, 106);
 				assert_eq!(v.get(0).map(|(_,v)| *v), Some(100.0));
 				assert_eq!(v.get(1).map(|(_,v)| *v), Some(101.0));
 				assert_eq!(v.get(2).map(|(_,v)| *v), Some(102.0));
@@ -1203,6 +1208,28 @@ mod tests
 	}
 
 	#[test]
+	fn blocks_100_knives()
+	{
+		let (_tmp,m) = n();
+		for idx in 0..100
+		{
+			let mut txw = m.write_transaction();
+			let h = txw.create_series("horse", "u").unwrap();
+			insert_val::<u32>(&mut txw, h, Timestamp(100+idx as u64), 100+idx as u32);
+			txw.commit();
+		}
+		{
+			let txr = m.read_transaction();
+			let h = txr.series_id("horse").unwrap();
+			let vals = read_vals::<u32>(&txr, h, 0, 200);
+			for idx in 0..100
+			{
+				assert_eq!(vals[idx].1, 100+idx as u32);
+			}
+		}
+	}
+
+	#[test]
 	fn generation_increases()
 	{
 		let (tmp, m) = n();
@@ -1222,21 +1249,21 @@ mod tests
 		{
 			let mut txw = m.write_transaction();
 			let h = txw.create_series("horse", "F").unwrap();
-			insert_f64(&mut txw, h, Timestamp(42), 42.0);
+			insert_val::<f64>(&mut txw, h, Timestamp(42), 42.0);
 			txw.commit();
 		}
 		assert_eq!(read_generation(), 1);
 		{
 			let mut txw = m.write_transaction();
 			let h = txw.series_id("horse").unwrap();
-			insert_f64(&mut txw, h, Timestamp(43), 43.0);
+			insert_val::<f64>(&mut txw, h, Timestamp(43), 43.0);
 			txw.commit();
 		}
 		assert_eq!(read_generation(), 2);
 		{
 			let mut txw = m.write_transaction();
 			let h = txw.series_id("horse").unwrap();
-			insert_f64(&mut txw, h, Timestamp(44), 44.0);
+			insert_val::<f64>(&mut txw, h, Timestamp(44), 44.0);
 			txw.commit();
 		}
 		assert_eq!(read_generation(), 3);
