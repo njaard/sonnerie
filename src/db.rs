@@ -944,22 +944,22 @@ mod tests
 	{
 		{
 			let mut txw = m.write_transaction();
-			let h1 = txw.create_series("horse1", "F").unwrap();
-			insert_val::<f64>(&mut txw, h1, Timestamp(1000), 101.0);
-			insert_val::<f64>(&mut txw, h1, Timestamp(1001), 102.0);
+			let h1 = txw.create_series("horse1", "u").unwrap();
+			insert_val::<u32>(&mut txw, h1, Timestamp(1000), 101);
+			insert_val::<u32>(&mut txw, h1, Timestamp(1001), 102);
 			txw.commit();
 		}
 		{
 			let mut txw = m.write_transaction();
 			let h2 = txw.create_series("horse2", "F").unwrap();
-			insert_val::<f64>(&mut txw, h2, Timestamp(1000), 201.0);
-			insert_val::<f64>(&mut txw, h2, Timestamp(1001), 202.0);
+			insert_val::<f32>(&mut txw, h2, Timestamp(1000), 201.0);
+			insert_val::<f32>(&mut txw, h2, Timestamp(1001), 202.0);
 			txw.commit();
 		}
 	}
 
 	#[test]
-	fn dump_some()
+	fn list_like()
 	{
 		let (_tmp,m) = n();
 		create_two_on(&m);
@@ -969,6 +969,29 @@ mod tests
 		txr.series_like("horse%", |_,_| count +=1 ).unwrap();
 
 		assert_eq!(count, 2);
+	}
+
+	#[test]
+	fn dump_like()
+	{
+		let (_tmp,m) = n();
+		create_two_on(&m);
+
+		let txr = m.read_transaction();
+		let mut s = String::new();
+
+		txr.dump_series_like(
+			"horse%", Timestamp(0), Timestamp(5000),
+			|n, ts, _fmt, data|
+			{
+				s += &format!("{} {} {:?}\n", n, ts.0, data);
+			}
+		).unwrap();
+		assert_eq!(s, "\
+		horse1 1000 [0, 0, 0, 101]\n\
+		horse1 1001 [0, 0, 0, 102]\n\
+		horse2 1000 [64, 105, 32, 0, 0, 0, 0, 0]\n\
+		horse2 1001 [64, 105, 64, 0, 0, 0, 0, 0]\n");
 	}
 
 	#[test]

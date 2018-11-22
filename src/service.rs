@@ -491,25 +491,15 @@ impl<'db> Session<'db>
 
 			if let Some(tx) = self.transaction.as_ref()
 			{
-				{
-					let print_res =
-						|name: String, series_id: u64|
-						{
-							tx.read_series(
-								series_id,
-								ts1,
-								ts2,
-								|ts, format, data|
-								{
-									write!(writer, "{}\t{}\t", escape(&name), ts.0).unwrap();
-									format.to_protocol_format(data, writer).unwrap();
-									writeln!(writer, "").unwrap();
-								}
-							);
-						};
-
-					tx.series_like(like, print_res)?;
-				}
+				tx.dump_series_like(
+					like, ts1, ts2,
+					|name, ts, format, data|
+					{
+						write!(writer, "{}\t{}\t", escape(&name), ts.0).unwrap();
+						format.to_protocol_format(data, writer).unwrap();
+						writeln!(writer, "").unwrap();
+					}
+				)?;
 				writeln!(writer, "").unwrap();
 			}
 			else

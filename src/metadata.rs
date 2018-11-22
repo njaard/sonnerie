@@ -215,7 +215,7 @@ impl<'db> Transaction<'db>
 			from series_blocks
 			where
 				series_id=? and
-				? >= first_timestamp AND last_timestamp >=  ?
+				? >= first_timestamp AND last_timestamp >= ?
 		").unwrap();
 
 		let mut rows = s.query(&[
@@ -713,6 +713,110 @@ impl<'db> Transaction<'db>
 			after = None;
 		}
 		(before, after)
+	}
+
+	pub fn dump_series_like<Output>(
+		&self,
+		like: &str,
+		first_timestamp: Timestamp,
+		last_timestamp: Timestamp,
+		mut out: Output,
+	) -> Result<(), String>
+	where
+		Output: FnMut(&str, &Timestamp, &RowFormat, &[u8]),
+	{
+		let fd = self.metadata.blocks_raw_fd;
+
+		let mut c = self.metadata.db.prepare_cached(
+			"with selected_series as (select * from series where name like ?)
+			select
+				name, format,
+				first_timestamp,
+				last_timestamp,
+				offset,
+				capacity,
+				size
+			from selected_series
+			natural left join series_blocks
+			where
+				? >= first_timestamp AND last_timestamp >= ?
+			order by name, first_timestamp
+			"
+		).unwrap();
+		let mut rows = c.query(&[
+			&like,
+			&last_timestamp.to_sqlite(),
+			&first_timestamp.to_sqlite(),
+		]).unwrap();
+		let mut block_data = vec!();
+
+		let mut names = Vec::with_capacity(32);
+		let mut fmts = Vec::with_capacity(32);
+		let mut blocks_group = Vec::with_capacity(32);
+
+		loop
+		{
+			names.clear();
+			fmts.clear();
+			blocks_group.clear();
+
+			while let Some(row) = rows.next()
+			{
+				let row = row.unwrap();
+				let name: String = row.get(0);
+				let fmt: String = row.get(1);
+
+				let b = Block
+				{
+					first_timestamp: Timestamp::from_sqlite(row.get(2)),
+					last_timestamp: Timestamp::from_sqlite(row.get(3)),
+					offset: row.get::<_,i64>(4) as u64,
+					capacity: row.get::<_,i64>(5) as u64,
+					size: row.get::<_,i64>(6) as u64,
+				};
+
+				unsafe
+				{
+					libc::posix_fadvise(
+						fd,
+						b.offset as i64,
+						b.size as i64,
+						libc::POSIX_FADV_WILLNEED
+					);
+				}
+
+				names.push( name );
+				fmts.push( fmt );
+				blocks_group.push( b );
+
+				if blocks_group.len() == 32
+					{ break; }
+			}
+
+			if blocks_group.len() == 0 { break; }
+
+			for ((name, fmt), block) in names.iter().zip(&fmts).zip(&blocks_group)
+			{
+				let format = parse_row_format(&fmt);
+				block_data.resize(block.size as usize, 0u8);
+				self.metadata.blocks
+					.read(block.offset, &mut block_data[..]);
+
+				for sample in block_data.chunks(format.row_size())
+				{
+					let t = Timestamp(BigEndian::read_u64(&sample[0..8]));
+					if t >= first_timestamp
+					{
+						if t > last_timestamp
+						{
+							break;
+						}
+						out(&name, &t, &*format, &sample[8..]);
+					}
+				}
+			}
+		}
+		Ok(())
 	}
 
 	pub fn read_direction_multi<Something, It, Output>(
