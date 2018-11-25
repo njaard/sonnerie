@@ -1,6 +1,6 @@
 [package]
 name = "sonnerie"
-version = "0.3.4"
+version = "0.4.0"
 authors = ["Charles Samuels <kalle@eventures.vc>", "e.ventures Management LLC"]
 description = "An easy timeseries database"
 license = "BSD-2-Clause"
@@ -21,7 +21,7 @@ chrono = "0.4.6"
 intrusive-collections = "0.7.5"
 rustyline = "2"
 shlex = "0.1.1"
-sonnerie-api = {version="0.3.0", path="sonnerie-api"}
+sonnerie-api = {version="0.4.0", path="sonnerie-api"}
 escape_string = {version="0.1.0", path="escape_string"}
 linestream = {version="0.1.0", path="linestream"}
 daemonize= "0.3"
