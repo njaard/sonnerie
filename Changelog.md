@@ -1,3 +1,13 @@
+# 0.4.0: 2018-11-25
+* Optimize dump
+* Increase write lock timeout
+* Client no longer exits if you exit the pager
+* Set sockets to nonblocking mode so server doesn't get stuck sometimes
+* Improve write concurrency
+* Name threads
+* Protocol incompatibility: entire command now complete before errors are reported
+* Add option to change metadata directory
+
 # 0.3.4: 2018-11-12
 * Don't store the wrong end-of-data offset
 
