@@ -6,7 +6,7 @@ license = "BSD-2-Clause"
 description = "Read lines from a socket"
 repository = "https://github.com/njaard/sonnerie"
 keywords = ["lines", "stream", "socket", "nonblocking"]
-#documentation = "https://docs.rs/linestream/"
+documentation = "https://docs.rs/linestream/"
 
 [dependencies]
 libc = "0.2"
