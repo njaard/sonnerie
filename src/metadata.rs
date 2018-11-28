@@ -728,7 +728,7 @@ impl<'db> Transaction<'db>
 		let fd = self.metadata.blocks_raw_fd;
 
 		let mut c = self.metadata.db.prepare_cached(
-			"with selected_series as (select * from series where name like ?)
+			"
 			select
 				name, format,
 				first_timestamp,
@@ -736,11 +736,10 @@ impl<'db> Transaction<'db>
 				offset,
 				capacity,
 				size
-			from selected_series
-			natural left join series_blocks
-			where
-				? >= first_timestamp AND last_timestamp >= ?
-			order by name, first_timestamp
+			from series_blocks
+			join series using (series_id)
+			where name like ?
+				and ? >= first_timestamp AND last_timestamp >= ?
 			"
 		).unwrap();
 		let mut rows = c.query(&[
