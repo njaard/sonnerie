@@ -63,7 +63,7 @@ impl Db
 		{
 			let metadata = Metadata::new(&metadatapath, blocks.clone());
 			max_generation = metadata.last_generation();
-			next_offset = metadata.next_offset.get();
+			next_offset = metadata.next_offset();
 		}
 
 		if let Some((gen, _)) = unflushed_wal_files.back()
@@ -168,7 +168,7 @@ impl Db
 
 	pub fn read_transaction(&self) -> Transaction
 	{
-		let metadata = Metadata::open(0, &self.metadatapath, self.blocks.clone());
+		let metadata = Metadata::open(&self.metadatapath, self.blocks.clone());
 		metadata.as_read_transaction()
 	}
 
@@ -180,24 +180,30 @@ impl Db
 
 		self.blocks.set_disk_wal(walwriter);
 		let metadata = Metadata::open(
-			*self.next_offset.lock(), &self.metadatapath, self.blocks.clone()
+			&self.metadatapath, self.blocks.clone()
 		);
 
+		let no: u64 = *self.next_offset.lock();
 		self.unflushed_wal_files.lock().push_back((g, file));
 		metadata.as_write_transaction(
+			no,
 			g,
 			self,
 		)
 	}
 
-	pub fn committing(&self, committed_metadata: &Metadata)
+	pub fn committing(
+		&self,
+		next_offset: u64,
+		generation: u64,
+	)
 	{
 		*self.max_generation.lock() += 1;
-		*self.next_offset.lock() = committed_metadata.next_offset.get();
+		*self.next_offset.lock() = next_offset;
 
 		{
 			let mut l = self.merge_state.0.lock();
-			l.merging_min = committed_metadata.generation;
+			l.merging_min = generation;
 			self.merge_state.1.notify_one();
 		}
 	}

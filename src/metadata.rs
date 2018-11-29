@@ -24,7 +24,6 @@ pub struct Metadata
 	db: rusqlite::Connection,
 	blocks: Arc<Blocks>,
 	blocks_raw_fd: ::std::os::unix::io::RawFd,
-	pub next_offset: Cell<u64>,
 	pub generation: u64,
 }
 
@@ -35,7 +34,7 @@ impl Metadata
 	/// `next_offset` is the end of the block data where new blocks are created
 	/// `f` is the filename of the existing metadata file
 	/// `blocks` is shared between threads
-	pub fn open(next_offset: u64, f: &Path, blocks: Arc<Blocks>)
+	pub fn open(f: &Path, blocks: Arc<Blocks>)
 		-> Metadata
 	{
 		let db = rusqlite::Connection::open_with_flags(
@@ -50,7 +49,6 @@ impl Metadata
 		Metadata
 		{
 			db: db,
-			next_offset: Cell::new(next_offset),
 			blocks: blocks,
 			blocks_raw_fd: fd,
 			generation: 1,
@@ -113,14 +111,26 @@ impl Metadata
 			"
 		).unwrap();
 
-		let next_offset: i64 = db.query_row(
+		let fd = blocks.as_raw_fd();
+		Metadata
+		{
+			db: db,
+			blocks: blocks,
+			blocks_raw_fd: fd,
+			generation: 1,
+		}
+	}
+
+	pub fn next_offset(&self) -> u64
+	{
+		let next_offset: i64 = self.db.query_row(
 			"select offset from end_offset limit 1",
 			&[],
 			|r| r.get(0)
 		).unwrap_or_else(
 			|_|
 			{
-				let next_offset: Option<i64> = db.query_row(
+				let next_offset: Option<i64> = self.db.query_row(
 					"select max(offset+capacity) from series_blocks",
 					&[],
 					|r| r.get(0)
@@ -128,17 +138,7 @@ impl Metadata
 				next_offset.unwrap_or(4096)
 			}
 		);
-		let next_offset = next_offset as u64;
-
-		let fd = blocks.as_raw_fd();
-		Metadata
-		{
-			db: db,
-			next_offset: Cell::new(next_offset),
-			blocks: blocks,
-			blocks_raw_fd: fd,
-			generation: 1,
-		}
+		next_offset as u64
 	}
 
 	/// Called on startup to determine what generation the db is at
@@ -164,12 +164,14 @@ impl Metadata
 			writing: false,
 			committed: false,
 			finishing_on: None,
+			next_offset: Cell::new(0),
 		}
 	}
 
 	/// Starts a transaction and converts me to a writable Transaction
 	pub fn as_write_transaction<'db>(
 		mut self,
+		next_offset: u64,
 		new_generation: u64,
 		finishing_on: &'db Db,
 	)
@@ -182,7 +184,8 @@ impl Metadata
 			metadata: self,
 			writing: true,
 			committed: false,
-			finishing_on: Some(finishing_on)
+			finishing_on: Some(finishing_on),
+			next_offset: Cell::new(next_offset),
 		}
 	}
 }
@@ -193,6 +196,7 @@ pub struct Transaction<'db>
 	writing: bool,
 	committed: bool,
 	finishing_on: Option<&'db Db>,
+	next_offset: Cell<u64>,
 }
 
 impl<'db> Transaction<'db>
@@ -577,7 +581,7 @@ impl<'db> Transaction<'db>
 				&(self.metadata.generation as i64),
 				&first_timestamp.to_sqlite(),
 				&last_timestamp.to_sqlite(),
-				&(self.metadata.next_offset.get() as i64),
+				&(self.next_offset.get() as i64),
 				&(capacity as i64), &(initial_size as i64),
 			]
 		).unwrap();
@@ -585,14 +589,14 @@ impl<'db> Transaction<'db>
 		{
 			first_timestamp: first_timestamp,
 			last_timestamp: last_timestamp,
-			offset: self.metadata.next_offset.get(),
+			offset: self.next_offset.get(),
 			capacity: capacity as u64,
 			size: initial_size as u64,
 		};
 
 
-		self.metadata.next_offset.set(
-			self.metadata.next_offset.get() + capacity as u64
+		self.next_offset.set(
+			self.next_offset.get() + capacity as u64
 		);
 
 		b
@@ -1016,10 +1020,10 @@ impl<'db> Transaction<'db>
 		{
 			self.metadata.blocks.commit();
 			self.finishing_on.unwrap()
-				.committing(&self.metadata);
+				.committing(self.next_offset.get(), self.metadata.generation);
 			self.metadata.db.execute("delete from end_offset", &[]).unwrap();
 			self.metadata.db.execute(
-				"insert into end_offset values(?)", &[&(self.metadata.next_offset.get() as i64)]
+				"insert into end_offset values(?)", &[&(self.next_offset.get() as i64)]
 			).unwrap();
 		}
 		self.committed = true;

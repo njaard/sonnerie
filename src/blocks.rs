@@ -41,7 +41,8 @@ impl Blocks
 	{
 		{
 			let mut m = self.disk_wal.lock();
-			m.as_mut().unwrap().write(position, data);
+			m.as_mut().expect("disk wal locked")
+				.write(position, data);
 		}
 		self.wal.write(position as usize, data);
 	}
