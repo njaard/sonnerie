@@ -176,20 +176,25 @@ impl Db
 	{
 		let g = (*self.max_generation.lock())+1;
 
-		let (walwriter, file) = DiskWalWriter::new(g, &self.path);
-
-		self.blocks.set_disk_wal(walwriter);
 		let metadata = Metadata::open(
 			&self.metadatapath, self.blocks.clone()
 		);
 
 		let no: u64 = *self.next_offset.lock();
-		self.unflushed_wal_files.lock().push_back((g, file));
-		metadata.as_write_transaction(
+		let tx = metadata.as_write_transaction(
 			no,
 			g,
 			self,
-		)
+		);
+
+		// we don't create the disk wal until the tx
+		// is ready to go
+
+		let (walwriter, file) = DiskWalWriter::new(g, &self.path);
+		self.blocks.set_disk_wal(walwriter);
+		self.unflushed_wal_files.lock().push_back((g, file));
+
+		tx
 	}
 
 	pub fn committing(

@@ -179,6 +179,7 @@ impl Metadata
 	{
 		self.db.execute("begin immediate", &[]).unwrap();
 		self.generation = new_generation;
+
 		Transaction
 		{
 			metadata: self,
