@@ -171,33 +171,33 @@ impl Metadata
 	/// Starts a transaction and converts me to a writable Transaction
 	pub fn as_write_transaction<'db>(
 		mut self,
-		next_offset: u64,
-		new_generation: u64,
-		finishing_on: &'db Db,
+		db: &'db Db,
 	)
 		-> Transaction<'db>
 	{
 		self.db.execute("begin immediate", &[]).unwrap();
-		self.generation = new_generation;
+		let no: u64 = *db.next_offset.lock();
+		let g = (*db.max_generation.lock())+1;
+		self.generation = g;
 
 		Transaction
 		{
 			metadata: self,
 			writing: true,
 			committed: false,
-			finishing_on: Some(finishing_on),
-			next_offset: Cell::new(next_offset),
+			finishing_on: Some(db),
+			next_offset: Cell::new(no),
 		}
 	}
 }
 
 pub struct Transaction<'db>
 {
-	metadata: Metadata,
+	pub(crate) metadata: Metadata,
 	writing: bool,
 	committed: bool,
 	finishing_on: Option<&'db Db>,
-	next_offset: Cell<u64>,
+	pub(crate) next_offset: Cell<u64>,
 }
 
 impl<'db> Transaction<'db>
