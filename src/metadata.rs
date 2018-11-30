@@ -1123,6 +1123,10 @@ impl<'m, Generator> Inserter<'m, Generator>
 			{
 				if let Some(previous_block) = self.previous_block
 				{
+					if previous_block.first_timestamp == at
+					{
+						return Err("cannot overwrite timestamp".to_string());
+					}
 					if previous_block.last_timestamp == at
 					{
 						return Err("cannot overwrite timestamp".to_string());

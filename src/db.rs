@@ -1308,6 +1308,41 @@ mod tests
 	}
 
 	#[test]
+	fn two_blocks_then_duplicate()
+	{
+		let (tmp,m) = n();
+		let count_blocks =
+			|| -> i64
+			{
+				let db = ::rusqlite::Connection::open(tmp.path().join("meta")).unwrap();
+				db.query_row(
+					"select count(*) from series_blocks",
+					&[],
+					|a| a.get(0)
+				).unwrap()
+			};
+
+		let mut txw = m.write_transaction();
+		let h = txw.create_series("horse", "u").unwrap();
+		for i in 1..=512
+			{ insert_val::<u32>(&mut txw, h, Timestamp(i), i as u32); }
+
+		insert_val::<u32>(&mut txw, h, Timestamp(1000), 500);
+		insert_val::<u32>(&mut txw, h, Timestamp(1001), 500);
+		insert_val::<u32>(&mut txw, h, Timestamp(1002), 500);
+		txw.commit();
+		assert_eq!(count_blocks(), 2);
+		let mut txw = m.write_transaction();
+		insert_val::<u32>(&mut txw, h, Timestamp(998), 500);
+		insert_val::<u32>(&mut txw, h, Timestamp(999), 500);
+
+		let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(
+			|| insert_val::<u32>(&mut txw, h, Timestamp(1000), 500)
+		));
+		assert!(r.is_err());
+    }
+
+	#[test]
 	fn generation_increases()
 	{
 		let (tmp, m) = n();
