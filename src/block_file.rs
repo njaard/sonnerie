@@ -1,6 +1,7 @@
 use std::fs::File;
 use std::path::Path;
 use std::os::unix::prelude::FileExt;
+use ::std::os::unix::io::AsRawFd;
 
 /// Read and write to the main file data
 pub struct BlockFile
@@ -20,6 +21,15 @@ impl BlockFile
 			.create(true)
 			.open(filename)
 			.unwrap();
+		unsafe
+		{
+			libc::posix_fadvise(
+				f.as_raw_fd(),
+				0,
+				0,
+				libc::POSIX_FADV_RANDOM
+			);
+		}
 		BlockFile
 		{
 			file: f,
@@ -29,7 +39,6 @@ impl BlockFile
 	pub fn as_raw_fd(&self)
 		-> ::std::os::unix::io::RawFd
 	{
-		use ::std::os::unix::io::AsRawFd;
 		self.file.as_raw_fd()
 	}
 
