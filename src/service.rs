@@ -168,11 +168,17 @@ impl<'db> Session<'db>
 				unsafe
 				{
 					const PR_SET_NAME: libc::c_int = 15;
-					let name = std::ffi::CStr::from_ptr("committed\0".as_ptr() as *const i8);
+					let name = std::ffi::CStr::from_ptr("committing\0".as_ptr() as *const i8);
 					libc::prctl(PR_SET_NAME, name.as_ptr() as libc::c_ulong, 0, 0, 0);
 				}
 				a.commit();
 				writeln!(writer, "transaction completed").unwrap();
+				unsafe
+				{
+					const PR_SET_NAME: libc::c_int = 15;
+					let name = std::ffi::CStr::from_ptr("committed\0".as_ptr() as *const i8);
+					libc::prctl(PR_SET_NAME, name.as_ptr() as libc::c_ulong, 0, 0, 0);
+				}
 			}
 			else
 			{
