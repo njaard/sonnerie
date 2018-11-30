@@ -32,8 +32,8 @@ pub struct Db
 
 	merging_thread: Option<::std::thread::JoinHandle<()>>,
 
-	max_generation: Mutex<u64>,
-	next_offset: Mutex<u64>,
+	pub(crate) max_generation: Mutex<u64>,
+	pub(crate) next_offset: Mutex<u64>,
 }
 
 impl Db
@@ -174,21 +174,15 @@ impl Db
 
 	pub fn write_transaction(&self) -> Transaction
 	{
-		let g = (*self.max_generation.lock())+1;
-
 		let metadata = Metadata::open(
 			&self.metadatapath, self.blocks.clone()
 		);
 
-		let no: u64 = *self.next_offset.lock();
-		let tx = metadata.as_write_transaction(
-			no,
-			g,
-			self,
-		);
+		let tx = metadata.as_write_transaction(self);
 
 		// we don't create the disk wal until the tx
 		// is ready to go
+		let g = tx.metadata.generation;
 
 		let (walwriter, file) = DiskWalWriter::new(g, &self.path);
 		self.blocks.set_disk_wal(walwriter);
@@ -1178,6 +1172,56 @@ mod tests
 				0, 0, 0, 0, 0, 0, 0, 43, 64, 69, 128
 			]
 		);
+	}
+
+	#[test]
+	fn write_queued_parallel()
+	{
+		let (_tmp, mm) = n();
+		use std::sync::Arc;
+
+		let mm = Arc::new(mm);
+		let m = mm.clone();
+
+		let j1 = std::thread::spawn(
+			move ||
+			{
+				let mut txw = m.write_transaction();
+				eprintln!("{}", txw.next_offset.get());
+				let h1 = txw.create_series("h1", "F").unwrap();
+				insert_val::<f64>(&mut txw, h1, Timestamp(42), 42.0);
+				insert_val::<f64>(&mut txw, h1, Timestamp(43), 43.0);
+				txw.commit();
+			}
+		);
+		let m = mm.clone();
+		let j2 = std::thread::spawn(
+			move ||
+			{
+				let mut txw = m.write_transaction();
+				eprintln!("{}", txw.next_offset.get());
+				let h2 = txw.create_series("h2", "F").unwrap();
+				insert_val::<f64>(&mut txw, h2, Timestamp(45), 45.0);
+				insert_val::<f64>(&mut txw, h2, Timestamp(46), 46.0);
+				txw.commit();
+			}
+		);
+
+		j1.join().unwrap();
+		j2.join().unwrap();
+
+		let txr = mm.read_transaction();
+		let h1 = txr.series_id("h1").unwrap();
+		assert_eq!(
+			format!("{:?}", read_vals::<f64>(&txr, h1, 0, 1000)),
+			"[(Timestamp(42), 42.0), (Timestamp(43), 43.0)]"
+		);
+		let h2 = txr.series_id("h2").unwrap();
+		assert_eq!(
+			format!("{:?}", read_vals::<f64>(&txr, h2, 0, 1000)),
+			"[(Timestamp(45), 45.0), (Timestamp(46), 46.0)]"
+		);
+
 	}
 
 	fn blocks_10k_knives_basic(do_restart: bool)
