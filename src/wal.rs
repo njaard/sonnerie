@@ -73,7 +73,9 @@ struct Segment<'a>
 
 
 unsafe fn merge_next(
-	current: *const WalPart, wal: &MemoryWal, block_file: &BlockFile
+	current: *const WalPart,
+	wal: &MemoryWal,
+	block_file: &BlockFile,
 ) -> *const WalPart
 {
 	let afterptr: *const WalPart;
@@ -130,10 +132,18 @@ pub fn merge(
 )
 {
 	let mut position = ::std::ptr::null();
+	let mut written_parts = 0;
 
 	loop
 	{
 		position = unsafe { merge_next(position, wal, block_file) };
+		written_parts += 1;
+		if written_parts == 100000
+		{
+			// do not permit the write queue to get too
+			// long or the OS will get upset
+			block_file.sync_data();
+		}
 		if position.is_null()
 			{ break; }
 	}
