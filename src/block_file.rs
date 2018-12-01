@@ -67,4 +67,9 @@ impl BlockFile
 	{
 		self.file.sync_all().unwrap();
 	}
+
+	pub fn sync_data(&self)
+	{
+		self.file.sync_data().unwrap();
+	}
 }
