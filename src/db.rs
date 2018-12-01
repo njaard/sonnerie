@@ -106,16 +106,29 @@ impl Db
 		let merge_state = self.merge_state.clone();
 		let th = ::std::thread::Builder::new()
 			.name("sonnerie-merge".into());
+
+		let metadatapath = self.metadatapath.clone();
+
 		let merging_thread = th.spawn(
 			move ||
 			{
 				let mut exit = false;
 				let mut previously_merged_to: u64 = 0;
 
+				let db = rusqlite::Connection::open_with_flags(
+					&metadatapath,
+					rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX
+						| rusqlite::OpenFlags::SQLITE_OPEN_READ_WRITE
+						| rusqlite::OpenFlags::SQLITE_OPEN_CREATE,
+				).unwrap();
+				let mut checkpoint = db.prepare("PRAGMA wal_checkpoint")
+					.unwrap();
+
 				while !exit
 				{
-					let now_merging;
+					checkpoint.query(&[]).unwrap();
 
+					let now_merging;
 					{
 						let mut l = merge_state.0.lock();
 						while l.merging_min == previously_merged_to && !l.stop

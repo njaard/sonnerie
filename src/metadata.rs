@@ -44,6 +44,7 @@ impl Metadata
 		).unwrap();
 		db.execute_batch("PRAGMA case_sensitive_like=ON;").unwrap();
 		db.execute_batch("PRAGMA busy_timeout = 7200000;").unwrap();
+		db.execute_batch("PRAGMA wal_autocheckpoint=0;").unwrap();
 
 		let fd = blocks.as_raw_fd();
 		Metadata
