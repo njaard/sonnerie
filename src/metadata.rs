@@ -754,9 +754,9 @@ impl<'db> Transaction<'db>
 		]).unwrap();
 		let mut block_data = vec!();
 
-		let mut names = Vec::with_capacity(32);
-		let mut fmts = Vec::with_capacity(32);
-		let mut blocks_group = Vec::with_capacity(32);
+		let mut names = Vec::with_capacity(256);
+		let mut fmts = Vec::with_capacity(256);
+		let mut blocks_group = Vec::with_capacity(256);
 
 		loop
 		{
@@ -764,6 +764,7 @@ impl<'db> Transaction<'db>
 			fmts.clear();
 			blocks_group.clear();
 
+			let mut num_bytes_prefetched = 0;
 			while let Some(row) = rows.next()
 			{
 				let row = row.unwrap();
@@ -789,11 +790,15 @@ impl<'db> Transaction<'db>
 					);
 				}
 
+				num_bytes_prefetched += b.size;
+
 				names.push( name );
 				fmts.push( fmt );
 				blocks_group.push( b );
 
-				if blocks_group.len() == 32
+				if blocks_group.len() == 256
+					{ break; }
+				if num_bytes_prefetched >= 1024*1024
 					{ break; }
 			}
 
@@ -834,15 +839,15 @@ impl<'db> Transaction<'db>
 		Output: FnMut(Something, &Timestamp, &RowFormat, &[u8]),
 		Something: Sized
 	{
-		let mut ids_group = Vec::with_capacity(32);
-		let mut blocks_group = Vec::with_capacity(32);
+		let mut ids_group = Vec::with_capacity(128);
+		let mut blocks_group = Vec::with_capacity(128);
 		let fd = self.metadata.blocks_raw_fd;
 
 		// get blocks and readahead
 		loop
 		{
 			ids_group.clear();
-			while ids_group.len() < 32
+			while ids_group.len() < 256
 			{
 				if let Some(n) = ids.next()
 					{ ids_group.push(n); }
