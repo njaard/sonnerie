@@ -1131,11 +1131,11 @@ impl<'m, Generator> Inserter<'m, Generator>
 				{
 					if previous_block.first_timestamp == at
 					{
-						return Err("cannot overwrite timestamp".to_string());
+						return Err(format!("cannot overwrite timestamp, id={}", self.series_id));
 					}
 					if previous_block.last_timestamp == at
 					{
-						return Err("cannot overwrite timestamp".to_string());
+						return Err(format!("cannot overwrite timestamp, id={}", self.series_id));
 					}
 					if previous_block.last_timestamp > at
 					{

@@ -1188,6 +1188,45 @@ mod tests
 	}
 
 	#[test]
+	fn rollback1()
+	{
+		let (_tmp,m) = n();
+		{
+			let mut txw = m.write_transaction();
+			let h = txw.create_series("horse", "F").unwrap();
+			insert_val::<f64>(&mut txw, h, Timestamp(42), 42.0);
+		}
+		{
+			let txr = m.read_transaction();
+			assert!(txr.series_id("horse").is_none());
+		}
+	}
+	#[test]
+	fn rollback2()
+	{
+		let (_tmp,m) = n();
+		{
+			let mut txw = m.write_transaction();
+			let h = txw.create_series("horse", "F").unwrap();
+			insert_val::<f64>(&mut txw, h, Timestamp(42), 42.0);
+			txw.commit();
+		}
+		{
+			let mut txw = m.write_transaction();
+			let h = txw.create_series("horse", "F").unwrap();
+			insert_val::<f64>(&mut txw, h, Timestamp(43), 43.0);
+		}
+		{
+			let txr = m.read_transaction();
+			let h1 = txr.series_id("horse").unwrap();
+			assert_eq!(
+				format!("{:?}", read_vals::<f64>(&txr, h1, 0, 1000)),
+				"[(Timestamp(42), 42.0)]"
+			);
+		}
+	}
+
+	#[test]
 	fn write_queued_parallel()
 	{
 		let (_tmp, mm) = n();
