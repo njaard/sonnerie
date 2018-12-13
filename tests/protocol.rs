@@ -273,3 +273,40 @@ fn protocol_read_direction()
 		>
 	");
 }
+
+#[test]
+fn protocol_rollback()
+{
+	Instance::new().check_transcript("
+		begin write
+		*
+		create-add
+		> accepting rows
+		horse1 u 20 1
+
+		*
+		commit
+		> transaction completed
+		begin write
+		*
+		create-add
+		> accepting rows
+		horse1 u 21 2
+
+		*
+		rollback
+		> transaction ended
+		begin write
+		*
+		read horse1 0 100
+		> 20\t1
+		>
+		create-add
+		> accepting rows
+		horse1 u 21 1
+
+		*
+		commit
+		> transaction completed
+	");
+}
