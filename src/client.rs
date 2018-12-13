@@ -300,7 +300,7 @@ fn command<'client>(
 				return Some(false);
 			}
 
-			if let Err(e) = client.commit()
+			if let Err(e) = client.rollback()
 			{
 				eprintln!("error rolling back transaction: {:?}", e);
 				return Some(false);
