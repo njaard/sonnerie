@@ -1,3 +1,13 @@
+# 0.4.1: 2018-12-14
+* Don't sometimes overwrite previously written data (!!!)
+* Many performance improvements
+* Save transactions correctly
+* fsync periodically so that the OS's disk buffers don't get extremely large
+* Do sqlite wal checkpointing from the checkpointing thread
+* the "rollback" command should actually rollback (in the CLI client)
+* Add many tests
+* No imcompatible changes, but an extremely important upgrade
+
 # 0.4.0: 2018-11-25
 * Optimize dump
 * Increase write lock timeout
