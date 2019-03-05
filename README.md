@@ -184,6 +184,7 @@ You can do a *full* online backup as such, maintaining the following order:
 
     mkdir dst
     sqlite3 src/meta .dump | sqlite3 dst/meta
+    cp src/blocks-*.wal dst/
     cp src/blocks dst/blocks
 
 (This method will no longer apply once compacting is implemented).
