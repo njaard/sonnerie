@@ -866,8 +866,8 @@ mod tests
 
 		let mut txw = m.write_transaction();
 		let h = txw.create_series("horse", "F").unwrap();
-
 		create_three_blocks(h, &mut txw);
+
 		txw.erase_range(h, Timestamp(400), Timestamp(499)).unwrap();
 		assert_eq!(
 			format!("{:?}", read_vals::<f64>(&txw, h, 0, 1000)),
@@ -1008,6 +1008,53 @@ mod tests
 		horse1 1001 [0, 0, 0, 102]\n\
 		horse2 1000 [64, 105, 32, 0, 0, 0, 0, 0]\n\
 		horse2 1001 [64, 105, 64, 0, 0, 0, 0, 0]\n");
+	}
+
+	#[test]
+	fn dump_like_2blk()
+	{
+		let (_tmp,m) = n();
+		let mut txw = m.write_transaction();
+		let h = txw.create_series("horse", "f").unwrap();
+
+		create_three_blocks(h, &mut txw);
+		txw.commit();
+		{
+			let db = ::rusqlite::Connection::open(_tmp.path().join("meta")).unwrap();
+			db.execute(
+				"update series_blocks set generation=2 where rowid=2",
+				&[],
+			).unwrap();
+			db.execute(
+				"update series_blocks set generation=3 where rowid=3",
+				&[],
+			).unwrap();
+		}
+
+		let txr = m.read_transaction();
+		let mut s = String::new();
+
+		txr.dump_series_like(
+			"horse", Timestamp(430), Timestamp(510),
+			|n, ts, _fmt, data|
+			{
+				s += &format!("{} {} {:?}\n", n, ts.0, data);
+			}
+		).unwrap();
+		assert_eq!(s, "\
+		horse 430 [67, 215, 0, 0]\n\
+		horse 500 [67, 250, 0, 0]\n\
+		horse 510 [67, 255, 0, 0]\n");
+
+		let mut n_recs = 0;
+		txr.dump_series_like(
+			"horse", Timestamp(0), Timestamp(1000),
+			|n, ts, _fmt, data|
+			{
+				n_recs += 1;
+			}
+		).unwrap();
+		assert_eq!(n_recs, 12);
 	}
 
 	#[test]
