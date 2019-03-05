@@ -1,5 +1,4 @@
-extern crate byteorder;
-use self::byteorder::{ReadBytesExt, WriteBytesExt, BigEndian, ByteOrder};
+use byteorder::{ReadBytesExt, WriteBytesExt, BigEndian, ByteOrder};
 
 const MAGIC: &'static [u8] = b"tsrust.wal.0000\n";
 const MAGIC_LEN: usize = 16;
@@ -10,7 +9,7 @@ use ::std::path::{Path,PathBuf};
 use std::io::Write;
 use std::io::Read;
 
-use wal::MemoryWal;
+use crate::wal::MemoryWal;
 
 /// Write files in our WAL file format
 ///

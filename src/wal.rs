@@ -1,14 +1,12 @@
-extern crate range;
-extern crate antidote;
-
+use intrusive_collections::intrusive_adapter;
 use intrusive_collections::{RBTree, RBTreeLink, KeyAdapter, Bound, Adapter};
 use intrusive_collections::rbtree::{CursorMut, Link};
 
-use self::range::Range;
+use range::Range;
 
-use self::antidote::RwLock;
+use antidote::RwLock;
 
-use block_file::BlockFile;
+use crate::block_file::BlockFile;
 
 /// Manage the contents of the write-ahead-log file.
 ///
@@ -383,10 +381,9 @@ impl MemoryWal
 #[cfg(test)]
 mod tests
 {
-	extern crate tempfile;
-	use ::wal::MemoryWal;
-	use ::block_file::BlockFile;
-	use ::wal::merge;
+	use crate::wal::MemoryWal;
+	use crate::block_file::BlockFile;
+	use crate::wal::merge;
 
 	fn r(w: &MemoryWal, pos: usize, len: usize) -> Vec<u8>
 	{

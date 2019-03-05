@@ -8,6 +8,7 @@ readme = "README.md"
 repository = "https://github.com/njaard/sonnerie"
 keywords = ["cli", "timeseries", "database"]
 documentation = "https://docs.rs/sonnerie/"
+edition = "2018"
 
 [dependencies]
 rusqlite = "0.14.0"

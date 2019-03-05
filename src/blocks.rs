@@ -1,8 +1,8 @@
-use wal;
-use disk_wal::DiskWalWriter;
-use block_file::BlockFile;
+use crate::wal;
+use crate::disk_wal::DiskWalWriter;
+use crate::block_file::BlockFile;
 
-pub use metadata::Mutex;
+pub use crate::metadata::Mutex;
 
 /// Permit reads of blocks
 ///

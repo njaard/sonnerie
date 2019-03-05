@@ -1,10 +1,7 @@
-extern crate byteorder;
-extern crate escape_string;
+use byteorder::{ByteOrder, BigEndian};
+use escape_string::{split_one};
 
-use self::byteorder::{ByteOrder, BigEndian};
-use self::escape_string::{split_one};
-
-pub use metadata::Timestamp;
+pub use crate::metadata::Timestamp;
 
 pub trait RowFormat
 {

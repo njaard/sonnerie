@@ -1,6 +1,3 @@
-#[macro_use]
-extern crate intrusive_collections;
-
 mod service;
 mod metadata;
 mod blocks;

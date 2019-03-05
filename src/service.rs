@@ -1,17 +1,14 @@
-extern crate escape_string;
-extern crate chrono;
-
 use std::thread;
 use std::io::{Write,BufRead};
 use std::sync::Arc;
 
 use linestream::{LineStream,BlockingWriting};
 
-use db::Db;
-use db::Timestamp;
-use db::Transaction;
+use crate::db::Db;
+use crate::db::Timestamp;
+use crate::db::Transaction;
 
-use self::escape_string::{split_one, split, escape};
+use escape_string::{split_one, split, escape};
 
 struct Session<'db>
 {

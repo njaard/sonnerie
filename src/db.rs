@@ -1,19 +1,18 @@
-extern crate antidote;
 
-use metadata::Metadata;
-pub use metadata::Transaction;
-use wal::MemoryWal;
-use blocks::Blocks;
-use disk_wal::{DiskWalWriter,DiskWalReader};
-use block_file::BlockFile;
+use crate::metadata::Metadata;
+pub use crate::metadata::Transaction;
+use crate::wal::MemoryWal;
+use crate::blocks::Blocks;
+use crate::disk_wal::{DiskWalWriter,DiskWalReader};
+use crate::block_file::BlockFile;
 
 use ::std::path::{Path,PathBuf};
 use ::std::collections::VecDeque;
 
 use ::std::sync::Arc;
-use self::antidote::{Mutex,Condvar};
+use antidote::{Mutex,Condvar};
 
-pub use metadata::Timestamp;
+pub use crate::metadata::Timestamp;
 
 struct MergeState
 {
@@ -139,7 +138,7 @@ impl Db
 						now_merging = l.merging_min;
 					}
 
-					::wal::merge(
+					crate::wal::merge(
 						&blocks.wal,
 						&blocks.file,
 					);
@@ -278,8 +277,7 @@ fn read_unflushed_wal_files(
 #[cfg(test)]
 mod tests
 {
-	extern crate tempfile;
-	use ::db::{Db,Timestamp};
+	use crate::db::{Db,Timestamp};
 
 	fn n() -> (tempfile::TempDir, Db)
 	{
@@ -289,7 +287,7 @@ mod tests
 		(tmp, m)
 	}
 
-	fn read_vals<T>(tx: &::metadata::Transaction, series_id: u64, timestamp1: u64, timestamp2: u64)
+	fn read_vals<T>(tx: &crate::metadata::Transaction, series_id: u64, timestamp1: u64, timestamp2: u64)
 		-> Vec<(Timestamp, T)>
 	where
 		T: std::str::FromStr + std::fmt::Debug,
@@ -313,7 +311,7 @@ mod tests
 
 	/// inserts a single value into a series
 	fn insert_val<T>(
-		tx: &mut ::metadata::Transaction, series_id: u64, ts: Timestamp, value: T,
+		tx: &mut crate::metadata::Transaction, series_id: u64, ts: Timestamp, value: T,
 	)
 	where T: std::str::FromStr + std::fmt::Debug + std::fmt::Display,
 		<T as std::str::FromStr>::Err: std::fmt::Debug
@@ -478,12 +476,12 @@ mod tests
 	}
 
 	fn generator_f64<'q>(items: &'q [(Timestamp, f64)])
-		-> impl 'q + FnMut(&::row_format::RowFormat, &mut Vec<u8>)
+		-> impl 'q + FnMut(&crate	::row_format::RowFormat, &mut Vec<u8>)
 			-> Result<Option<Timestamp>, String>
 	{
 		let mut i = items.iter();
 
-		let f = move |format: &::row_format::RowFormat, data: &mut Vec<u8>|
+		let f = move |format: &crate::row_format::RowFormat, data: &mut Vec<u8>|
 			-> Result<Option<Timestamp>, String>
 		{
 			if let Some((ts,val)) = i.next()
@@ -826,7 +824,7 @@ mod tests
 		);
 	}
 
-	fn create_three_blocks(h: u64, tx: &mut ::metadata::Transaction)
+	fn create_three_blocks(h: u64, tx: &mut crate::metadata::Transaction)
 	{
 		{
 			let items_to_insert =

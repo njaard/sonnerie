@@ -1,20 +1,15 @@
-extern crate rusqlite;
-extern crate byteorder;
-extern crate antidote;
-extern crate libc;
-
 #[derive(Debug,Clone,Copy,PartialEq,PartialOrd)]
 pub struct Timestamp(pub u64);
 
-use ::row_format::{parse_row_format, RowFormat};
-use ::db::Db;
-use ::blocks::Blocks;
-use self::byteorder::{ByteOrder, BigEndian};
+use crate::row_format::{parse_row_format, RowFormat};
+use crate::db::Db;
+use crate::blocks::Blocks;
+use byteorder::{ByteOrder, BigEndian};
 use std::path::Path;
 
 use std::sync::Arc;
-pub use self::antidote::RwLock;
-pub use self::antidote::Mutex;
+pub use antidote::RwLock;
+pub use antidote::Mutex;
 use std::cell::Cell;
 
 /// Maintain all the information needed to locate data
@@ -43,7 +38,7 @@ impl Metadata
 				| rusqlite::OpenFlags::SQLITE_OPEN_READ_WRITE,
 		).unwrap();
 		db.execute_batch("PRAGMA case_sensitive_like=ON;").unwrap();
-		db.execute_batch("PRAGMA busy_timeout = 7200000;").unwrap();
+		db.execute_batch("PRAGMA busy_timeout = 86400000;").unwrap();
 		db.execute_batch("PRAGMA wal_autocheckpoint=0;").unwrap();
 
 		let fd = blocks.as_raw_fd();
@@ -1381,7 +1376,7 @@ impl Timestamp
 #[cfg(test)]
 mod tests
 {
-	use ::metadata::Timestamp;
+	use crate::metadata::Timestamp;
 	#[test]
 	fn timestamp_range()
 	{

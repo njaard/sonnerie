@@ -1,12 +1,6 @@
-extern crate shlex;
-extern crate sonnerie_api;
-extern crate rustyline;
-extern crate clap;
-extern crate chrono;
+use sonnerie_api::{NaiveDateTime,Column,Direction};
 
-use self::sonnerie_api::{NaiveDateTime,Column,Direction};
-
-use client::chrono::naive::NaiveDate;
+use chrono::naive::NaiveDate;
 
 use std::net::TcpStream;
 
@@ -337,7 +331,7 @@ fn command<'client>(
 			}
 			else
 			{
-				to = self::sonnerie_api::max_time();
+				to = sonnerie_api::max_time();
 			}
 
 			let samples = client.read_series_range(
@@ -352,7 +346,7 @@ fn command<'client>(
 				{
 					let mut child = run_pager();
 					{
-						let mut stdin = child.stdin.as_mut().expect("Failed to open stdin");
+						let stdin = child.stdin.as_mut().expect("Failed to open stdin");
 						for (ts,cols) in samples
 						{
 							let _ = write!(stdin, "{}  ", ts);
@@ -405,7 +399,7 @@ fn command<'client>(
 			}
 			else
 			{
-				to = self::sonnerie_api::max_time();
+				to = sonnerie_api::max_time();
 			}
 
 			let mut child = run_pager();
