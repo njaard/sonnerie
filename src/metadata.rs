@@ -1021,15 +1021,19 @@ impl<'db> Transaction<'db>
 		if self.writing
 		{
 			self.metadata.blocks.commit();
+			eprintln!("committed blocks");
 			self.finishing_on.unwrap()
 				.committing(self.next_offset.get(), self.metadata.generation);
+			eprintln!("handled callback");
 			self.metadata.db.execute("delete from end_offset", &[]).unwrap();
 			self.metadata.db.execute(
 				"insert into end_offset values(?)", &[&(self.next_offset.get() as i64)]
 			).unwrap();
+			eprintln!("updated end_offset");
 		}
 		self.committed = true;
 		self.metadata.db.execute("commit", &[]).unwrap();
+		eprintln!("metadata committed");
 	}
 }
 
