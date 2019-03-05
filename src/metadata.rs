@@ -741,7 +741,6 @@ impl<'db> Transaction<'db>
 			join series using (series_id)
 			where name like ?
 				and ? >= first_timestamp AND last_timestamp >= ?
-			order by name, first_timestamp
 			"
 		).unwrap();
 		let mut rows = c.query(&[
