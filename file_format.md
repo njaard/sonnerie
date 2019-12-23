@@ -1,4 +1,4 @@
-TSDB's file format consists of "segments" of keys. Each segment has
+Sonnerie's file format consists of "segments" of keys. Each segment has
 uncompressed indexing data and then compressed the actual values ("Payload").
 
 All numbers are stored as big endian.
@@ -36,17 +36,18 @@ So a record might look like this:
 * `0x00000005` -- key length five
 * `0x00000001` -- format length 1
 * `0x00000004` -- record length 4
-* `0x00000008` -- data length 12 ((timestamp=8 + record=4))*number of samples
+* `0x0000000c` -- data length 12 ((timestamp=8 + record=4))\*number of samples
 * `abcde` - the key
 * `u` - the format
 * `0x1122334400000000` the timestamp
 * `0x00001000` a 32-bit unsigned integer as specified by the format
 
-# a segments-file
+# A segments-file
 A file of segments contains a bunch of segments, each with their
-complete header. The file of segments segments are sorted lexicgraphically
+complete header. The file of segments' segments are sorted lexicgraphically
 by key. A key must not span multiple segments, even if it results
-in a really big segment.
+in a really big segment. Sonnerie chooses a reasonable approximate
+maximum segment size.
 
 Each segment's last key always comes lexigraphically before the following
 segment's first key.
