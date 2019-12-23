@@ -1,6 +1,8 @@
 [![GitHub license](https://img.shields.io/badge/license-BSD-blue.svg)](https://raw.githubusercontent.com/njaard/sonnerie/master/LICENSE)
 [![Crates.io](https://img.shields.io/crates/v/sonnerie.svg)](https://crates.io/crates/sonnerie)
 
+NEWS: 2019-12-23: 0.5 is a total rewrite!
+
 # Introduction
 
 Sonnerie is a time-series database. Map a timestamp to a floating-point value.
@@ -59,6 +61,10 @@ Create a database by creating a directory and an empty file named "`main`":
 
 If the "add" command succeeds, then the transaction is committed to disk.
 
+Items added with `sonnerie add` must be sorted lexicographically by their
+key and then chronologically. This requirement does not exist in
+`sonnerie-serve`.
+
 ## Read the data back
 
 	sonnerie -d database/ read %
@@ -76,14 +82,46 @@ Sonnerie returns the matched values:
     fibonacci 2020-01-05 00:00:00     5
     fibonacci 2020-01-06 00:00:00     8
 
-# No server is necessary
+# Usage
+
+## Row format
+Each series has a **`format`**. The format is specified as a
+bunch of single character codes, one for each value.
+
+The character codes are:
+* `f` - a 32 bit float (f32)
+* `F` - a 64 bit float (f64)
+* `u` - a 32 bit unsigned integer (u32)
+* `U` - a 64 bit unsigned integer (u64)
+* `i` - a 32 bit signed integer (i32)
+* `I` - a 64 bit signed integer (i64)
+
+In the above "fibonacci" example, we're using the "u" format.
+
+Multi-column rows are not extensively tested, but would look something like this,
+for two floating point values representing latitude and longitude:
+
+	oceanic-airlines 2018-01-01T00:00:00 ff 37.686751 -122.602227
+	oceanic-airlines 2018-01-01T00:00:01 ff 37.686810 -122.603713
+	oceanic-airlines 2018-01-01T00:00:02 ff 37.686873 -122.605997
+	oceanic-airlines 2018-01-01T00:00:03 ff 37.687022 -122.609997
+	oceanic-airlines 2018-01-01T00:00:04 ff 37.687364 -122.610945
+	oceanic-airlines 2018-01-01T00:00:05 ff 37.687503 -122.615211
+
+## Checked mode is slow
+The command line tools by default use a safe "checked" mode, in which
+new rows' format must be the same as the existing format for their key. This
+has a significant (10x) performance penalty, so you can turn it off with the
+`--unsafe-unchecked` option. The HTTP server is *always* unsafe and fast.
+
+## No server is necessary
 
 All actions can be done by running `sonnerie -d /path/to/data/`. Furthermore,
 a file, (after it gets its ".tmp" suffix removed) will never change, though
 the file named `main` will get replaced sometimes. This means you can
 replicate a database by hardlinking all the files (`ln`).
 
-# The database must be compacted
+## The database must be compacted
 
 On a regular (possibly daily) basis, you must compact the database. This
 rolls a bunch of transaction files into a single large transaction file.
@@ -110,7 +148,7 @@ Compacting doesn't block readers or writers, but only one can
 happen at any given moment, so a lock is placed to prevent multiple
 concurrent compactions.
 
-# You can compact and filter
+## You can compact and filter
 
 In case some data in the database needs to be removed, you can use
 `compact` with the `--gegnum` option. Gegnum means "through" in Icelandic.
@@ -132,29 +170,57 @@ Compactions are atomic, so you can cancel it (with `^C`) at any time.
 
 You can also see a preview of its output by piping your command into `| tee /dev/stderr`.
 
-Note that the file format is rows of "key\ttimestamp\tformat\tvalue"
+Note that the rows come as "key\ttimestamp\tformat\tvalue"
 
 By default, compactions run in a "safe" mode. This is safer but very slow, as each key must
 be verified on insertion to make sure the datatypes are homogenous. Use the
 `--unsafe-nocheck` option to disable the feature.
 
+You can also "read | filter | add" into a different database, but `gegnum` allows
+you to modify an existing database which is useful for online maintenance on a database
+that gets concurrent updates.
+
 # sonnerie-serve
 
 A server is provided so that you can conveniently read and write to the database
-over a network via HTTP.
+via HTTP.
+
+Run `sonnerie-serve -d /path/to/database/ -l 0.0.0.0:5555` and then you may
+make `PUT` and `GET` requests:
+
+* Read the named series:
+	curl -X GET http://localhost:5555/fibonacci
+* Read series by wildcard:
+	curl -X GET http://localhost:5555/fib%
+* Add more data:
+	curl -X PUT http://localhost:5555/ --data-binary 'fibonacci 2020-01-07T00:00:00 u 13'
+(`200 OK` means that the transaction was committed)
+
+Unlike `sonnerie add`, `sonnerie-serve` allows unsorted input.
+
+Note that because sonnerie `mmap`s its files, sonnerie-serve will show
+huge values for its virtual memory usage (`VIRT` in top), but actual
+memory utilization will be reasonable.
+
+You may continue to read and modify your sonnerie database by the command
+line or even via another concurrently-running `sonnerie-serve`s.
+
+`sonnerie-serve` is always "unsafe unchecked", meaning that if the format you specify
+is not the same as the existing value for that key, you will get corruptions.
 
 An alternate approach is to use "sshfs" to mount the database remotely. This
 approach is very performant because only compressed data goes through the network
 and the server doesn't need to do any of the decompressing. Avoid nfs
 because compactions will cause files to get deleted, and then the client will get a IO error,
-as NFS cannot track files that are closed by the server.
+as NFS cannot track files that are closed on the server.
 
 # Sonnerie's API
 Sonnerie can be used as a Rust library so you can read and write databases directly,
 but the API is incomplete and poorly documented, for now.
 
 # Sonnerie is used in production
-Sonnerie is used by e.ventures Management LLC with a >100GiB database.
+Sonnerie is used by e.ventures Management LLC with a >100GiB database and 10s
+of billions of rows.
 
 # Copyright
 
