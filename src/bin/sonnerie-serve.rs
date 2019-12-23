@@ -381,7 +381,7 @@ impl Tsrv
           }
         }
 
-        // trick tsdb to not do an fadvise when you search for a single key
+        // trick sonnerie to not do an fadvise when you search for a single key
         let searcher: Box<dyn Iterator<Item=sonnerie::record::OwnedRecord>>;
         if filter.is_exact()
           { searcher = Box::new(db.get(filter.prefix())); }

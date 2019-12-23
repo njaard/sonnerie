@@ -1,6 +1,6 @@
 
-use tsdb::Writer;
-use tsdb::Reader;
+use sonnerie::Writer;
+use sonnerie::Reader;
 
 use std::io::BufWriter;
 
