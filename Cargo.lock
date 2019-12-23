@@ -471,13 +471,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "linestream"
-version = "0.1.0"
-dependencies = [
- "libc 0.2.66 (registry+https://github.com/rust-lang/crates.io-index)",
-]
-
-[[package]]
 name = "lock_api"
 version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -938,7 +931,6 @@ dependencies = [
  "hyper 0.12.35 (registry+https://github.com/rust-lang/crates.io-index)",
  "libc 0.2.66 (registry+https://github.com/rust-lang/crates.io-index)",
  "lines_from_request 0.1.0",
- "linestream 0.1.0",
  "lz4 1.23.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "memmap 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "parking_lot 0.10.0 (registry+https://github.com/rust-lang/crates.io-index)",

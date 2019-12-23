@@ -34,5 +34,3 @@ tempfile = "3"
 serde = "1"
 serde_derive = "1"
 escape_string = {version="0.1.0", path="escape_string"}
-linestream = {version="0.1.0", path="linestream"}
-

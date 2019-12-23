@@ -5,8 +5,6 @@
 //! socket to nonblocking and then block until a single
 //! full line is available, but no more.
 
-extern crate libc;
-
 use std::os::unix::io::{RawFd,AsRawFd};
 use std::io::{Write,Read,BufRead,BufReader,BufWriter};
 use std::io::ErrorKind::WouldBlock;
@@ -18,7 +16,7 @@ use std::io::Result;
 
 pub struct LineStream
 {
-	stream: BufReader<Box<Read>>,
+	stream: BufReader<Box<dyn Read>>,
 	fd: RawFd,
 }
 
@@ -137,7 +135,7 @@ impl BufRead for LineStream
 /// Write to a non-blocking socket as if it were blocking
 pub struct BlockingWriting
 {
-	stream: BufWriter<Box<Write>>,
+	stream: BufWriter<Box<dyn Write>>,
 	fd: RawFd,
 }
 
