@@ -1,20 +1,15 @@
 use byteorder::{ByteOrder, BigEndian};
 use escape_string::{split_one};
 
-pub use crate::metadata::Timestamp;
+pub type Timestamp = u64;
 
 pub trait RowFormat
 {
-	fn to_stored_format(&self, ts: &Timestamp, from: &str, dest: &mut Vec<u8>)
+	fn to_stored_format(&self, ts: Timestamp, from: &str, dest: &mut Vec<u8>)
 		-> Result<(), String>;
-	fn to_protocol_format(&self, from: &[u8], dest: &mut ::std::io::Write)
+	fn to_protocol_format(&self, from: &[u8], dest: &mut dyn ::std::io::Write)
 		-> ::std::io::Result<()>;
 
-	fn preferred_block_size(&self) -> usize
-	{
-		// create blocks big enough for 512 records
-		512*self.row_size()
-	}
 	fn row_size(&self) -> usize;
 }
 
@@ -22,18 +17,18 @@ pub trait RowFormat
 struct RowFormatImpl
 {
 	size: usize,
-	elements: Vec<Box<Element>>,
+	elements: Vec<Box<dyn Element>>,
 }
 
 impl RowFormat for RowFormatImpl
 {
-	fn to_stored_format(&self, ts: &Timestamp, mut from: &str, dest: &mut Vec<u8>)
+	fn to_stored_format(&self, ts: Timestamp, mut from: &str, dest: &mut Vec<u8>)
 		-> Result<(), String>
 	{
 		let at = dest.len();
 		dest.reserve(at+self.row_size());
 		dest.resize(at+8, 0);
-		BigEndian::write_u64(&mut dest[at..], ts.0);
+		BigEndian::write_u64(&mut dest[at..], ts);
 		for e in self.elements.iter()
 		{
 			from = e.to_stored_format(from, dest)?;
@@ -42,7 +37,7 @@ impl RowFormat for RowFormatImpl
 			{ return Err("too many columns in input".to_string()); }
 		Ok(())
 	}
-	fn to_protocol_format(&self, mut from: &[u8], dest: &mut ::std::io::Write)
+	fn to_protocol_format(&self, mut from: &[u8], dest: &mut dyn ::std::io::Write)
 		-> ::std::io::Result<()>
 	{
 		let mut first = true;
@@ -84,12 +79,12 @@ impl RowFormat for RowFormatImpl
 /// * "s" -> variable size string type (maybe followed by a number
 /// to indicate "typical size"). The typical size is useful
 /// for knowing how big to make the blocks
-pub fn parse_row_format(human: &str) -> Box<RowFormat>
+pub fn parse_row_format(human: &str) -> Box<dyn RowFormat>
 {
 	let human = human.as_bytes();
 
 	let mut size = 0usize;
-	let mut elements: Vec<Box<Element>> = vec!();
+	let mut elements: Vec<Box<dyn Element>> = vec!();
 	elements.reserve(human.len());
 
 	for t in human
@@ -147,7 +142,7 @@ trait Element
 {
 	fn to_stored_format<'s>(&self, from: &'s str, dest: &mut Vec<u8>)
 		-> Result<&'s str, String>;
-	fn to_protocol_format<'a>(&self, from: &'a [u8], dest: &mut ::std::io::Write)
+	fn to_protocol_format<'a>(&self, from: &'a [u8], dest: &mut dyn ::std::io::Write)
 		-> ::std::io::Result<&'a [u8]>;
 }
 
@@ -169,7 +164,7 @@ impl Element for ElementI32
 
 		Ok(rest)
 	}
-	fn to_protocol_format<'a>(&self, from: &'a [u8], dest: &mut ::std::io::Write)
+	fn to_protocol_format<'a>(&self, from: &'a [u8], dest: &mut dyn ::std::io::Write)
 		-> ::std::io::Result<&'a [u8]>
 	{
 		let v: i32 = BigEndian::read_i32(&from[0..4]);
@@ -196,7 +191,7 @@ impl Element for ElementU32
 
 		Ok(rest)
 	}
-	fn to_protocol_format<'a>(&self, from: &'a [u8], dest: &mut ::std::io::Write)
+	fn to_protocol_format<'a>(&self, from: &'a [u8], dest: &mut dyn ::std::io::Write)
 		-> ::std::io::Result<&'a [u8]>
 	{
 		let v: u32 = BigEndian::read_u32(&from[0..4]);
@@ -223,7 +218,7 @@ impl Element for ElementI64
 
 		Ok(rest)
 	}
-	fn to_protocol_format<'a>(&self, from: &'a [u8], dest: &mut ::std::io::Write)
+	fn to_protocol_format<'a>(&self, from: &'a [u8], dest: &mut dyn ::std::io::Write)
 		-> ::std::io::Result<&'a [u8]>
 	{
 		let v: i64 = BigEndian::read_i64(&from[0..8]);
@@ -250,7 +245,7 @@ impl Element for ElementU64
 
 		Ok(rest)
 	}
-	fn to_protocol_format<'a>(&self, from: &'a [u8], dest: &mut ::std::io::Write)
+	fn to_protocol_format<'a>(&self, from: &'a [u8], dest: &mut dyn ::std::io::Write)
 		-> ::std::io::Result<&'a [u8]>
 	{
 		let v: u64 = BigEndian::read_u64(&from[0..8]);
@@ -285,7 +280,7 @@ impl Element for ElementF32
 
 		Ok(rest)
 	}
-	fn to_protocol_format<'a>(&self, from: &'a [u8], dest: &mut ::std::io::Write)
+	fn to_protocol_format<'a>(&self, from: &'a [u8], dest: &mut dyn ::std::io::Write)
 		-> ::std::io::Result<&'a [u8]>
 	{
 		let v: f32 = BigEndian::read_f32(&from[0..4]);
@@ -319,7 +314,7 @@ impl Element for ElementF64
 
 		Ok(rest)
 	}
-	fn to_protocol_format<'a>(&self, from: &'a [u8], dest: &mut ::std::io::Write)
+	fn to_protocol_format<'a>(&self, from: &'a [u8], dest: &mut dyn ::std::io::Write)
 		-> ::std::io::Result<&'a [u8]>
 	{
 		let v: f64 = BigEndian::read_f64(&from[0..8]);

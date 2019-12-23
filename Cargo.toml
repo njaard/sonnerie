@@ -1,31 +1,38 @@
 [package]
 name = "sonnerie"
-version = "0.4.2"
+version = "0.5.0"
 authors = ["Charles Samuels <kalle@eventures.vc>", "e.ventures Management LLC"]
+edition = "2018"
 description = "An easy timeseries database"
 license = "BSD-2-Clause"
 readme = "README.md"
 repository = "https://github.com/njaard/sonnerie"
 keywords = ["cli", "timeseries", "database"]
 documentation = "https://docs.rs/sonnerie/"
-edition = "2018"
 
 [dependencies]
-rusqlite = "0.14.0"
-clap = "2"
-libc = "0.2.43"
-byteorder = "1"
-nix = "0.11"
-range = "0.3.1"
-antidote = "1"
-chrono = "0.4.6"
-intrusive-collections = "0.7.5"
-rustyline = "2"
-shlex = "0.1.1"
-sonnerie-api = {version="0.4.1", path="sonnerie-api"}
+twoway="0.2"
+memmap="0.7"
+byteorder="1"
+clap="2"
+lz4="1"
+chrono="0.4"
+regex="1"
+fs2="0.4"
+parking_lot="0.10"
+crossbeam="0.7"
+libc="0.2"
+hyper = "0.12"
+tokio-threadpool = "0.1"
+tokio="0.1"
+futures = "0.1"
+tokio-io="0.1"
+url="2"
+shardio="0.5"
+lines_from_request={ version="0.1.0", path="lines_from_request" }
+tempfile = "3"
+serde = "1"
+serde_derive = "1"
 escape_string = {version="0.1.0", path="escape_string"}
 linestream = {version="0.1.0", path="linestream"}
-daemonize= "0.3"
 
-[dev-dependencies]
-tempfile = "3"

@@ -3,57 +3,30 @@
 
 # Introduction
 
-Sonnerie is a time-series database. Map a timestamp to a floating-point
-value. Store multiple of these series in a single database. Insert
-tens of millions of samples in minutes, on rotational media.
+Sonnerie is a time-series database. Map a timestamp to a floating-point value.
+Store multiple of these series in a single database. Insert tens of millions
+of samples in minutes, on rotational media or solid-state.
 
-Sonnerie includes a [Client API](https://crates.io/crates/sonnerie-api),
-which has its own [API docs](https://docs.rs/sonnerie-api).
+Sonnerie is optimized for storing data that comes in as
+many values over many series, and for reading one series at a time.
+It is also very good at dumping lexicographically sequential series
+(which means: everything).
 
-## Features
+It achieves this by storing each transaction in a single file. After the
+transaction is completed, it is `fsync`ed then made available for reading.
 
+# Features
 * A straight-forward protocol for reading and writing
-* Easy setup: insert data with "netcat" or "telnet" in 5 minutes
+* Easy setup: insert data on the command line.
 * No query language
 * Transactional: a transaction is completely committed or not at all.
-* Isolated: A transaction doesn't see updates from other transactions or
-expose its changes until it has been committed.
+* Isolated: A transaction doesn't see updates from other transactions or expose its changes until it has been committed.
 * Durable: committed data is resistant to loss from unexpected shutdown.
-* Nanosecond-resolution timestamps (64 bit), 1970-2554
+* Nanosecond-resolution timestamps (64 bit), 1970-2554
 * No weird dependencies, no virtual machines, one single native binary
 * floating point and integer values, multiple columns per sample
 
 Sonnerie runs on Unix-like systems and is developed on Linux.
-
-## Performance
-
-Sonnerie is designed to accept millions of samples across disparate
-series quickly, and then later fetch ranges from individual series.
-Memory is used for write-combining, write-ahead-logs are used to
-keep commits fast while still durable.
-
-Fundamentally, the database is append-only. Edits and insertions
-are costly.
-
-## Why
-
-Sonnerie is for storing data that you can plot.
-
-You intake a lot of samples related to different entities all
-at once, and then want to read a lot of data for a entity, the
-disk usage patterns become very different
-
-Timestamp           | Entity 1 | Entity 2 | Entity 3
-------------------- | -------- | -------- | --------
-2000-01-01 00:00:00 |  50.0    |   23.0   |  95.3
-2000-01-02 00:00:00 |          |   24.0   |
-2000-01-03 00:00:00 |  51.5    |   25.0   |
-2000-01-04 00:00:00 |  53.0    |   26.0   |  94.8
-
-At each timestamp (row), you insert some samples (it can be millions).
-
-Some time later on, you want to run an analysis on a single Entity, Sonnerie
-allows one to quickly access all its values (an entire column).
 
 # Quick Start
 
@@ -68,166 +41,122 @@ Sonnerie can then be installed from Cargo: `cargo install sonnerie`.
 
 Sonnerie consists of one executable, `sonnerie` (`~/.cargo/bin/sonnerie`)
 
-## Run Server
+## Create a database
 
-`sonnerie start -d <database directory to use>`.
+Create a database by creating a directory and an empty file named "`main`":
 
-Sonnerie is running in the background, listening on `[::1]:5599` for connections.
-
-## Start the Sonnerie Client
-
-    sonnerie client
-
-After you start the client, you enter a shell-like command line
-from within all of the below is run.
+	mkdir database
+	touch database/main
 
 ## Insert data
+	echo -e "\
+	fibonacci 2020-01-01T00:00:00 u 1
+	fibonacci 2020-01-02T00:00:00 u 1
+	fibonacci 2020-01-03T00:00:00 u 2
+	fibonacci 2020-01-04T00:00:00 u 3
+	fibonacci 2020-01-05T00:00:00 u 5
+	fibonacci 2020-01-06T00:00:00 u 8" | sonnerie -d database/ add
 
-Start a transaction:
+If the "add" command succeeds, then the transaction is committed to disk.
 
-    begin --write
+## Read the data back
 
-Create a series:
+	sonnerie -d database/ read %
 
-    create fibonacci
+(The `%` is a wildcard as is used in "`LIKE`" in SQL and filters
+on the key. Searching based on a prefix is very efficient:
 
-Add a few values to the series
+	sonnerie -d database/ read fib%
 
-	add fibonacci 2018-01-01T00:00:00 1
-	add fibonacci 2018-01-02T00:00:00 1
-	add fibonacci 2018-01-03T00:00:00 2
-	add fibonacci 2018-01-04T00:00:00 3
-	add fibonacci 2018-01-05T00:00:00 5
-	add fibonacci 2018-01-06T00:00:00 8
+Sonnerie returns the matched values:
+    fibonacci 2020-01-01 00:00:00     1
+    fibonacci 2020-01-02 00:00:00     1
+    fibonacci 2020-01-03 00:00:00     2
+    fibonacci 2020-01-04 00:00:00     3
+    fibonacci 2020-01-05 00:00:00     5
+    fibonacci 2020-01-06 00:00:00     8
 
-Read some of those values back:
+# No server is necessary
 
-	read fibonacci -f 2018-01-03 -t 2018-01-06
+All actions can be done by running `sonnerie -d /path/to/data/`. Furthermore,
+a file, (after it gets its ".tmp" suffix removed) will never change, though
+the file named `main` will get replaced sometimes. This means you can
+replicate a database by hardlinking all the files (`ln`).
 
-Sonnerie replies with:
+# The database must be compacted
 
-    2018-01-03 00:00:00     2
-    2018-01-04 00:00:00     3
-    2018-01-05 00:00:00     5
-    2018-01-06 00:00:00     8
+On a regular (possibly daily) basis, you must compact the database. This
+rolls a bunch of transaction files into a single large transaction file.
+This is important for performance. By the time about 100 transaction files
+are present, performance suffers greatly. Therefor, compact the database
+at approximately the rate necessary to prevent that.
 
-Commit the transaction:
+There are two types of compactions, a major and a minor one. A major
+one replaces the entire database, which requires reading
+and rewriting the entire database. A minor one replaces all of the transaction
+files with a single new transaction file. This is a lot faster because it
+requires only reading and rewriting the contents the transaction files
+and not the `main` file.
 
-	commit
+A major compaction is accomplished with:
 
-After `commit` completes, the data is definitely on disk.
+    sonnerie -d /path/to/data/ compact --major
 
-Try `help` and `read --help` (or `--help` with any command)
-for more information.
+And a minor compaction:
 
-## Multiple columns
+    sonnerie -d /path/to/data/ compact
 
-In the above example, we are storing one value with each timestamp. You
-can also store multiple values with each timestamp of differing types. This
-is useful for multi-dimensional data.
+Compacting doesn't block readers or writers, but only one can
+happen at any given moment, so a lock is placed to prevent multiple
+concurrent compactions.
 
-When you create a series, you must specify the format ("type") of the records.
-The format is specified as a bunch of single character codes, one for each value.
+# You can compact and filter
 
-The character codes are:
-* `f` - a 32 bit float (f32)
-* `F` - a 64 bit float (f64)
-* `u` - a 32 bit unsigned integer (u32)
-* `U` - a 64 bit unsigned integer (u64)
-* `i` - a 32 bit signed integer (i32)
-* `I` - a 64 bit signed integer (i64)
+In case some data in the database needs to be removed, you can use
+`compact` with the `--gegnum` option. Gegnum means "through" in Icelandic.
 
-We can create another series plotting the coordinates of a jet travelling
-over the Pacific Ocean in terms of its longitude and latitude (respectively):
+This command removes records that start with `bad-objects`:
 
-    create oceanic-airlines --format ff
+    compact --major --gegnum 'grep -v ^bad-objects'
 
-And we can insert values for this flight as well:
+Do a normal compaction, but also count records:
 
-	add oceanic-airlines 2018-01-01T00:00:00 37.686751 -122.602227
-	add oceanic-airlines 2018-01-01T00:00:01 37.686810 -122.603713
-	add oceanic-airlines 2018-01-01T00:00:02 37.686873 -122.605997
-	add oceanic-airlines 2018-01-01T00:00:03 37.687022 -122.609997
-	add oceanic-airlines 2018-01-01T00:00:04 37.687364 -122.610945
-	add oceanic-airlines 2018-01-01T00:00:05 37.687503 -122.615211
+    compact --major --gegnum 'pv -l'
 
-# Errata
+The `--gegnum` runs its command inside a /bin/sh, so pipelines work. Filter
+out bad objects AND modify the names of other objects:
 
-## The protocol
+    compact --major --gegnum 'grep -v ^bad-objects | sed "s/^old-name/new-name/"'
 
-Telnet into Sonnerie (`telnet ::1 5599`) and type "help" to see what you can
-do. The protocol is text-based and very similar to the client frontend.
+Compactions are atomic, so you can cancel it (with `^C`) at any time.
 
-Commands use shell-like escaping, so spaces can be escaped with
-a backslash. Timestamps are nanoseconds since the Unix Epoch.
+You can also see a preview of its output by piping your command into `| tee /dev/stderr`.
 
-The protocol formats floats with enough precision such that
-they can represent themselves exactly.
+Note that the file format is rows of "key\ttimestamp\tformat\tvalue"
 
-## Fast imports
+By default, compactions run in a "safe" mode. This is safer but very slow, as each key must
+be verified on insertion to make sure the datatypes are homogenous. Use the
+`--unsafe-nocheck` option to disable the feature.
 
-In order to ensure durability, many `fsync`s need to be called (a few per
-transaction). This can slow down imports. You should consider running `sonnerie`
-prefixed with [`eatmydata`](https://packages.debian.org/stretch/eatmydata),
-which is a Debian package. It will temporarily suppress fsync. After
-your import is done, start Sonnerie again normally.
+# sonnerie-serve
 
-When doing your inputs, tweak the size of the transaction until you find
-the optimal size. This might be a megabyte or so of data.
+A server is provided so that you can conveniently read and write to the database
+over a network via HTTP.
 
-## Backup
+An alternate approach is to use "sshfs" to mount the database remotely. This
+approach is very performant because only compressed data goes through the network
+and the server doesn't need to do any of the decompressing. Avoid nfs
+because compactions will cause files to get deleted, and then the client will get a IO error,
+as NFS cannot track files that are closed by the server.
 
-Online *incremental* backups are possible (the file format is
-designed accordingly) but not yet implemented.
+# Sonnerie's API
+Sonnerie can be used as a Rust library so you can read and write databases directly,
+but the API is incomplete and poorly documented, for now.
 
-You can do a *full* online backup as such, maintaining the following order:
-
-    mkdir dst
-    sqlite3 src/meta .dump | sqlite3 dst/meta
-    cp src/blocks-*.wal dst/
-    cp src/blocks dst/blocks
-
-(This method will no longer apply once compacting is implemented).
-
-Note that this method works even if you use erasure or insertion.
-
-## Semver
-
-The file format and protocol are subject to change between different 0.x versions.
-Once a 1.0 is released, no backwards incompatible changes will be permitted
-before Sonnerie 2.0.
-
-## Implementation details
-
-Metadata is stored in an sqlite3 database. Metadata is things
-like block locations and the names of series. Actual timeseries
-data is stored in a very large file named "`blocks`". They're called
-"blocks" because each series is stored in pieces of chronological samples.
-
-Sonnerie may not be well suited for SSDs. This is because the design
-expects that for each sample (on different series), one of those blocks
-will have to be modified, and SSDs don't like you to write to the same
-part of the drive many times. An SSD-friendly design would have us write in
-blocks that each store data from many disparate series and then optimizing
-to read simultanously from many of those blocks.
-
-Nevertheless, if you find that you write many consecutive values to a single
-series in a single transaction, then Sonnerie will suit an SSD.
-
-# Changelog
-
-Refer to [Changelog.md](Changelog.md).
-
-# Roadmap
-
-* Online incremental backups
-* Compacting (not useful without insertion and appending)
-* Compression
-* An HTTP-based protocol (won't be quite complete)
-* Store variable-sized data (a string or blob per timestamp)
+# Sonnerie is used in production
+Sonnerie is used by e.ventures Management LLC with a >100GiB database.
 
 # Copyright
 
 Sonnerie was implemented by Charles Samuels at
 [e.ventures Management LLC](http://eventures.vc).
-
