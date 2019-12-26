@@ -219,8 +219,8 @@ is not the same as the existing value for that key, you will get corruptions.
 An alternate approach is to use "sshfs" to mount the database remotely. This
 approach is very performant because only compressed data goes through the network
 and the server doesn't need to do any of the decompressing. Avoid nfs
-because compactions will cause files to get deleted, and then the client will get a IO error,
-as NFS cannot track files that are closed on the server.
+because compactions will cause files to get deleted, and then the client will get an
+IO error, as NFS cannot track files that are closed on the server.
 
 # Sonnerie's API
 Sonnerie can be used as a Rust library so you can read and write databases directly,
@@ -229,6 +229,12 @@ but the API is incomplete and poorly documented, for now.
 # Sonnerie is used in production
 Sonnerie is used by e.ventures Management LLC with a >100GiB database and 10s
 of billions of rows.
+
+# Performance
+An approximate average lookup time for a random key is around 100ms on an SSD
+and much slower on a busy rotational media device. Sequential access (i.e., reading
+the whole database in lexicographical order) is somewhere around 2k keys/sec and
+1M records/sec, very much depending on the data itself.
 
 # Copyright
 
