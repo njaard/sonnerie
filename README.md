@@ -52,12 +52,13 @@ Create a database by creating a directory and an empty file named "`main`":
 
 ## Insert data
 	echo -e "\
-	fibonacci 2020-01-01T00:00:00 u 1
-	fibonacci 2020-01-02T00:00:00 u 1
-	fibonacci 2020-01-03T00:00:00 u 2
-	fibonacci 2020-01-04T00:00:00 u 3
-	fibonacci 2020-01-05T00:00:00 u 5
-	fibonacci 2020-01-06T00:00:00 u 8" | sonnerie -d database/ add
+	fibonacci 2020-01-01T00:00:00 1
+	fibonacci 2020-01-02T00:00:00 1
+	fibonacci 2020-01-03T00:00:00 2
+	fibonacci 2020-01-04T00:00:00 3
+	fibonacci 2020-01-05T00:00:00 5
+	fibonacci 2020-01-06T00:00:00 8" \
+	| sonnerie -d database/ add --format u --timestamp-format=%FT%T
 
 If the "add" command succeeds, then the transaction is committed to disk.
 
@@ -74,13 +75,14 @@ on the key. Searching based on a prefix is very efficient:
 
 	sonnerie -d database/ read fib%
 
-Sonnerie returns the matched values:
-    fibonacci 2020-01-01 00:00:00     1
-    fibonacci 2020-01-02 00:00:00     1
-    fibonacci 2020-01-03 00:00:00     2
-    fibonacci 2020-01-04 00:00:00     3
-    fibonacci 2020-01-05 00:00:00     5
-    fibonacci 2020-01-06 00:00:00     8
+Sonnerie outputs the matched values:
+
+	fibonacci 2020-01-01 00:00:00     1
+	fibonacci 2020-01-02 00:00:00     1
+	fibonacci 2020-01-03 00:00:00     2
+	fibonacci 2020-01-04 00:00:00     3
+	fibonacci 2020-01-05 00:00:00     5
+	fibonacci 2020-01-06 00:00:00     8
 
 # Usage
 
@@ -148,6 +150,8 @@ Compacting doesn't block readers or writers, but only one can
 happen at any given moment, so a lock is placed to prevent multiple
 concurrent compactions.
 
+Compactions are atomic, so you can cancel it (with `^C`) at any time.
+
 ## You can compact and filter
 
 In case some data in the database needs to be removed, you can use
@@ -166,15 +170,13 @@ out bad objects AND modify the names of other objects:
 
     compact --major --gegnum 'grep -v ^bad-objects | sed "s/^old-name/new-name/"'
 
-Compactions are atomic, so you can cancel it (with `^C`) at any time.
-
 You can also see a preview of its output by piping your command into `| tee /dev/stderr`.
 
 Note that the rows come as "key\ttimestamp\tformat\tvalue"
 
-By default, compactions run in a "safe" mode. This is safer but very slow, as each key must
-be verified on insertion to make sure the datatypes are homogenous. Use the
-`--unsafe-nocheck` option to disable the feature.
+By default, gegnum compactions run in a "safe" mode. This is safer but very slow, as
+each key must be verified on insertion to make sure the datatypes are homogenous. Use
+the `--unsafe-nocheck` option to disable the feature.
 
 You can also "read | filter | add" into a different database, but `gegnum` allows
 you to modify an existing database which is useful for online maintenance on a database
@@ -189,11 +191,17 @@ Run `sonnerie-serve -d /path/to/database/ -l 0.0.0.0:5555` and then you may
 make `PUT` and `GET` requests:
 
 * Read the named series:
+
 	curl -X GET http://localhost:5555/fibonacci
+
 * Read series by wildcard:
+
 	curl -X GET http://localhost:5555/fib%
+
 * Add more data:
+
 	curl -X PUT http://localhost:5555/ --data-binary 'fibonacci 2020-01-07T00:00:00 u 13'
+
 (`200 OK` means that the transaction was committed)
 
 Unlike `sonnerie add`, `sonnerie-serve` allows unsorted input.
