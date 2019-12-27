@@ -192,15 +192,15 @@ make `PUT` and `GET` requests:
 
 * Read the named series:
 
-	curl -X GET http://localhost:5555/fibonacci
+	`curl -X GET http://localhost:5555/fibonacci`
 
 * Read series by wildcard:
 
-	curl -X GET http://localhost:5555/fib%
+	`curl -X GET http://localhost:5555/fib%`
 
 * Add more data:
 
-	curl -X PUT http://localhost:5555/ --data-binary 'fibonacci 2020-01-07T00:00:00 u 13'
+	`curl -X PUT http://localhost:5555/ --data-binary 'fibonacci 2020-01-07T00:00:00 u 13'`
 
 (`200 OK` means that the transaction was committed)
 
