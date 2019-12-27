@@ -26,7 +26,6 @@ hyper = "0.12"
 tokio-threadpool = "0.1"
 tokio="0.1"
 futures = "0.1"
-tokio-io="0.1"
 url="2"
 shardio="0.5"
 lines_from_request={ version="0.1.0", path="lines_from_request" }
