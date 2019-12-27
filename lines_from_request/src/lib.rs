@@ -2,14 +2,14 @@
 
 use hyper::{Body, error::Error};
 use std::collections::VecDeque;
-
-use futures::stream::Stream;
+use futures::executor::block_on;
+use futures::stream::StreamExt;
 
 pub fn lines(body: Body) -> Lines
 {
 	Lines
 	{
-		body: body.wait(),
+		body: body,
 		buffer: VecDeque::new(),
 		done: false,
 	}
@@ -17,7 +17,7 @@ pub fn lines(body: Body) -> Lines
 
 pub struct Lines
 {
-	body: futures::stream::Wait<Body>,
+	body: Body,
 	buffer: VecDeque<u8>,
 	done: bool,
 }
@@ -46,7 +46,7 @@ impl Iterator for Lines
 			}
 
 			// get more data
-			if let Some(chunk) = self.body.next()
+			if let Some(chunk) = block_on(self.body.next())
 			{
 				if let Err(e) = chunk
 				{

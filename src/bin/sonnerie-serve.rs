@@ -1,7 +1,6 @@
 use std::path::PathBuf;
 
 use hyper::Server;
-use futures::Stream;
 use std::sync::Arc;
 use parking_lot::RwLock;
 use std::time::{Instant,Duration};
@@ -14,12 +13,10 @@ pub use hyper::Body;
 pub type Response = hyper::Response<Body>;
 pub type Request = hyper::Request<Body>;
 
-use futures::future::{Future, lazy};
-use futures::sink::Sink;
+use futures::future::Future;
+use futures::stream::StreamExt;
+use futures::sink::SinkExt;
 use escape_string::split_one;
-
-type GenericError = tokio_threadpool::BlockingError;
-type ResponseFuture = Box<dyn Future<Item=Response, Error=GenericError> + Send>;
 
 fn main()
 {
@@ -50,54 +47,80 @@ fn main()
 	let dir = matches.value_of_os("dir").expect("--dir");
 	let dir = std::path::Path::new(dir);
 
-	let threadpool = tokio_threadpool::Builder::new()
-		.pool_size(400)
-		.stack_size(1024*1024)
-		.keep_alive(Some(std::time::Duration::from_secs(20)))
-		.build();
+	let mut runtime = tokio::runtime::Builder::new()
+		.threaded_scheduler()
+		.core_threads(4)
+		.thread_name("sonnerie")
+		.thread_stack_size(1024 * 1024)
+		.build()
+		.expect("tokio runtime");
 
 	let srv = Tsrv
 	{
 		dir: dir.to_owned(),
-		threadpool,
 		shared_reader: RwLock::new(Arc::new(DatabaseReader::new(dir).unwrap())),
 		shared_reader_age: RwLock::new(Some(Instant::now())),
 	};
 
 	let srv = Arc::new(srv);
 
-	let new_service =
-		move ||
+	let make_service = hyper::service::make_service_fn(
+		move |_|
 		{
 			let srv = srv.clone();
-			hyper::service::service_fn(
-				move |req: Request|
-				{
-					let srv = srv.clone();
-					srv.run(req)
-				}
-			)
-		};
+			async move
+			{
+				Ok::<_, std::convert::Infallible>(hyper::service::service_fn(
+					move |req: Request|
+					{
+						let srv = srv.clone();
+						async move
+						{
+							let srv = srv.clone();
+							match srv.run(req).await
+							{
+								k @ Ok(_) => k,
+								Err(e) =>
+									Ok(hyper::Response::builder()
+										.status(500)
+										.body(e.into())
+										.unwrap()),
+							}
+						}
+					}
+				))
+			}
+		}
+	);
 
-	let exec = tokio::runtime::current_thread::TaskExecutor::current();
-
-	let sev = Server::bind(&addr)
-		.executor(exec)
-		.serve(new_service)
-		.map_err(|e| eprintln!("server error: {}", e));
+	let serve = Server::bind(&addr)
+		.executor(SpawnBlocking)
+		.serve(make_service);
 
 	eprintln!("now running");
-	tokio::runtime::current_thread::Runtime::new()
-		.expect("rt new")
-		.spawn(sev)
-		.run()
+	runtime
+		.block_on(serve)
 		.expect("rt run");
 }
+
+#[derive(Clone,Copy)]
+struct SpawnBlocking;
+
+impl<F> hyper::rt::Executor<F> for SpawnBlocking
+where
+	F: Future + Send + 'static,
+	F::Output: Send + 'static,
+{
+	fn execute(&self, fut: F)
+	{
+		tokio::task::spawn_blocking(|| async { fut.await });
+	}
+}
+
 
 struct Tsrv
 {
 	dir: PathBuf,
-	threadpool: tokio_threadpool::ThreadPool,
 	shared_reader: RwLock<Arc<DatabaseReader>>,
 	shared_reader_age: RwLock<Option<Instant>>,
 }
@@ -105,71 +128,25 @@ struct Tsrv
 
 impl Tsrv
 {
-	fn run(self: Arc<Tsrv>, req: Request)
-		-> ResponseFuture
+	async fn run(self: Arc<Tsrv>, req: Request)
+		-> Result<Response, String>
 	{
 		match req.method()
 		{
 			&hyper::Method::GET =>
 			{
-				self.get_outer(req)
+				self.get(req).await
 			},
 			&hyper::Method::PUT =>
 			{
-				self.put_outer(req)
+				self.put(req)
 			},
 			_ =>
-				Box::new(futures::future::ok(
-					hyper::Response::builder()
-						.status(404)
-						.body(Body::from("key not found"))
-						.unwrap()
-				)),
+				Ok(hyper::Response::builder()
+					.status(hyper::StatusCode::BAD_REQUEST)
+					.body(Body::from("invalid request"))
+					.unwrap()),
 		}
-	}
-
-	fn put_outer(self: Arc<Tsrv>, req: Request)
-		-> ResponseFuture
-	{
-		let srv = self.clone();
-		Box::new(
-		{
-			let e =
-			self.threadpool.spawn_handle(
-				lazy(
-					move ||
-					{
-						let e =std::panic::catch_unwind(
-							std::panic::AssertUnwindSafe(move ||
-								match srv.put(req)
-								{
-									Ok(v) => Ok(v),
-									Err(s) =>
-									{
-										eprintln!("put error: {}", s);
-										Ok(hyper::Response::builder()
-											.status(500)
-											.body(hyper::Body::from(format!("Failure: {}", s)))
-											.unwrap())
-									}
-								}
-							));
-						match e
-						{
-							Ok(k) => k,
-							Err(s) =>
-							{
-								Ok(hyper::Response::builder()
-									.status(500)
-									.body(hyper::Body::from(format!("Failure: (panic) {:?}", s)))
-									.unwrap())
-							}
-						}
-					}
-				)
-			);
-			e
-		})
 	}
 
 	fn put(&self, req: Request)
@@ -266,60 +243,16 @@ impl Tsrv
 			.map_err(|e| format!("{}", e))
 	}
 
-	fn get_outer(self: Arc<Tsrv>, req: Request)
-		-> ResponseFuture
-	{
-		let srv = self.clone();
-		Box::new(
-		{
-			let e =
-			self.threadpool.spawn_handle(
-				lazy(
-					move ||
-					{
-						let e =std::panic::catch_unwind(
-							std::panic::AssertUnwindSafe(move ||
-								match srv.get(req)
-								{
-									Ok(v) => Ok(v),
-									Err(s) =>
-									{
-										eprintln!("get error: {}", s);
-										Ok(hyper::Response::builder()
-											.status(500)
-											.body(hyper::Body::from(format!("Failure: {}", s)))
-											.unwrap())
-									}
-								}
-							));
-						match e
-						{
-							Ok(k) => k,
-							Err(s) =>
-							{
-								Ok(hyper::Response::builder()
-									.status(500)
-									.body(hyper::Body::from(format!("Failure: (panic) {:?}", s)))
-									.unwrap())
-							}
-						}
-					}
-				)
-			);
-			e
-		})
-	}
-
-	fn get(self: Arc<Self>, req: Request)
+	async fn get(self: Arc<Self>, req: Request)
 		-> Result<Response, String>
 	{
 		let p = req.uri().path();
 		if !p.starts_with("/")
 		{
-			return hyper::Response::builder()
+			return Ok(hyper::Response::builder()
 				.status(hyper::StatusCode::BAD_REQUEST)
 				.body(Body::from("invalid path"))
-				.map_err(|e| format!("{}", e));
+				.expect("error request"))
 		}
 		let key = &p[1..];
 
@@ -338,87 +271,87 @@ impl Tsrv
 		let human_dates = query_string.iter().find(|k|k.0=="human").is_some();
 
 		let filter = sonnerie::Wildcard::new(key);
-		let (send, recv) = futures::sync::mpsc::channel(16);
+		let (mut send, recv) = futures::channel::mpsc::channel(16);
 
 		let srv = self.clone();
 		std::thread::spawn(
 			move ||
-			{
-				let mut send = send.wait();
-
-				let db;
+			futures::executor::block_on(
+				async
 				{
-					// reuse the same reader object so that
-					// we don't have to do a "dirent" on the db directory
-					// and then open all the files all the time
-					let mut make_new_reader = false;
+					let db;
 					{
-						let age = srv.shared_reader_age.read();
-						if age.is_none() || age.unwrap().elapsed() > Duration::from_secs(10)
+						// reuse the same reader object so that
+						// we don't have to do a "dirent" on the db directory
+						// and then open all the files all the time
+						let mut make_new_reader = false;
 						{
-							drop(age);
-							// make sure another reader thread didn't get here first
-							let mut age = srv.shared_reader_age.write();
+							let age = srv.shared_reader_age.read();
 							if age.is_none() || age.unwrap().elapsed() > Duration::from_secs(10)
 							{
-								*age = Some(Instant::now());
-								make_new_reader = true;
+								drop(age);
+								// make sure another reader thread didn't get here first
+								let mut age = srv.shared_reader_age.write();
+								if age.is_none() || age.unwrap().elapsed() > Duration::from_secs(10)
+								{
+									*age = Some(Instant::now());
+									make_new_reader = true;
+								}
 							}
+						}
+
+						if make_new_reader
+						{
+							let newdb = Arc::new(DatabaseReader::new(&srv.dir).unwrap());
+							db = newdb.clone();
+							let mut rdr = srv.shared_reader.write();
+							*rdr = newdb;
+						}
+						else
+						{
+							let rdr = srv.shared_reader.read();
+							db = rdr.clone();
 						}
 					}
 
-					if make_new_reader
-					{
-						let newdb = Arc::new(DatabaseReader::new(&srv.dir).unwrap());
-						db = newdb.clone();
-						let mut rdr = srv.shared_reader.write();
-						*rdr = newdb;
-					}
+					// trick sonnerie to not do an fadvise when you search for a single key
+					let searcher: Box<dyn Iterator<Item=sonnerie::record::OwnedRecord>>;
+					if filter.is_exact()
+						{ searcher = Box::new(db.get(filter.prefix())); }
 					else
+						{ searcher = Box::new(db.get_filter(&filter)); }
+
+					for record in searcher
 					{
-						let rdr = srv.shared_reader.read();
-						db = rdr.clone();
+						let mut row: Vec<u8> = vec!();
+						if human_dates
+						{
+							sonnerie::formatted::print_record(
+								&record, &mut row,
+							).unwrap();
+						}
+						else
+						{
+							sonnerie::formatted::print_record_nanos(
+								&record, &mut row,
+							).unwrap();
+						}
+						row.push(b'\n');
+						let e = send.send(row).await;
+						if let Err(e) = e
+						{
+							eprintln!("channel error: {}", e);
+							break;
+						}
 					}
 				}
-
-				// trick sonnerie to not do an fadvise when you search for a single key
-				let searcher: Box<dyn Iterator<Item=sonnerie::record::OwnedRecord>>;
-				if filter.is_exact()
-					{ searcher = Box::new(db.get(filter.prefix())); }
-				else
-					{ searcher = Box::new(db.get_filter(&filter)); }
-
-				for record in searcher
-				{
-					let mut row: Vec<u8> = vec!();
-					if human_dates
-					{
-						sonnerie::formatted::print_record(
-							&record, &mut row,
-						).unwrap();
-					}
-					else
-					{
-						sonnerie::formatted::print_record_nanos(
-							&record, &mut row,
-						).unwrap();
-					}
-					row.push(b'\n');
-					let e = send.send(row);
-					if let Err(e) = e
-					{
-						eprintln!("channel error: {}", e);
-						break;
-					}
-				}
-			}
+			)
 		);
 
-		hyper::Response::builder()
+		Ok(hyper::Response::builder()
 			.header(hyper::header::CONTENT_TYPE, "text/plain")
-			.body(Body::wrap_stream(recv.map_err(
-				|_| Box::new(std::io::Error::new(std::io::ErrorKind::Other, "oh no")))))
-			.map_err(|e| format!("{}", e))
+			.body(Body::wrap_stream(recv.map(|a| -> Result<_, std::io::Error> { Ok(a) } )))
+			.expect("creating response"))
 	}
 }
 
