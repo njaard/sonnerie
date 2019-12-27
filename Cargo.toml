@@ -10,25 +10,42 @@ repository = "https://github.com/njaard/sonnerie"
 keywords = ["cli", "timeseries", "database"]
 documentation = "https://docs.rs/sonnerie/"
 
+
+[features]
+default=["bin", "sonnerie-serve"]
+bin = ["clap" ]
+sonnerie-serve = ["clap","url","hyper","tokio","futures",
+	"lines_from_request", "serde", "serde_derive", "shardio" ]
+
 [dependencies]
 twoway="0.2"
 memmap="0.7"
 byteorder="1"
-clap="2"
 lz4="1"
 chrono="0.4"
 regex="1"
 fs2="0.4"
 parking_lot="0.10"
-crossbeam="0.7"
 libc="0.2"
-hyper = "0.13"
-tokio={ version="0.2", features=["rt-threaded"] }
-futures = { version="0.3" }
-url="2"
-shardio="0.5"
-lines_from_request={ version="0.2.0", path="lines_from_request" }
 tempfile = "3"
-serde = "1"
-serde_derive = "1"
 escape_string = {version="0.1.0", path="escape_string"}
+crossbeam = "0.7"
+
+clap = { version="2", optional=true }
+url = { version="2", optional=true }
+hyper = { version="0.13", optional=true }
+tokio={ version="0.2", features=["rt-threaded"], optional=true }
+futures = { version="0.3", optional=true }
+lines_from_request={ version="0.2.0", path="lines_from_request", optional=true }
+serde = { version="1", optional=true }
+serde_derive = { version="1", optional=true }
+shardio = { version="0.5", optional=true }
+
+[[bin]]
+name="sonnerie"
+required-features = ["bin"]
+
+[[bin]]
+name="sonnerie-serve"
+required-features = ["sonnerie-serve"]
+
