@@ -7,7 +7,7 @@ use crossbeam::channel;
 const SEGMENT_SIZE_GOAL: usize = 1024*128;
 const SEGMENT_SIZE_EXTRA: usize = 1024*128 + 1024*32;
 
-pub struct Writer<W: Write+Send+'static>
+pub(crate) struct Writer<W: Write+Send+'static>
 {
 	writer_state: Option<Arc<Mutex<WriterState<W>>>>,
 	last_key: String,
@@ -36,11 +36,15 @@ struct WorkerMessage
 	payload: Vec<u8>, // to compress
 }
 
+/// A reason a write could not be completed
 #[derive(Debug)]
 pub enum WriteFailure
 {
+	/// The key (`.0`) came lexicographically before key `.1`.
 	OrderingViolation(String, String),
+	/// The formats must must for a single key.
 	HeterogeneousFormats(String, String, String),
+	/// An IO error from the OS
 	IOError(std::io::Error),
 }
 
@@ -101,7 +105,7 @@ impl<W: Write+Send> Writer<W>
 		}
 	}
 
-	pub fn add_record(&mut self, key: &str, format: &str, data: &[u8])
+	pub(crate) fn add_record(&mut self, key: &str, format: &str, data: &[u8])
 		-> std::result::Result<(), WriteFailure>
 	{
 		// this is the first key ever seen
@@ -190,7 +194,7 @@ impl<W: Write+Send> Writer<W>
 	}
 
 	/// send the current segment to a worker thread to get written
-	pub fn store_current_segment(&mut self) -> std::io::Result<()>
+	pub(crate) fn store_current_segment(&mut self) -> std::io::Result<()>
 	{
 		let mut header = vec!();
 		header.write_all(crate::segment::SEGMENT_INVOCATION)?;
@@ -221,7 +225,7 @@ impl<W: Write+Send> Writer<W>
 		Ok(())
 	}
 
-	pub fn finish(mut self)
+	pub(crate) fn finish(mut self)
 		-> std::io::Result<W>
 	{
 		self.fin()?;

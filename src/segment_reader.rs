@@ -3,7 +3,7 @@
 use crate::Segment;
 use std::io::Seek;
 
-pub struct SegmentReader
+pub(crate) struct SegmentReader
 {
 	map: memmap::Mmap,
 	len: usize,
@@ -11,7 +11,7 @@ pub struct SegmentReader
 
 impl SegmentReader
 {
-	pub fn open(file: &mut std::fs::File)
+	pub(crate) fn open(file: &mut std::fs::File)
 		-> std::io::Result<SegmentReader>
 	{
 		let len = file.seek(std::io::SeekFrom::End(0))? as usize;
@@ -46,7 +46,7 @@ impl SegmentReader
 		}
 	}
 
-	pub fn print_info<W: std::io::Write>(&self, w: &mut W)
+	pub(crate) fn print_info<W: std::io::Write>(&self, w: &mut W)
 		-> std::io::Result<()>
 	{
 		let mut segment = self.first();

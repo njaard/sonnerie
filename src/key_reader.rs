@@ -1,3 +1,5 @@
+//! Read a key from a transaction file.
+
 use crate::segment_reader::*;
 use crate::record::*;
 use crate::segment::*;
@@ -8,6 +10,7 @@ use std::ops::Bound::*;
 use std::rc::Rc;
 use crate::Wildcard;
 
+/// Read and filter keys from a single transaction file
 pub struct Reader
 {
 	segments: SegmentReader,
@@ -15,6 +18,11 @@ pub struct Reader
 
 impl Reader
 {
+	/// Open a single transaction file
+	///
+	/// If instead you want to read from an entire database,
+	/// use [`DatabaseReader`](struct.DatabaseReader.html)
+	/// which provides a similar API.
 	pub fn new(mut r: std::fs::File) -> std::io::Result<Reader>
 	{
 		Ok(
@@ -25,12 +33,24 @@ impl Reader
 		)
 	}
 
+	/// Get a reader for only a single key
+	///
+	/// Returns an object that will read all of the
+	/// records for only one key.
 	pub fn get<'rdr, 'k>(&'rdr self, key: &'k str)
 		-> StringKeyRangeReader<'rdr, 'k, std::ops::RangeInclusive<&'k str>>
 	{
 		self.get_range( key ..= key )
 	}
 
+	/// Get a reader for a lexicographic range of keys
+	///
+	/// Use inclusive or exclusive range syntax to select a range.
+	///
+	/// Example: `rdr.get_range("chimpan-ay" ..= "chimpan-zee")`
+	///
+	/// Range queries are always efficient and readahead
+	/// may occur.
 	pub fn get_range<'rdr, 'k, RB>(&'rdr self, range: RB)
 		-> StringKeyRangeReader<'rdr, 'k, RB>
 	where
@@ -90,6 +110,10 @@ impl Reader
 		}
 	}
 
+	/// Get a reader that filters on SQL's "LIKE"-like syntax.
+	///
+	/// A wildcard filter that has a fixed prefix, such as
+	/// `"chimp%"` is always efficient.
 	pub fn get_filter<'rdr, 'k>(&'rdr self, wildcard: &'k Wildcard)
 		-> StringKeyRangeReader<'rdr, 'k, std::ops::RangeFrom<&'k str>>
 	{
@@ -99,6 +123,9 @@ impl Reader
 		filter
 	}
 
+	/// Print diagnostic information about this transaction file.
+	///
+	/// This function is for debugging only.
 	pub fn print_info<W: std::io::Write>(&self, w: &mut W)
 		-> std::io::Result<()>
 	{

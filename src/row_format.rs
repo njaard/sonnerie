@@ -1,15 +1,20 @@
+//! Decode an encoded row format.
+
 use byteorder::{ByteOrder, BigEndian};
 use escape_string::{split_one};
 
 pub type Timestamp = u64;
 
+/// Decodes a row by its format. Created with [`parse_row_format`](fn.parse_row_format.html).
 pub trait RowFormat
 {
+	/// Encode the data into `dest` into the binary format that is stored.
 	fn to_stored_format(&self, ts: Timestamp, from: &str, dest: &mut Vec<u8>)
 		-> Result<(), String>;
+	/// Decode the data into something human readable
 	fn to_protocol_format(&self, from: &[u8], dest: &mut dyn ::std::io::Write)
 		-> ::std::io::Result<()>;
-
+	/// The size in bytes of a row payload, including its timestamp
 	fn row_size(&self) -> usize;
 }
 

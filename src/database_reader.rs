@@ -1,3 +1,5 @@
+//! Read a database.
+
 use std::path::{Path,PathBuf};
 use std::fs::File;
 use std::io::Seek;
@@ -9,6 +11,10 @@ use crate::Wildcard;
 
 use byteorder::ByteOrder;
 
+/// Read a database in key-timestamp sorted format.
+///
+/// Open a database with [`new`] and then [`get`],
+/// [`get_filter`] or [`get_range`] to select which keys to read.
 pub struct DatabaseReader
 {
 	_dir: PathBuf,
@@ -18,12 +24,21 @@ pub struct DatabaseReader
 
 impl DatabaseReader
 {
+	/// Open a database at the given path.
+	///
+	/// All of the committed transactions are opened.
+	///
+	/// Any transactions that appear after `new` is called
+	/// are not opened (create a new `DatabaseReader`).
 	pub fn new(dir: &Path)
 		-> std::io::Result<DatabaseReader>
 	{
 		Self::new_opts(dir, true)
 	}
 
+	/// Open a database at the given path, but not the `main` file.
+	///
+	/// This is only useful for doing a minor compaction.
 	pub fn without_main_db(dir: &Path)
 		-> std::io::Result<DatabaseReader>
 	{
@@ -88,6 +103,14 @@ impl DatabaseReader
 		})
 	}
 
+	/// Get the filenames of each transaction.
+	///
+	/// This is useful for compacting, because after
+	/// compaction is complete, you would delete all
+	/// of the transaction files.
+	///
+	/// This function also returns the path for `main`,
+	/// which is overwritten. Don't delete that.
 	pub fn transaction_paths(&self) -> Vec<PathBuf>
 	{
 		self.txes
@@ -96,12 +119,24 @@ impl DatabaseReader
 			.collect()
 	}
 
+	/// Get a reader for only a single key
+	///
+	/// Returns an object that will read all of the
+	/// records for only one key.
 	pub fn get<'rdr, 'k>(&'rdr self, key: &'k str)
 		-> DatabaseKeyReader<'rdr, 'k, std::ops::RangeInclusive<&'k str>>
 	{
 		self.get_range( key ..= key )
 	}
 
+	/// Get a reader for a lexicographic range of keys
+	///
+	/// Use inclusive or exclusive range syntax to select a range.
+	///
+	/// Example: `rdr.get_range("chimpan-ay" ..= "chimpan-zee")`
+	///
+	/// Range queries are always efficient and readahead
+	/// may occur.
 	pub fn get_range<'d, 'r, RB>(&'d self, range: RB)
 		-> DatabaseKeyReader<'d, 'r, RB>
 	where
@@ -132,6 +167,11 @@ impl DatabaseReader
 			merge: Box::new(merge),
 		}
 	}
+
+	/// Get a reader that filters on SQL's "LIKE"-like syntax.
+	///
+	/// A wildcard filter that has a fixed prefix, such as
+	/// `"chimp%"` is always efficient.
 	pub fn get_filter<'d, 'k>(&'d self, wildcard: &'k Wildcard)
 		-> DatabaseKeyReader<'d, 'k, std::ops::RangeFrom<&'k str>>
 	{
@@ -165,6 +205,10 @@ impl DatabaseReader
 
 
 
+/// An iterator over the filtered keys in a database.
+///
+/// Yields an [`OwnedRecord`](record/struct.OwnedRecord.html)
+/// for each row in the database, sorted by key and timestamp.
 pub struct DatabaseKeyReader<'d, 'r, RB>
 where
 	RB: std::ops::RangeBounds<&'r str>
