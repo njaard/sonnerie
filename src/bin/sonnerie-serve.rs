@@ -13,7 +13,6 @@ pub use hyper::Body;
 pub type Response = hyper::Response<Body>;
 pub type Request = hyper::Request<Body>;
 
-use futures::future::Future;
 use futures::stream::StreamExt;
 use futures::sink::SinkExt;
 use escape_string::split_one;
@@ -52,6 +51,7 @@ fn main()
 		.core_threads(4)
 		.thread_name("sonnerie")
 		.thread_stack_size(1024 * 1024)
+		.enable_all()
 		.build()
 		.expect("tokio runtime");
 
@@ -65,7 +65,7 @@ fn main()
 	let srv = Arc::new(srv);
 
 	let make_service = hyper::service::make_service_fn(
-		move |_|
+		move |_conn|
 		{
 			let srv = srv.clone();
 			async move
@@ -93,30 +93,18 @@ fn main()
 		}
 	);
 
-	let serve = Server::bind(&addr)
-		.executor(SpawnBlocking)
-		.serve(make_service);
-
-	eprintln!("now running");
 	runtime
-		.block_on(serve)
+		.block_on(
+			async
+			{
+				let serve = Server::bind(&addr)
+					.serve(make_service);
+				eprintln!("now running");
+				serve.await
+			}
+		)
 		.expect("rt run");
 }
-
-#[derive(Clone,Copy)]
-struct SpawnBlocking;
-
-impl<F> hyper::rt::Executor<F> for SpawnBlocking
-where
-	F: Future + Send + 'static,
-	F::Output: Send + 'static,
-{
-	fn execute(&self, fut: F)
-	{
-		tokio::task::spawn_blocking(|| async { fut.await });
-	}
-}
-
 
 struct Tsrv
 {
@@ -139,7 +127,7 @@ impl Tsrv
 			},
 			&hyper::Method::PUT =>
 			{
-				self.put(req)
+				tokio::task::block_in_place(move || self.put(req))
 			},
 			_ =>
 				Ok(hyper::Response::builder()

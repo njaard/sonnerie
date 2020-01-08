@@ -34,7 +34,7 @@ crossbeam = "0.7"
 clap = { version="2", optional=true }
 url = { version="2", optional=true }
 hyper = { version="0.13", optional=true }
-tokio={ version="0.2", features=["rt-threaded"], optional=true }
+tokio={ version="0.2", features=["full"], optional=true }
 futures = { version="0.3", optional=true }
 lines_from_request={ version="0.2.0", path="lines_from_request", optional=true }
 serde = { version="1", optional=true }
