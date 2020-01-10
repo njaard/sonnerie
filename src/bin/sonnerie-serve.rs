@@ -127,7 +127,7 @@ impl Tsrv
 			},
 			&hyper::Method::PUT =>
 			{
-				tokio::task::block_in_place(move || self.put(req))
+				self.put(req).await
 			},
 			_ =>
 				Ok(hyper::Response::builder()
@@ -137,7 +137,7 @@ impl Tsrv
 		}
 	}
 
-	fn put(&self, req: Request)
+	async fn put(&self, req: Request)
 		-> Result<Response, String>
 	{
 		// let db = DatabaseReader::new(&self.dir).unwrap();
@@ -167,10 +167,11 @@ impl Tsrv
 		{
 			let mut writer = sorted_file.get_sender();
 
-			let lines = lines_from_request::lines(req.into_body());
+			let mut lines = lines_from_request::lines(req.into_body());
 
-			for line in lines
+			while let Some(line) = lines.next().await
 			{
+				eprintln!("making progress");
 				let line = line.map_err(|e| format!("reading one row from network: {}", e))?;
 				let line = String::from_utf8(line)
 					.map_err(|e| format!("data must be utf-8: {}", e))?;
@@ -189,40 +190,52 @@ impl Tsrv
 					tail: tail.to_string(),
 				};
 
-				writer.send(rec)
-					.map_err(|e| format!("writing to sorted tempfile: {}", e))?;
+				tokio::task::block_in_place(
+					|| -> Result<(), String>
+					{
+						writer.send(rec)
+							.map_err(|e| format!("writing to sorted tempfile: {}", e))
+					}
+				)?;
 			}
 		}
 
-		sorted_file.finish()
-			.map_err(|e| format!("doing the external sorting {}", e))?;
+		tokio::task::block_in_place(
+			|| -> Result<(), String>
+			{
+				sorted_file.finish()
+					.map_err(|e| format!("doing the external sorting {}", e))?;
 
-		let reader = shardio::ShardReader::<SortingRecord>::open(tmpfile.path())
-			.map_err(|e| format!("opening sorted: {}", e))?;
+				let reader = shardio::ShardReader::<SortingRecord>::open(tmpfile.path())
+					.map_err(|e| format!("opening sorted: {}", e))?;
 
-		let mut row_data = vec!();
+				let mut row_data = vec!();
 
-		for record in reader.iter()
-			.map_err(|e| format!("reading from sorted: {}", e))?
-		{
-			let SortingRecord{ key, ts, format, tail } = record
-				.map_err(|e| format!("parsing temporary data: {}", e))?;
-			let row_format = parse_row_format(&format);
-			row_format.to_stored_format(ts, &tail, &mut row_data)
-				.map_err(|e| format!("parsing data according to format: {}", e))?;
-			tx.add_record(&key, &format, &row_data)
-				.map_err(|e| format!("processing record {}[{}]: {:?}", key, ts, e))?;
-			row_data.clear();
-		}
+				for record in reader.iter()
+					.map_err(|e| format!("reading from sorted: {}", e))?
+				{
+					let SortingRecord{ key, ts, format, tail } = record
+						.map_err(|e| format!("parsing temporary data: {}", e))?;
+					let row_format = parse_row_format(&format);
+					row_format.to_stored_format(ts, &tail, &mut row_data)
+						.map_err(|e| format!("parsing data according to format: {}", e))?;
+					tx.add_record(&key, &format, &row_data)
+						.map_err(|e| format!("processing record {}[{}]: {:?}", key, ts, e))?;
+					row_data.clear();
+				}
 
-		tx.commit()
-			.map_err(|e| format!("committing tx: {}", e))?;
+				tx.commit()
+					.map_err(|e| format!("committing tx: {}", e))?;
 
-		// after a commit happens, invalidate the shared reader
-		{
-			let mut age = self.shared_reader_age.write();
-			*age = None;
-		}
+				// after a commit happens, invalidate the shared reader
+				{
+					let mut age = self.shared_reader_age.write();
+					*age = None;
+				}
+
+				Ok(())
+			}
+		)?;
 
 		hyper::Response::builder()
 			.status(201)
