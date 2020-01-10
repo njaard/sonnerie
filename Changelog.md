@@ -1,4 +1,7 @@
-# 0.5.1: 2020-01-18
+# 0.5.2: 2020-01-10
+* `PUT` works again in sonnerie-serve
+
+# 0.5.1: 2020-01-08
 * Public API is now roughly sensible
 * Add reasonably complete API documentation
 * Switch to tokio 0.2
