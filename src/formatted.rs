@@ -143,8 +143,11 @@ pub fn add_from_stream_with_fmt<R: std::io::BufRead>(
 
 /// Write a formatted record to a stream
 ///
+/// Deprecated: Use [`print_record2`] instead.
+///
 /// Each row is written in the same format that [`add_from_stream`]
 /// accepts, with the timestamp being formatted as `%FT%T`.
+#[deprecated]
 pub fn print_record<W: std::io::Write>(
 	record: &crate::record::OwnedRecord,
 	out: &mut W,
@@ -196,6 +199,8 @@ pub fn print_record_with_fmt<W: std::io::Write>(
 
 /// Write formatted output with nanosecond timestamps.
 ///
+/// Deprecated: Use [`print_record2`] instead.
+///
 /// Same as [`print_record`] but the timestamps are
 /// nanoseconds since the epoch.
 pub fn print_record_nanos<W: std::io::Write>(
@@ -213,3 +218,96 @@ pub fn print_record_nanos<W: std::io::Write>(
 
 	fmt.to_protocol_format(value, out)
 }
+
+/// Print the record format (`uUfF`) right after the timestamp
+#[derive(Debug,Copy,Clone)]
+pub enum PrintRecordFormat
+{
+	/// Do
+	Yes,
+	/// Or do not
+	No,
+}
+
+/// Print record formats by default
+impl std::default::Default for PrintRecordFormat
+{
+	fn default() -> Self
+	{
+		PrintRecordFormat::Yes
+	}
+}
+
+
+/// Specify how to print the timestamp
+#[derive(Debug,Copy,Clone)]
+pub enum PrintTimestamp<'a>
+{
+	/// Print the timestamp as nanoseconds since the unix epoch
+	Nanos,
+	/// Print the timestamp as seconds since the unix epoch
+	Seconds,
+	/// Print the timestamp according to this `strftime` format.
+	/// Refer to [`chrono`](https://docs.rs/chrono/*/chrono/format/strftime/)
+	FormatString(&'a str),
+}
+
+
+/// Format as `%FT%T` (ISO-8601)
+impl std::default::Default for PrintTimestamp<'static>
+{
+	fn default() -> Self
+	{
+		PrintTimestamp::FormatString("%FT%T")
+	}
+}
+
+
+/// Write a formatted record to a stream
+///
+/// Each row is written in the same format that [`add_from_stream`]
+/// or [`add_from_stream_with_fmt`] accept, depending
+/// on the options for the parameters `print_timestamp`
+/// or `print_record_format`.
+pub fn print_record2<W: std::io::Write>(
+	record: &crate::record::OwnedRecord,
+	out: &mut W,
+	print_timestamp: PrintTimestamp<'_>,
+	print_record_format: PrintRecordFormat,
+) -> std::io::Result<()>
+{
+	let fmt_string = record.format();
+	let fmt = parse_row_format(fmt_string);
+	let key = record.key();
+	let ts = &record.value()[0..8];
+	let value = &record.value()[8..];
+	let ts: u64 = byteorder::BigEndian::read_u64(ts);
+
+	write!(out, "{}\t", escape_string::escape(key))?;
+
+	match print_timestamp
+	{
+		PrintTimestamp::Nanos =>
+			write!(out, "{}", ts)?,
+		PrintTimestamp::Seconds =>
+			write!(out, "{}", ts/1_000_000_000)?,
+		PrintTimestamp::FormatString(strf) =>
+		{
+			let ts = chrono::NaiveDateTime::from_timestamp(
+				(ts/1_000_000_000) as i64, (ts%1_000_000_000) as u32
+			);
+			write!(out, "{}", ts.format(strf))?;
+		}
+	}
+
+	write!(out, "\t")?;
+	match print_record_format
+	{
+		PrintRecordFormat::Yes =>
+			write!(out, "{}\t", fmt_string)?,
+		PrintRecordFormat::No => {},
+	}
+
+	fmt.to_protocol_format(value, out)
+}
+

@@ -271,6 +271,12 @@ impl Tsrv
 
 		let human_dates = query_string.iter().find(|k|k.0=="human").is_some();
 
+		let timestamp_fmt;
+		if human_dates
+			{ timestamp_fmt = Default::default(); }
+		else
+			{ timestamp_fmt = sonnerie::formatted::PrintTimestamp::Nanos; }
+
 		let filter = sonnerie::Wildcard::new(key);
 		let (mut send, recv) = futures::channel::mpsc::channel(16);
 
@@ -325,18 +331,12 @@ impl Tsrv
 					for record in searcher
 					{
 						let mut row: Vec<u8> = vec!();
-						if human_dates
-						{
-							sonnerie::formatted::print_record(
-								&record, &mut row,
-							).unwrap();
-						}
-						else
-						{
-							sonnerie::formatted::print_record_nanos(
-								&record, &mut row,
-							).unwrap();
-						}
+						sonnerie::formatted::print_record2(
+							&record,
+							&mut row,
+							timestamp_fmt,
+							sonnerie::formatted::PrintRecordFormat::No,
+						).unwrap();
 						row.push(b'\n');
 						let e = send.send(row).await;
 						if let Err(e) = e

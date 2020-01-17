@@ -78,6 +78,26 @@ fn main()
 						.takes_value(true)
 						.required(true)
 					)
+					.arg(Arg::with_name("print-format")
+						.long("print-format")
+						.help("Output the line format after the timestamp for each record")
+					)
+					.arg(Arg::with_name("timestamp-format")
+						.long("timestamp-format")
+						.help("instead of \"%F %T\" since the epoch, use this strftime format")
+						.takes_value(true)
+					)
+					.arg(Arg::with_name("timestamp-nanos")
+						.long("timestamp-nanos")
+						.help("Print timestamps as nanoseconds since the unix epoch")
+						.conflicts_with("timestamp-format")
+					)
+					.arg(Arg::with_name("timestamp-seconds")
+						.long("timestamp-seconds")
+						.help("Print timestamps as seconds since the unix epoch (rounded down if necessary)")
+						.conflicts_with("timestamp-format")
+						.conflicts_with("timestamp-nanos")
+					)
 			)
 			.get_matches();
 
@@ -107,17 +127,39 @@ fn main()
 	}
 	else if let Some(matches) = matches.subcommand_matches("read")
 	{
+		let print_format = matches.is_present("print-format");
+		let timestamp_format = matches.value_of("timestamp-format")
+			.unwrap_or("%F %T");
+		let timestamp_nanos = matches.is_present("timestamp-nanos");
+		let timestamp_seconds = matches.is_present("timestamp-seconds");
+
 		let filter = matches.value_of("filter").unwrap();
 		let filter = Wildcard::new(filter);
 
 		let stdout = std::io::stdout();
 		let mut stdout = std::io::BufWriter::new(stdout.lock());
-
 		let db = DatabaseReader::new(dir)?;
+
+		let print_record_format =
+			if print_format
+				{ formatted::PrintRecordFormat::Yes }
+			else
+				{ formatted::PrintRecordFormat::No };
+		let print_timestamp =
+			if timestamp_nanos
+				{ formatted::PrintTimestamp::Nanos }
+			else if timestamp_seconds
+				{ formatted::PrintTimestamp::Seconds }
+			else
+				{ formatted::PrintTimestamp::FormatString(timestamp_format) };
+
 		for record in db.get_filter(&filter)
 		{
-			formatted::print_record(
-				&record, &mut stdout
+			formatted::print_record2(
+				&record,
+				&mut stdout,
+				print_timestamp,
+				print_record_format
 			)?;
 			writeln!(&mut stdout, "")?;
 		}
