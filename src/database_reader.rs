@@ -13,8 +13,8 @@ use byteorder::ByteOrder;
 
 /// Read a database in key-timestamp sorted format.
 ///
-/// Open a database with [`new`] and then [`get`],
-/// [`get_filter`] or [`get_range`] to select which keys to read.
+/// Open a database with [`new`](#method.new) and then [`get`](#method.get),
+/// [`get_filter`](#method.get_filter) or [`get_range`](#method.get_range) to select which keys to read.
 pub struct DatabaseReader
 {
 	_dir: PathBuf,
