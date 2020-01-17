@@ -1,3 +1,7 @@
+# 0.5.3: 2020-01-17
+* Add formatting options to the `sonnerie read` command.
+* Unify formatted output functions and deprecate parts of the API
+
 # 0.5.2: 2020-01-10
 * `PUT` works again in sonnerie-serve
 
