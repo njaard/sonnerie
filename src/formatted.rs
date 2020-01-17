@@ -171,6 +171,7 @@ pub fn print_record<W: std::io::Write>(
 ///
 /// Each row is written in the same format that [`add_from_stream_with_fmt`]
 /// accepts, with the timestamp being formatted as `timestamp_format`.
+#[deprecated]
 pub fn print_record_with_fmt<W: std::io::Write>(
 	record: &crate::record::OwnedRecord,
 	timestamp_format: &str,
@@ -203,6 +204,7 @@ pub fn print_record_with_fmt<W: std::io::Write>(
 ///
 /// Same as [`print_record`] but the timestamps are
 /// nanoseconds since the epoch.
+#[deprecated]
 pub fn print_record_nanos<W: std::io::Write>(
 	record: &crate::record::OwnedRecord,
 	out: &mut W,

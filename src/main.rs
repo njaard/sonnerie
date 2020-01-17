@@ -225,15 +225,16 @@ fn compact(
 		let reader_thread = std::thread::spawn(
 			move || -> std::io::Result<()>
 			{
+				let timestamp_format = formatted::PrintTimestamp::FormatString(&ts_format_copy);
+				let reader = reader_db.get_range(..);
+				for record in reader
 				{
-					let reader = reader_db.get_range(..);
-					for record in reader
-					{
-						formatted::print_record_with_fmt(
-							&record, &ts_format_copy, &mut childinput
-						)?;
-						writeln!(&mut childinput, "")?;
-					}
+					formatted::print_record2(
+						&record, &mut childinput,
+						timestamp_format,
+						formatted::PrintRecordFormat::Yes,
+					)?;
+					writeln!(&mut childinput, "")?;
 				}
 				Ok(())
 			}
