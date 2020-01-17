@@ -171,7 +171,6 @@ impl Tsrv
 
 			while let Some(line) = lines.next().await
 			{
-				eprintln!("making progress");
 				let line = line.map_err(|e| format!("reading one row from network: {}", e))?;
 				let line = String::from_utf8(line)
 					.map_err(|e| format!("data must be utf-8: {}", e))?;
