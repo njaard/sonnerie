@@ -25,7 +25,7 @@ transaction is completed, it is `fsync`ed then made available for reading.
 * Isolated: A transaction doesn't see updates from other transactions or expose its changes until it has been committed.
 * Durable: committed data is resistant to loss from unexpected shutdown.
 * Nanosecond-resolution timestamps (64 bit), 1970-2554
-* No weird dependencies, no virtual machines, one single native binary
+* No weird dependencies, no virtual machines, one single native binary for the command line tool
 * floating point and integer values, multiple columns per sample
 
 Sonnerie runs on Unix-like systems and is developed on Linux.
@@ -192,11 +192,15 @@ make `PUT` and `GET` requests:
 
 * Read the named series:
 
-	`curl -X GET http://localhost:5555/fibonacci`
+	`curl http://localhost:5555/fibonacci`
 
 * Read series by wildcard:
 
-	`curl -X GET http://localhost:5555/fib%`
+	`curl http://localhost:5555/fib%`
+
+* Output human-readable timestamps:
+
+	`curl http://localhost:5555/fib%?human`
 
 * Add more data:
 
