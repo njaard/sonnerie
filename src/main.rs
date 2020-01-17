@@ -122,6 +122,11 @@ fn main()
 			writeln!(&mut stdout, "")?;
 		}
 	}
+	else
+	{
+		eprintln!("A command must be specified (read, add, compact)");
+		std::process::exit(1);
+	}
 
 	Ok(())
 }
