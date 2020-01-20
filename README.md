@@ -97,6 +97,9 @@ The character codes are:
 * `U` - a 64 bit unsigned integer (u64)
 * `i` - a 32 bit signed integer (i32)
 * `I` - a 64 bit signed integer (i64)
+* `s` - a UTF-8 encoded string type. When strings are outputted, they are
+encoded in "backslash escaped" form, so all whitespace and backslashes are
+preceded by a backslash.
 
 In the above "fibonacci" example, we're using the "u" format.
 

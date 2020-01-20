@@ -71,18 +71,17 @@ impl RowFormat for RowFormatImpl
 ///
 /// the text format is one character per term, these are the characters:
 ///
-/// * i -> 32-bit signed integer
-/// * I -> 64-bit signed integer
-/// * u -> 32-bit unsigned integer
-/// * U -> 64-bit unsigned integer
-/// * f -> 32-bit unsigned float
-/// * F -> 64-bit unsigned float
-/// * b[number] -> a given number of bytes: "b256" 256 bytes
+/// * `i` -> 32-bit signed integer
+/// * `I` -> 64-bit signed integer
+/// * `u` -> 32-bit unsigned integer
+/// * `U` -> 64-bit unsigned integer
+/// * `f` -> 32-bit unsigned float
+/// * `F` -> 64-bit unsigned float
+/// * `s` -> variable size string type
 ///
 /// Potential future types:
 /// * decimal
 /// * large integers, floats (128 bit, 256 bit)
-/// * "s" -> variable size string type (maybe followed by a number
 /// to indicate "typical size"). The typical size is useful
 /// for knowing how big to make the blocks
 pub fn parse_row_format(human: &str) -> Box<dyn RowFormat>
