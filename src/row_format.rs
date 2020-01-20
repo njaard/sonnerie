@@ -14,7 +14,8 @@ pub trait RowFormat
 	/// Decode the data into something human readable
 	fn to_protocol_format(&self, from: &[u8], dest: &mut dyn ::std::io::Write)
 		-> ::std::io::Result<()>;
-	/// The size in bytes of a row payload, including its timestamp
+	/// The minimum size in bytes of a row payload, including its timestamp
+	/// (Exceeded in rows with string data)
 	fn row_size(&self) -> usize;
 }
 
@@ -125,6 +126,11 @@ pub fn parse_row_format(human: &str) -> Box<dyn RowFormat>
 			{
 				size += 8;
 				elements.push( Box::new(ElementF64) );
+			},
+			b's' =>
+			{
+				size += 1;
+				elements.push( Box::new(ElementString) );
 			},
 			a =>
 			{
@@ -325,5 +331,36 @@ impl Element for ElementF64
 		let v: f64 = BigEndian::read_f64(&from[0..8]);
 		write!(dest, "{:.17}", v)?;
 		Ok(&from[8..])
+	}
+}
+
+struct ElementString;
+impl Element for ElementString
+{
+	fn to_stored_format<'s>(&self, from: &'s str, dest: &mut Vec<u8>)
+		-> Result<&'s str, String>
+	{
+		let (head, tail) = escape_string::split_one(from)
+			.ok_or_else(|| format!("Unable to parse \"{}\" as backslash-escaped string", from))?;
+		let mut buf = unsigned_varint::encode::u64_buffer();
+		let encoded_len = unsigned_varint::encode::u64(head.len() as u64, &mut buf);
+		dest.extend_from_slice(encoded_len);
+		dest.extend_from_slice(head.as_bytes());
+		Ok(tail)
+	}
+	fn to_protocol_format<'a>(&self, from: &'a [u8], dest: &mut dyn ::std::io::Write)
+		-> ::std::io::Result<&'a [u8]>
+	{
+		let (len, tail) = unsigned_varint::decode::u64(from)
+			.map_err(
+				|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e)
+			)?;
+
+		let s = std::str::from_utf8(&tail[0 .. len as usize])
+			.map_err(
+				|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e)
+			)?;
+		write!(dest, "{}", escape_string::escape(s))?;
+		Ok(&tail[len as usize..])
 	}
 }

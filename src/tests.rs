@@ -179,6 +179,62 @@ fn multicolumn()
 }
 
 #[test]
+fn multicolumn_string()
+{
+	let t = tempfile::TempDir::new().unwrap();
+
+	let data= "\
+		a\t2010-01-01_00:00:00\tss\tMany\\ words Lotsa\\ stuff\\ here\n\
+		b\t2010-01-01_00:00:00\tsu\tFluffy\\ cat 42\n\
+		c\t2010-01-01_00:00:00\tus\t900 It's\\ a\\ cat!\
+		";
+	{
+		let r = DatabaseReader::without_main_db(t.path()).unwrap();
+
+		let mut tx = CreateTx::new(t.path()).expect("creating tx");
+
+		add_from_stream_with_fmt(
+			&mut tx, &r,
+			&mut std::io::Cursor::new(data),
+			Some("%F_%T"),
+			true
+		).expect("writing");
+		tx.commit_to(&t.path().join("main")).expect("committed");
+	}
+
+	let w = std::fs::File::open(t.path().join("main")).unwrap();
+	let o = Reader::new(w).unwrap();
+	let s = o.get_range("a" .. "z");
+	let mut i = s.into_iter();
+
+	let mut out = vec!();
+	print_record2(
+		&i.next().expect("row1"), &mut out,
+		PrintTimestamp::FormatString("%F_%T"),
+		PrintRecordFormat::Yes
+	).expect("formatting");
+	std::io::Write::write_all(&mut out, b"\n").unwrap();
+	print_record2(
+		&i.next().expect("row2"), &mut out,
+		PrintTimestamp::FormatString("%F_%T"),
+		PrintRecordFormat::Yes
+	).expect("formatting");
+	std::io::Write::write_all(&mut out, b"\n").unwrap();
+	print_record2(
+		&i.next().expect("row3"), &mut out,
+		PrintTimestamp::FormatString("%F_%T"),
+		PrintRecordFormat::Yes
+	).expect("formatting");
+	assert!(i.next().is_none());
+
+	assert_eq!(
+		&String::from_utf8(out).unwrap(),
+		data,
+	);
+}
+
+
+#[test]
 fn write()
 {
 	let t = tempfile::TempDir::new().unwrap();
