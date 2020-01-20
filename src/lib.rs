@@ -20,6 +20,6 @@ pub use row_format::*;
 pub use wildcard::*;
 pub use database_reader::*;
 
-#[cfg(tests)] mod tests;
+#[cfg(test)] mod tests;
 
 

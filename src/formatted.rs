@@ -48,9 +48,8 @@ pub fn add_from_stream<R: std::io::BufRead>(
 		 ts = timestamp.parse().expect("parsing timestamp");
 		}
 
-		let (values, _tail) = split_one(&tail).unwrap();
-		row_format.to_stored_format(ts, &values, &mut row_data)
-			.unwrap();
+		row_format.to_stored_format(ts, &tail, &mut row_data)
+			.expect(&format!("parsing values \"{}\"", tail));
 
 		if !nocheck && key_format_identified != key
 		{
