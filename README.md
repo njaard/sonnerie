@@ -1,5 +1,6 @@
 [![GitHub license](https://img.shields.io/badge/license-BSD-blue.svg)](https://raw.githubusercontent.com/njaard/sonnerie/master/LICENSE)
 [![Crates.io](https://img.shields.io/crates/v/sonnerie.svg)](https://crates.io/crates/sonnerie)
+[![docs](https://img.shields.io/badge/docs-api-green)](https://docs.rs/sonnerie)
 
 NEWS: 2019-12-23: 0.5 is a total rewrite!
 
