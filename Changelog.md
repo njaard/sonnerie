@@ -1,3 +1,7 @@
+# 0.5.4: 2020-01-23
+* Fix multicolumn rows
+* Add support for string types
+
 # 0.5.3: 2020-01-17
 * Add formatting options to the `sonnerie read` command.
 * Unify formatted output functions and deprecate parts of the API
