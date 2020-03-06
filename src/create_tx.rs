@@ -96,7 +96,8 @@ impl CreateTx
 		{
 			drop(file);
 			let _ = std::fs::remove_file(&self.tmp_name);
-			let _ = std::fs::remove_file(&final_name);
+			if final_name.file_name().map(|n| n == "main") != Some(true)
+				{ let _ = std::fs::remove_file(&final_name); }
 			return Ok(());
 		}
 		file.sync_all()?;
