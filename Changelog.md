@@ -1,5 +1,8 @@
-# 0.5.5: 2020-03-05
+# 0.5.6: 2020-03-05
 * When adding to an empty database, replace `main`.
+
+# 0.5.5: 2020-03-05
+* (yanked)
 
 # 0.5.4: 2020-01-23
 * Fix multicolumn rows
