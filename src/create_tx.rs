@@ -111,6 +111,25 @@ impl CreateTx
 	pub fn commit(self)
 		-> std::io::Result<()>
 	{
+		{ // maybe we can just replace `main`
+			let mainpath = self.dir.join("main");
+			let maininfo = std::fs::metadata(&mainpath)?;
+			if maininfo.len() == 0
+			{
+				use fs2::FileExt;
+				// ok, try again, this time having locked the db
+				let lock = std::fs::File::create(self.dir.join(".compact"))?;
+				lock.lock_exclusive()?;
+				let maininfo = std::fs::metadata(&mainpath)?;
+				if maininfo.len() == 0
+				{
+					// now, with a lock, `main` is still 0 bytes, so
+					// we can safely replace it
+					return self.commit_to(&mainpath);
+				}
+			}
+		}
+
 		for attempt in 0..
 		{
 			let timestamp = std::time::SystemTime::now()
