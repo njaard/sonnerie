@@ -22,7 +22,7 @@ fn main()
 	use clap::Arg;
 	let matches
 		= clap::App::new("sonnerie-serve")
-			.version("0.5.4")
+			.version("0.5.5")
 			.author("Charles Samuels <kalle@eventures.vc>")
 			.about("A network server for sonnerie")
 			.arg(Arg::with_name("listen")
