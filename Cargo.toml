@@ -39,7 +39,7 @@ futures = { version="0.3", optional=true }
 lines_from_request={ version="0.3.0", path="lines_from_request", optional=true }
 serde = { version="1", optional=true }
 serde_derive = { version="1", optional=true }
-shardio = { version="0.5", optional=true }
+shardio = { version="0.7", optional=true }
 
 [[bin]]
 name="sonnerie"
