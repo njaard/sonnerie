@@ -1,3 +1,8 @@
+# 0.5.7: 2020-07-23
+* the "read" cli command has --before and --after, which allows
+filtering on ranges and not just prefix
+* dependencies were updated
+
 # 0.5.6: 2020-03-05
 * When adding to an empty database, replace `main`.
 
