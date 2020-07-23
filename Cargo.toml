@@ -25,12 +25,12 @@ lz4="1"
 chrono="0.4"
 regex="1"
 fs2="0.4"
-parking_lot="0.10"
+parking_lot="0.11"
 libc="0.2"
 tempfile = "3"
 escape_string = {version="0.1.0", path="escape_string"}
 crossbeam = "0.7"
-unsigned-varint="0.3"
+unsigned-varint={version="0.4", default-features=false }
 clap = { version="2", optional=true }
 url = { version="2", optional=true }
 hyper = { version="0.13", optional=true }
