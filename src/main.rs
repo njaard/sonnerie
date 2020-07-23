@@ -76,7 +76,8 @@ fn main()
 					.arg(Arg::with_name("filter")
 						.help("select the keys to print out, \"%\" is the wildcard")
 						.takes_value(true)
-						.required(true)
+						.required_unless_one(&["before", "after"])
+
 					)
 					.arg(Arg::with_name("print-format")
 						.long("print-format")
@@ -97,6 +98,18 @@ fn main()
 						.help("Print timestamps as seconds since the unix epoch (rounded down if necessary)")
 						.conflicts_with("timestamp-format")
 						.conflicts_with("timestamp-nanos")
+					)
+					.arg(Arg::with_name("before")
+						.long("before")
+						.help("read values before (but not including) this key")
+						.takes_value(true)
+						.conflicts_with("filter")
+					)
+					.arg(Arg::with_name("after")
+						.long("after")
+						.help("read values after (and including) this key")
+						.takes_value(true)
+						.conflicts_with("filter")
 					)
 			)
 			.get_matches();
@@ -133,8 +146,9 @@ fn main()
 		let timestamp_nanos = matches.is_present("timestamp-nanos");
 		let timestamp_seconds = matches.is_present("timestamp-seconds");
 
-		let filter = matches.value_of("filter").unwrap();
-		let filter = Wildcard::new(filter);
+		let after = matches.value_of("after");
+		let before = matches.value_of("before");
+		let filter = matches.value_of("filter");
 
 		let stdout = std::io::stdout();
 		let mut stdout = std::io::BufWriter::new(stdout.lock());
@@ -153,15 +167,35 @@ fn main()
 			else
 				{ formatted::PrintTimestamp::FormatString(timestamp_format) };
 
-		for record in db.get_filter(&filter)
+		macro_rules! filter
 		{
-			formatted::print_record2(
-				&record,
-				&mut stdout,
-				print_timestamp,
-				print_record_format
-			)?;
-			writeln!(&mut stdout, "")?;
+			($filter:expr) =>
+			{
+				for record in $filter
+				{
+					formatted::print_record2(
+						&record,
+						&mut stdout,
+						print_timestamp,
+						print_record_format
+					)?;
+					writeln!(&mut stdout, "")?;
+				}
+			};
+		}
+
+		match (after, before, filter)
+		{
+			(Some(after), None, None) =>
+				filter!(db.get_range(after ..)),
+			(None, Some(before), None) =>
+				filter!(db.get_range( .. before)),
+			(Some(after), Some(before), None) =>
+				filter!(db.get_range(after .. before)),
+			(None, None, Some(filter)) =>
+				filter!(db.get_filter(&Wildcard::new(filter))),
+			_ =>
+				unreachable!(),
 		}
 	}
 	else
