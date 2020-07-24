@@ -129,6 +129,41 @@ fn basic_huge()
 }
 
 #[test]
+fn range_before()
+{
+	let t = tempfile::TempDir::new().unwrap();
+
+	{
+		let r = DatabaseReader::without_main_db(t.path()).unwrap();
+
+		{
+			let mut tx = CreateTx::new(t.path()).expect("creating tx");
+			let data=
+				"aa 2010-01-01_00:00:00 10\n\
+				bb 2010-01-04_00:00:00 20\n\
+				cc 2010-01-02_00:00:00 20\n\
+				";
+
+			add_from_stream(
+				&mut tx, &r, "u",
+				&mut std::io::Cursor::new(data),
+				Some("%F_%T"),
+				true
+			).expect("writing");
+			tx.commit_to(&t.path().join("main")).expect("committed");
+		}
+	}
+
+	let w = std::fs::File::open(t.path().join("main")).unwrap();
+	let o = Reader::new(w).unwrap();
+	let s = o.get_range( ..= "bb");
+	assert_eq!(s.into_iter().count(), 2);
+	let s = o.get_range( .. "bb");
+	assert_eq!(s.into_iter().count(), 1);
+}
+
+
+#[test]
 fn multicolumn()
 {
 	let t = tempfile::TempDir::new().unwrap();

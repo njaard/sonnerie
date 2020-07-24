@@ -228,7 +228,7 @@ where
 							continue;
 						}
 					},
-					Unbounded => return true,
+					Unbounded => {},
 				}
 
 				match self.range.end_bound()
