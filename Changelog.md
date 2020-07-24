@@ -1,3 +1,7 @@
+# 0.5.8: 2020-07-24
+* Fix when --before is used without --after
+* Never create .tmp files (use anonymous files) on Linux
+
 # 0.5.7: 2020-07-23
 * the "read" cli command has --before and --after, which allows
 filtering on ranges and not just prefix
