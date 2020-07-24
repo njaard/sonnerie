@@ -50,3 +50,6 @@ required-features = ["bin"]
 name="sonnerie-serve"
 required-features = ["sonnerie-serve"]
 
+[package.metadata.deb]
+section = "Databases"
+
