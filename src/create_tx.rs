@@ -15,7 +15,7 @@ use std::io::{Write,Seek};
 pub struct CreateTx
 {
 	writer: Option<Writer<std::fs::File>>,
-	tmp_name: PathBuf,
+	tmp: tempfile_fast::PersistableTempFile,
 	dir: PathBuf,
 }
 
@@ -30,40 +30,18 @@ impl CreateTx
 	/// suffix.
 	pub fn new(dir: &Path) -> std::io::Result<CreateTx>
 	{
-		for attempt in 0..
+		let tmp = tempfile_fast::PersistableTempFile::new_in(dir)?;
+		let f = tmp.try_clone()?;
+
+		let writer = Writer::new(f);
+
+		let tx = CreateTx
 		{
-			let timestamp = std::time::SystemTime::now()
-				.duration_since(std::time::SystemTime::UNIX_EPOCH)
-				.expect("duration_since epoch")
-				.as_secs();
-
-			let n = format!("tx.{:016x}", timestamp);
-			let tmp_name = dir.join(n + ".tmp");
-
-			let f = std::fs::OpenOptions::new()
-				.write(true)
-				.create_new(true)
-				.open(&tmp_name);
-			if let Err(e) = f
-			{
-				if attempt == 1000
-					{ return Err(e); }
-				std::thread::sleep(std::time::Duration::from_millis(100));
-				continue;
-			}
-
-			let writer = f.unwrap();
-			let writer = Writer::new(writer);
-
-			let tx = CreateTx
-				{
-					writer: Some(writer),
-					tmp_name,
-					dir: dir.to_owned(),
-				};
-			return Ok(tx);
-		}
-		unreachable!();
+			writer: Some(writer),
+			tmp,
+			dir: dir.to_owned(),
+		};
+		Ok(tx)
 	}
 
 	/// Add a record with the given key, format, and payload.
@@ -94,15 +72,16 @@ impl CreateTx
 		let len = file.seek(std::io::SeekFrom::End(0))? as usize;
 		if len == 0
 		{
+			// don't create an empty transaction file
 			drop(file);
-			let _ = std::fs::remove_file(&self.tmp_name);
 			if final_name.file_name().map(|n| n == "main") != Some(true)
 				{ let _ = std::fs::remove_file(&final_name); }
 			return Ok(());
 		}
 		file.sync_all()?;
 		drop(file);
-		std::fs::rename(&self.tmp_name, &final_name)
+		self.tmp.persist_by_rename(&final_name)
+			.map_err(|e| e.error)
 	}
 
 	/// Commit the transaction.
@@ -154,33 +133,14 @@ impl CreateTx
 			}
 			else
 			{
-				let tmp_name = self.tmp_name.clone();
 				if let Err(e) = self.commit_to(&final_name)
 				{
-					eprintln!("failure committing {:?} {:?}", tmp_name, final_name);
-					// don't leave files around from failed transactions
-					std::fs::remove_file(&tmp_name)
-						.expect("failed to remove file");
-					std::fs::remove_file(&final_name)
-						.expect("failed to remove file");
+					eprintln!("failure committing {:?}", final_name);
 					return Err(e);
 				}
 				break;
 			}
 		}
 		Ok(())
-	}
-}
-
-
-impl Drop for CreateTx
-{
-	fn drop(&mut self)
-	{
-		if self.writer.is_some()
-		{
-			drop(self.writer.take());
-			let _ = std::fs::remove_file(&self.tmp_name);
-		}
 	}
 }
