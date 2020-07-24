@@ -124,23 +124,28 @@ impl CreateTx
 				.write(true)
 				.create_new(true)
 				.open(&final_name);
-			if let Err(e) = f
+			match f
 			{
-				if attempt == 1000
-					{ return Err(e); }
-				std::thread::sleep(std::time::Duration::from_millis(100));
-				continue;
-			}
-			else
-			{
-				if let Err(e) = self.commit_to(&final_name)
-				{
-					eprintln!("failure committing {:?}", final_name);
-					return Err(e);
-				}
-				break;
+				Ok(_) =>
+					if let Err(e) = self.commit_to(&final_name)
+					{
+						eprintln!("failure committing {:?}", final_name);
+						return Err(e);
+					}
+					else
+					{
+						return Ok(());
+					},
+				Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists =>
+					{
+						if attempt == 1000
+							{ return Err(e); }
+						std::thread::sleep(std::time::Duration::from_millis(100));
+						continue;
+					}
+				Err(e) => return Err(e),
 			}
 		}
-		Ok(())
+		unreachable!();
 	}
 }
