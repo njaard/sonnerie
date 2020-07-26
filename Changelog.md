@@ -1,4 +1,4 @@
-# 0.5.8: 2020-07-24
+# 0.5.8: 2020-07-25
 * Fix when --before is used without --after
 * Never create .tmp files (use anonymous files) on Linux
 
