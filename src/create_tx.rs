@@ -80,8 +80,15 @@ impl CreateTx
 		}
 		file.sync_all()?;
 		drop(file);
-		self.tmp.persist_by_rename(&final_name)
-			.map_err(|e| e.error)
+		let named = self.tmp.persist_by_rename(&final_name)
+			.map_err(|e| e.error)?;
+		if let Some(umask) = get_umask()
+		{
+			use std::os::unix::fs::PermissionsExt;
+			let p = std::fs::Permissions::from_mode((0o444 & !umask) as u32);
+			let _ =std::fs::set_permissions(final_name, p);
+		}
+		Ok(named)
 	}
 
 	/// Commit the transaction.
@@ -148,4 +155,18 @@ impl CreateTx
 		}
 		unreachable!();
 	}
+}
+
+fn get_umask() -> Option<libc::mode_t>
+{
+	let s = std::fs::read_to_string("/proc/self/status").ok()?;
+	for line in s.split("\n")
+	{
+		if line.starts_with("Umask:")
+		{
+			let line = &line["Umask:".len() ..];
+			return libc::mode_t::from_str_radix(&line, 8).ok();
+		}
+	}
+	None
 }
