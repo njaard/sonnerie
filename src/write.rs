@@ -356,22 +356,26 @@ fn worker_thread<W: Write+Send>(
 
 		let wrote_size;
 		{
+			use std::convert::TryInto;
 			let ps = wl.prev_size;
 			let mut bc = WriteCounter::new(&mut wl.writer);
 
 			bc.write_all(crate::segment::SEGMENT_INVOCATION)?;
 			bc.write_u16::<BigEndian>(0x0100)?;
-			wv(&mut bc, header.first_key.len() as u32)?;
-			wv(&mut bc, header.last_key.len() as u32)?;
-			wv(&mut bc, compressed.len() as u32)?;
-			wv(&mut bc, ps as u32)?;
+
+			let ee = |e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e);
+
+			wv(&mut bc, header.first_key.len().try_into().map_err(|e| ee(e))?)?;
+			wv(&mut bc, header.last_key.len().try_into().map_err(|e| ee(e))?)?;
+			wv(&mut bc, compressed.len().try_into().map_err(|e| ee(e))?)?;
+			wv(&mut bc, ps)?;
 			wv(&mut bc, 0u32)?;
 			bc.write_all(&header.first_key)?;
 			bc.write_all(&header.last_key)?;
 
 			bc.write_all(&compressed)
 				.expect("failed to write compressed data");
-			wrote_size = bc.count() as u32;
+			wrote_size = bc.count().try_into().map_err(|e| ee(e))?;
 		}
 		wl.counter = counter+1;
 		wl.prev_size = wrote_size;
