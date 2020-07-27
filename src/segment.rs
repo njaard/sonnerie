@@ -13,6 +13,7 @@ pub(crate) struct Segment<'data>
 	pub(crate) payload: &'data [u8],
 	pub(crate) pos: usize,
 	pub(crate) prev_size: usize,
+	pub(crate) this_key_prev: usize,
 }
 
 
@@ -23,11 +24,12 @@ impl<'data> Segment<'data>
 	pub(crate) fn scan(from: &'data [u8], origin: usize)
 		-> Option<Segment<'data>>
 	{
+		let first_len = from.len();
+
 		let at = twoway::find_bytes(from, SEGMENT_INVOCATION);
 		if at.is_none() { return None; }
 		let at = at.unwrap() + SEGMENT_INVOCATION.len();
 
-		if from[at ..].len() < 18 { dbg!(); return None; }
 
 		let segment_version = BigEndian::read_u16(&from[at+0 .. at+2]) as usize;
 
@@ -35,6 +37,7 @@ impl<'data> Segment<'data>
 		{
 			0 =>
 			{
+				if from[at ..].len() < 18 { return None; }
 				let at = at + 2;
 				// the length of the first key
 				let len1 = BigEndian::read_u32(&from[at+0 .. at+4]) as usize;
@@ -64,13 +67,15 @@ impl<'data> Segment<'data>
 						payload,
 						pos: at + origin,
 						prev_size,
+						this_key_prev: 0,
 					}
 				)
 			},
 
-			1 =>
+			0x0100 =>
 			{
 				use unsigned_varint::decode::u32 as v32;
+				let from = &from[at + 2 .. ];
 
 				// the length of the first key
 				let (len1,from) = v32(from).ok()?;
@@ -80,19 +85,26 @@ impl<'data> Segment<'data>
 				let (len3,from) = v32(from).ok()?;
 				// the compressed size of the previous segment
 				let (prev_size,from) = v32(from).ok()?;
+				// how many bytes we need to reverse to get to the start
+				// of this key
+				let (this_key_prev,from) = v32(from).ok()?;
 
 				let len1 = len1 as usize;
 				let len2 = len2 as usize;
 				let len3 = len3 as usize;
 				let prev_size = prev_size as usize;
+				let this_key_prev = this_key_prev as usize;
 
 				if from.len() < len1+len2+len3 { return None; }
 
 				let first_key = &from[ 0 .. len1];
 
-				let last_key = &from[len1 .. len2];
+				let last_key = &from[len1 .. len1+len2];
 
-				let payload = &from[len2 .. len3];
+				let pos = first_len - from.len() + origin + len1+len2;
+
+				let payload = &from[len1+len2 .. len1+len2+len3];
+
 
 				Some(
 					Segment
@@ -100,8 +112,9 @@ impl<'data> Segment<'data>
 						first_key,
 						last_key,
 						payload,
-						pos: at + origin,
+						pos,
 						prev_size,
+						this_key_prev,
 					}
 				)
 			},

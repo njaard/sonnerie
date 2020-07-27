@@ -29,10 +29,16 @@ struct WriterState<W: Write+Send>
 	writer: W,
 }
 
+struct Header
+{
+	first_key: Vec<u8>,
+	last_key: Vec<u8>,
+}
+
 struct WorkerMessage
 {
 	counter: usize,
-	header: Vec<u8>, // not to compress
+	header: Header, // not to compress
 	payload: Vec<u8>, // to compress
 }
 
@@ -194,7 +200,9 @@ impl<W: Write+Send> Writer<W>
 	}
 
 	/// send the current segment to a worker thread to get written
-	pub(crate) fn store_current_segment(&mut self) -> std::io::Result<()>
+	///
+	/// Write it in segment version 1
+	/*pub(crate) fn store_current_segment_1(&mut self) -> std::io::Result<()>
 	{
 		let mut header = vec!();
 		header.write_all(crate::segment::SEGMENT_INVOCATION)?;
@@ -205,6 +213,36 @@ impl<W: Write+Send> Writer<W>
 		header.write_u32::<BigEndian>(0u32)?; // prev_size (filled by worker thread)
 		header.write_all(&self.first_segment_key.as_bytes())?;
 		header.write_all(&self.last_key.as_bytes())?;
+
+		let payload = std::mem::replace(
+			&mut self.current_segment_data,
+			Vec::with_capacity(SEGMENT_SIZE_EXTRA)
+		);
+
+		let message =
+			WorkerMessage
+			{
+				counter: self.thread_ordering,
+				header,
+				payload,
+			};
+		self.thread_ordering += 1;
+
+		self.worker_threads
+			.as_ref().unwrap()
+			.send(message).expect("failed to send data to worker");
+		Ok(())
+	}*/
+
+	/// send the current segment to a worker thread to get written
+	pub(crate) fn store_current_segment(&mut self) -> std::io::Result<()>
+	{
+		let header = Header
+		{
+			first_key: self.first_segment_key.as_bytes().to_owned(),
+			last_key: self.last_key.as_bytes().to_owned(),
+		};
+
 
 		let payload = std::mem::replace(
 			&mut self.current_segment_data,
@@ -292,7 +330,7 @@ fn worker_thread<W: Write+Send>(
 {
 	for message in recv
 	{
-		let WorkerMessage { counter, mut header, payload }
+		let WorkerMessage { counter, header, payload }
 			= message;
 
 		let mut encoder = lz4::EncoderBuilder::new()
@@ -303,22 +341,77 @@ fn worker_thread<W: Write+Send>(
 		let (compressed, e) = encoder.finish();
 		e?;
 
-		BigEndian::write_u32(&mut header[16+8 .. 16+8+4], compressed.len() as u32);
-
 		let mut wl = writer_state.lock();
 		while counter != wl.counter
 		{
 			writer_notifier.wait(&mut wl);
 		}
-		BigEndian::write_u32(&mut header[16+8+4 .. 16+8+8], wl.prev_size);
 
-		wl.writer.write_all(&header)
-			.expect("failed to write header data");
-		wl.writer.write_all(&compressed)
-			.expect("failed to write compressed data");
+		fn wv(vec: &mut impl Write, data: u32) -> std::io::Result<()>
+		{
+			let mut buf = unsigned_varint::encode::u32_buffer();
+			let o = unsigned_varint::encode::u32(data, &mut buf);
+			vec.write_all(&o)
+		};
+
+		let wrote_size;
+		{
+			let ps = wl.prev_size;
+			let mut bc = WriteCounter::new(&mut wl.writer);
+
+			bc.write_all(crate::segment::SEGMENT_INVOCATION)?;
+			bc.write_u16::<BigEndian>(0x0100)?;
+			wv(&mut bc, header.first_key.len() as u32)?;
+			wv(&mut bc, header.last_key.len() as u32)?;
+			wv(&mut bc, compressed.len() as u32)?;
+			wv(&mut bc, ps as u32)?;
+			wv(&mut bc, 0u32)?;
+			bc.write_all(&header.first_key)?;
+			bc.write_all(&header.last_key)?;
+
+			bc.write_all(&compressed)
+				.expect("failed to write compressed data");
+			wrote_size = bc.count() as u32;
+		}
 		wl.counter = counter+1;
-		wl.prev_size = compressed.len() as u32+32;
+		wl.prev_size = wrote_size;
 		writer_notifier.notify_all();
 	}
 	Ok(())
+}
+
+
+struct WriteCounter<W: Write>
+{
+	count: usize,
+	inner: W,
+}
+
+impl<W: Write> WriteCounter<W>
+{
+	fn new(inner: W) -> Self
+	{
+		Self
+		{
+			count: 0,
+			inner,
+		}
+	}
+	fn count(&self) -> usize
+	{
+		self.count
+	}
+}
+
+impl<W: Write> Write for WriteCounter<W>
+{
+	fn write(&mut self, buf: &[u8]) -> std::io::Result<usize>
+	{
+		self.count += buf.len();
+		self.inner.write(buf)
+	}
+	fn flush(&mut self) -> std::io::Result<()>
+	{
+		self.inner.flush()
+	}
 }
