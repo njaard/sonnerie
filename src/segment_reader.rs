@@ -81,42 +81,59 @@ impl SegmentReader
 		loop
 		{
 			let mut pos = (end-begin)/2 + begin;
-			if pos < begin+1024*128
+			let mut search_here = true;
+			while search_here
 			{
-				pos = begin;
-			}
+				search_here = false;
+				if pos < begin+1024*128
+				{
+					pos = begin;
+				}
 
-			let segment = Segment::scan(&data[ pos ..], pos);
-			if segment.is_none()
-			{
-				end = pos-1;
-				continue;
-			}
-			let segment = segment.unwrap();
+				let segment = Segment::scan(&data[ pos ..], pos);
+				if segment.is_none()
+				{
+					end = pos-1;
+					continue;
+				}
+				let segment = segment.unwrap();
 
-			if key >= segment.first_key && key <= segment.last_key
-				{ return Some(segment); }
+				if pos == 0 && key < segment.first_key
+					{ return Some(segment); }
 
-			if pos == 0 && key < segment.first_key
-				{ return Some(segment); }
+				if key == segment.first_key && segment.this_key_prev != 0
+				{
+					pos -= segment.this_key_prev;
+					search_here = true;
+					continue;
+				}
 
-			if key < segment.first_key
-			{ // go to a smaller index
-				end = std::cmp::min(
-					pos-1,
-					segment.pos - segment.prev_size + crate::SEGMENT_INVOCATION.len()
-				);
-				if end < begin { return None; }
-			}
-			else if key > segment.last_key
-			{ // go to a larger index
-				if begin == segment.pos { return None; }
-				begin = segment.pos + segment.payload.len();
-				if begin > end { return None; }
-			}
-			else
-			{
-				return None;
+				if key >= segment.first_key && key <= segment.last_key
+					{ return Some(segment); }
+
+
+				if key < segment.first_key
+				{ // go to a smaller index
+					end = std::cmp::min(
+						pos-1,
+						std::cmp::min(
+							segment.pos - segment.prev_size,
+							// we know we can reverse past this entire key
+							segment.pos - segment.this_key_prev
+						)
+					);
+					if end < begin { return None; }
+				}
+				else if key > segment.last_key
+				{ // go to a larger index
+					if begin == segment.pos { return None; }
+					begin = segment.pos + segment.payload.len();
+					if begin > end { return None; }
+				}
+				else
+				{
+					return None;
+				}
 			}
 		}
 	}
