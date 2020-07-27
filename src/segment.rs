@@ -1,7 +1,7 @@
 
 use byteorder::{ByteOrder,BigEndian};
 
-pub(crate) const SEGMENT_INVOCATION: &[u8; 16] = b"@TSDB_SEGMENT_\0\0";
+pub(crate) const SEGMENT_INVOCATION: &[u8; 14] = b"@TSDB_SEGMENT_";
 
 // a segment has a fixed 16 byte invocation
 // then it has the key range it contains
@@ -27,38 +27,92 @@ impl<'data> Segment<'data>
 		if at.is_none() { return None; }
 		let at = at.unwrap() + SEGMENT_INVOCATION.len();
 
-		if from[at ..].len() < 16 { return None; }
+		if from[at ..].len() < 18 { dbg!(); return None; }
 
-		// the length of the first key
-		let len1 = BigEndian::read_u32(&from[at+0 .. at+4]) as usize;
-		// the length of the last key
-		let len2 = BigEndian::read_u32(&from[at+4 .. at+8]) as usize;
-		// the length of the payload
-		let len3 = BigEndian::read_u32(&from[at+8 .. at+12]) as usize;
-		// the compressed size of the previous segment
-		let prev_size = BigEndian::read_u32(&from[at+12 .. at+16]) as usize;
-		let at = at + 16;
+		let segment_version = BigEndian::read_u16(&from[at+0 .. at+2]) as usize;
 
-		if from[at ..].len() < len1+len2+len3 { return None; }
-
-		let first_key = &from[at .. at + len1];
-
-		let at = at + len1;
-		let last_key = &from[at .. at + len2];
-
-		let at = at + len2;
-		let payload = &from[at .. at + len3];
-
-		Some(
-			Segment
+		match segment_version
+		{
+			0 =>
 			{
-				first_key,
-				last_key,
-				payload,
-				pos: at + origin,
-				prev_size,
-			}
-		)
+				let at = at + 2;
+				// the length of the first key
+				let len1 = BigEndian::read_u32(&from[at+0 .. at+4]) as usize;
+				// the length of the last key
+				let len2 = BigEndian::read_u32(&from[at+4 .. at+8]) as usize;
+				// the length of the payload
+				let len3 = BigEndian::read_u32(&from[at+8 .. at+12]) as usize;
+				// the compressed size of the previous segment
+				let prev_size = BigEndian::read_u32(&from[at+12 .. at+16]) as usize;
+				let at = at + 16;
+
+				if from[at ..].len() < len1+len2+len3 { return None; }
+
+				let first_key = &from[at .. at + len1];
+
+				let at = at + len1;
+				let last_key = &from[at .. at + len2];
+
+				let at = at + len2;
+				let payload = &from[at .. at + len3];
+
+				Some(
+					Segment
+					{
+						first_key,
+						last_key,
+						payload,
+						pos: at + origin,
+						prev_size,
+					}
+				)
+			},
+
+			1 =>
+			{
+				use unsigned_varint::decode::u32 as v32;
+
+				// the length of the first key
+				let (len1,from) = v32(from).ok()?;
+				// the length of the last key
+				let (len2,from) = v32(from).ok()?;
+				// the length of the payload
+				let (len3,from) = v32(from).ok()?;
+				// the compressed size of the previous segment
+				let (prev_size,from) = v32(from).ok()?;
+
+				let len1 = len1 as usize;
+				let len2 = len2 as usize;
+				let len3 = len3 as usize;
+				let prev_size = prev_size as usize;
+
+				if from.len() < len1+len2+len3 { return None; }
+
+				let first_key = &from[ 0 .. len1];
+
+				let last_key = &from[len1 .. len2];
+
+				let payload = &from[len2 .. len3];
+
+				Some(
+					Segment
+					{
+						first_key,
+						last_key,
+						payload,
+						pos: at + origin,
+						prev_size,
+					}
+				)
+			},
+
+			a =>
+			{
+				eprintln!("warning: invalid segment version {}", a);
+				None
+			},
+		}
+
 	}
 
 }

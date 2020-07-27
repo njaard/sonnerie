@@ -198,6 +198,7 @@ impl<W: Write+Send> Writer<W>
 	{
 		let mut header = vec!();
 		header.write_all(crate::segment::SEGMENT_INVOCATION)?;
+		header.write_u16::<BigEndian>(0)?;
 		header.write_u32::<BigEndian>(self.first_segment_key.len() as u32)?;
 		header.write_u32::<BigEndian>(self.last_key.len() as u32)?;
 		header.write_u32::<BigEndian>(0u32)?; // compressed data size (filled by worker thread)
