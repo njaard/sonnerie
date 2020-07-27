@@ -13,9 +13,9 @@ pub(crate) struct Writer<W: Write+Send+'static>
 	last_key: String,
 	last_format: String,
 	first_segment_key: String,
+	last_segment_key: String,
 	current_segment_data: Vec<u8>,
 	current_key_data: Vec<u8>,
-	current_key_record_len: usize,
 	worker_threads: Option<channel::Sender<WorkerMessage>>,
 	thread_handles: Vec<std::thread::JoinHandle<std::io::Result<()>>>,
 	// a counter to keep each thread writing its output in the right order
@@ -27,6 +27,8 @@ struct WriterState<W: Write+Send>
 	counter: usize,
 	prev_size: u32,
 	writer: W,
+	stored_size_last_key: u32,
+	last_key: Vec<u8>,
 }
 
 struct Header
@@ -75,6 +77,8 @@ impl<W: Write+Send> Writer<W>
 				counter: 0,
 				prev_size: 0,
 				writer,
+				stored_size_last_key: 0,
+				last_key: vec!(),
 			};
 
 		let writer_state = Arc::new(Mutex::new(writer_state));
@@ -102,13 +106,45 @@ impl<W: Write+Send> Writer<W>
 			last_key: String::new(),
 			last_format: String::new(),
 			first_segment_key: String::new(),
+			last_segment_key: String::new(),
 			current_key_data: Vec::with_capacity(SEGMENT_SIZE_EXTRA),
 			current_segment_data: Vec::with_capacity(SEGMENT_SIZE_EXTRA),
-			current_key_record_len: 0,
 			worker_threads: Some(send),
 			thread_handles,
 			thread_ordering: 0,
 		}
+	}
+
+	fn new_key_begin(&mut self, key: &str, format: &str, fmtlen: usize)
+	{
+		self.last_key.replace_range(.., key);
+		self.last_format.replace_range(.., format);
+
+		self.current_key_data.write_u32::<BigEndian>(key.len() as u32)
+			.unwrap();
+		self.current_key_data.write_u32::<BigEndian>(format.len() as u32)
+			.unwrap();
+		self.current_key_data.write_u32::<BigEndian>(fmtlen as u32)
+			.unwrap();
+		// key data length, filled in later
+		self.current_key_data.write_u32::<BigEndian>(0)
+			.unwrap();
+		self.current_key_data.write_all(key.as_bytes()).unwrap();
+		self.current_key_data.write_all(format.as_bytes()).unwrap();
+	}
+
+	fn flush_current_key(&mut self)
+	{
+		if ! self.current_key_data.is_empty()
+		{
+			let l = self.current_key_data.len() as u32
+				- 16 - self.last_key.len() as u32
+				- self.last_format.len() as u32;
+			BigEndian::write_u32(&mut self.current_key_data[12..16], l);
+			self.current_segment_data.extend_from_slice(&self.current_key_data);
+			self.current_key_data.clear();
+		}
+		self.last_segment_key = self.last_key.clone();
 	}
 
 	pub(crate) fn add_record(&mut self, key: &str, format: &str, data: &[u8])
@@ -117,84 +153,41 @@ impl<W: Write+Send> Writer<W>
 		// this is the first key ever seen
 		if self.current_key_data.is_empty()
 		{
-			self.last_key.replace_range(.., key);
-			self.last_format.replace_range(.., format);
+			self.new_key_begin(key, format, data.len());
 			self.first_segment_key.replace_range(.., key);
-			self.current_key_record_len = data.len();
-
-			self.current_key_data.write_u32::<BigEndian>(key.len() as u32)
-				.unwrap();
-			self.current_key_data.write_u32::<BigEndian>(format.len() as u32)
-				.unwrap();
-			self.current_key_data.write_u32::<BigEndian>(self.current_key_record_len as u32)
-				.unwrap();
-			// key data length, filled in later
-			self.current_key_data.write_u32::<BigEndian>(0)
-				.unwrap();
-			self.current_key_data.write_all(key.as_bytes()).unwrap();
-			self.current_key_data.write_all(format.as_bytes()).unwrap();
 		}
 		else
 		{
-			// we don't break keys into multiple segments
-			if self.last_key != key
+			if key.as_bytes() < self.last_key.as_bytes()
 			{
-				if key.as_bytes() < self.last_key.as_bytes()
-				{
-					return Err(WriteFailure::OrderingViolation(
-						key.to_string(),
-						self.last_key.clone(),
-					));
-				}
-				// set key data length for previous key
-				{
-					let l = self.current_key_data.len() as u32
-						- 16 - self.last_key.len() as u32
-						- self.last_format.len() as u32;
-					BigEndian::write_u32(&mut self.current_key_data[12..16], l);
-				}
-				// maybe flush the last segment, if it's full
-				if ((self.current_segment_data.len()+self.current_key_data.len()) >>4)
-					 >= SEGMENT_SIZE_GOAL
-				{
-					self.store_current_segment()?;
-					self.first_segment_key.replace_range(.., key);
-					assert_eq!(self.current_segment_data.len(), 0);
-					std::mem::swap(&mut self.current_segment_data, &mut self.current_key_data);
-				}
-				else
-				{
-					self.current_segment_data.extend_from_slice(&self.current_key_data);
-					self.current_key_data.clear();
-				}
-				self.last_key.replace_range(.., key);
-				self.last_format.replace_range(.., format);
-				self.current_key_record_len = data.len();
-				self.current_key_data.write_u32::<BigEndian>(key.len() as u32)
-					.unwrap();
-				self.current_key_data.write_u32::<BigEndian>(format.len() as u32)
-					.unwrap();
-				self.current_key_data.write_u32::<BigEndian>(self.current_key_record_len as u32)
-					.unwrap();
-				self.current_key_data.write_u32::<BigEndian>(0)
-					.unwrap();
-				self.current_key_data.write_all(key.as_bytes()).unwrap();
-				self.current_key_data.write_all(format.as_bytes()).unwrap();
+				return Err(WriteFailure::OrderingViolation(
+					key.to_string(),
+					self.last_key.clone(),
+				));
 			}
-			else
+
+			if key != self.last_key || format != self.last_format
 			{
-				if self.last_format != format
-				{
-					return Err(WriteFailure::HeterogeneousFormats(
-						key.to_string(),
-						self.last_format.to_string(),
-						format.to_string(),
-					));
-				}
+				self.flush_current_key();
+				self.new_key_begin(key, format, data.len());
 			}
+
+			if self.current_segment_data.len() + self.current_key_data.len() >= SEGMENT_SIZE_GOAL
+			{
+				// only have a key span segments if it's REALLY necessary
+				if self.current_key_data.len() > 128
+				{
+					self.flush_current_key();
+					self.new_key_begin(key, format, data.len());
+				}
+
+				// the segment is full, flush it
+				self.store_current_segment()?;
+				self.first_segment_key.replace_range(.., key);
+			}
+
 		}
 
-		assert_eq!(self.current_key_record_len, data.len());
 		self.current_key_data.write_all(data).unwrap();
 		Ok(())
 	}
@@ -240,7 +233,7 @@ impl<W: Write+Send> Writer<W>
 		let header = Header
 		{
 			first_key: self.first_segment_key.as_bytes().to_owned(),
-			last_key: self.last_key.as_bytes().to_owned(),
+			last_key: self.last_segment_key.as_bytes().to_owned(),
 		};
 
 
@@ -261,6 +254,7 @@ impl<W: Write+Send> Writer<W>
 		self.worker_threads
 			.as_ref().unwrap()
 			.send(message).expect("failed to send data to worker");
+		self.current_segment_data.clear();
 		Ok(())
 	}
 
@@ -288,17 +282,10 @@ impl<W: Write+Send> Writer<W>
 	fn fin(&mut self)
 		-> std::io::Result<()>
 	{
+		// only have a key span segments if it's REALLY necessary
 		if !self.current_key_data.is_empty()
 		{
-			// set key data length for previous key
-			{
-				let l = self.current_key_data.len() as u32
-					- 16 - self.last_key.len() as u32
-					- self.last_format.len() as u32;
-				BigEndian::write_u32(&mut self.current_key_data[12..16], l);
-			}
-			self.current_segment_data.extend_from_slice(&self.current_key_data);
-			self.current_key_data.clear();
+			self.flush_current_key();
 		}
 
 		if !self.current_segment_data.is_empty()
@@ -328,6 +315,7 @@ fn worker_thread<W: Write+Send>(
 	writer_notifier: &Condvar,
 ) -> std::io::Result<()>
 {
+
 	for message in recv
 	{
 		let WorkerMessage { counter, header, payload }
@@ -354,6 +342,17 @@ fn worker_thread<W: Write+Send>(
 			vec.write_all(&o)
 		};
 
+		let this_key_prev;
+		if wl.last_key == header.first_key
+		{
+			this_key_prev = wl.stored_size_last_key;
+		}
+		else
+		{
+			this_key_prev = 0;
+			wl.stored_size_last_key = 0;
+		}
+
 		let wrote_size;
 		{
 			use std::convert::TryInto;
@@ -369,7 +368,8 @@ fn worker_thread<W: Write+Send>(
 			wv(&mut bc, header.last_key.len().try_into().map_err(|e| ee(e))?)?;
 			wv(&mut bc, compressed.len().try_into().map_err(|e| ee(e))?)?;
 			wv(&mut bc, ps)?;
-			wv(&mut bc, 0u32)?;
+			wv(&mut bc, this_key_prev)?;
+
 			bc.write_all(&header.first_key)?;
 			bc.write_all(&header.last_key)?;
 
@@ -377,6 +377,11 @@ fn worker_thread<W: Write+Send>(
 				.expect("failed to write compressed data");
 			wrote_size = bc.count().try_into().map_err(|e| ee(e))?;
 		}
+		if header.last_key == header.first_key
+			{ wl.stored_size_last_key += wrote_size; }
+		else
+			{ wl.stored_size_last_key = wrote_size; }
+		wl.last_key = header.last_key;
 		wl.counter = counter+1;
 		wl.prev_size = wrote_size;
 		writer_notifier.notify_all();

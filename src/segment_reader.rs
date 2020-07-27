@@ -57,8 +57,9 @@ impl SegmentReader
 			writeln!(
 				w,
 				"first_key=\"{}\", last_key=\"{}\", \
-				offset={}, len={}, prev_sz={}",
-				fk, lk, s.pos, s.payload.len(), s.prev_size
+				offset={}, len={}, prev_sz={}, this_key_prev={}",
+				fk, lk, s.pos, s.payload.len(), s.prev_size,
+				s.this_key_prev,
 			)?;
 			segment = self.segment_after(&s);
 		}
@@ -103,7 +104,7 @@ impl SegmentReader
 
 				if key == segment.first_key && segment.this_key_prev != 0
 				{
-					pos -= segment.this_key_prev;
+					pos = segment.pos - segment.this_key_prev;
 					search_here = true;
 					continue;
 				}
