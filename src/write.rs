@@ -16,6 +16,7 @@ pub(crate) struct Writer<W: Write+Send+'static>
 	current_segment_data: Vec<u8>,
 	current_key_data: Vec<u8>,
 	current_key_record_len: usize,
+	current_timestamp: [u8; 8],
 	worker_threads: Option<channel::Sender<WorkerMessage>>,
 	thread_handles: Vec<std::thread::JoinHandle<std::io::Result<()>>>,
 	// a counter to keep each thread writing its output in the right order
@@ -99,6 +100,7 @@ impl<W: Write+Send> Writer<W>
 			current_key_data: Vec::with_capacity(SEGMENT_SIZE_EXTRA),
 			current_segment_data: Vec::with_capacity(SEGMENT_SIZE_EXTRA),
 			current_key_record_len: 0,
+			current_timestamp: [0; 8],
 			worker_threads: Some(send),
 			thread_handles,
 			thread_ordering: 0,
@@ -127,6 +129,8 @@ impl<W: Write+Send> Writer<W>
 				.unwrap();
 			self.current_key_data.write_all(key.as_bytes()).unwrap();
 			self.current_key_data.write_all(format.as_bytes()).unwrap();
+
+			self.current_timestamp.copy_from_slice(&data[0..8]);
 		}
 		else
 		{
@@ -140,6 +144,7 @@ impl<W: Write+Send> Writer<W>
 						self.last_key.clone(),
 					));
 				}
+
 				// set key data length for previous key
 				{
 					let l = self.current_key_data.len() as u32
@@ -185,8 +190,18 @@ impl<W: Write+Send> Writer<W>
 						format.to_string(),
 					));
 				}
+				if key.as_bytes() == self.last_key.as_bytes()
+					 && data[0 .. 8] <= self.current_timestamp[..]
+				{
+					return Err(WriteFailure::OrderingViolation(
+						key.to_string(),
+						self.last_key.clone(),
+					));
+				}
 			}
 		}
+		self.current_timestamp.copy_from_slice(&data[0..8]);
+
 
 		assert_eq!(self.current_key_record_len, data.len());
 		self.current_key_data.write_all(data).unwrap();
