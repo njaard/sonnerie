@@ -19,10 +19,10 @@ fn basic1()
 		let w = BufWriter::new(w);
 
 		let mut w = Writer::new(w);
-		w.add_record("ab", "u", b"\0\0\0\0").unwrap();
-		w.add_record("ab", "u", b"\0\0\0\x01").unwrap();
-		w.add_record("ab", "u", b"\0\0\0\x02").unwrap();
-		w.add_record("ab", "u", b"\x03\0\0\x03").unwrap();
+		w.add_record("ab", "u", b"\0\0\0\0\0\0\0\0\0\0\0\0").unwrap();
+		w.add_record("ab", "u", b"\0\0\0\0\0\0\0\x01\0\0\0\x01").unwrap();
+		w.add_record("ab", "u", b"\0\0\0\0\0\0\0\x02\0\0\0\x02").unwrap();
+		w.add_record("ab", "u", b"\0\0\0\0\0\0\0\x03\x03\0\0\x03").unwrap();
 		w.finish().unwrap();
 	}
 
@@ -33,29 +33,30 @@ fn basic1()
 	let a = i.next().unwrap();
 	assert_eq!(a.key(), "ab");
 	assert_eq!(a.format(), "u");
-	assert_eq!(a.value(), b"\0\0\0\0");
+	assert_eq!(a.value(), b"\0\0\0\0\0\0\0\0\0\0\0\0");
 	let a = i.next().unwrap();
 	assert_eq!(a.key(), "ab");
 	assert_eq!(a.format(), "u");
-	assert_eq!(a.value(), b"\0\0\0\x01");
+	assert_eq!(a.value(), b"\0\0\0\0\0\0\0\x01\0\0\0\x01");
 	let a = i.next().unwrap();
 	assert_eq!(a.key(), "ab");
 	assert_eq!(a.format(), "u");
-	assert_eq!(a.value(), b"\0\0\0\x02");
+	assert_eq!(a.value(), b"\0\0\0\0\0\0\0\x02\0\0\0\x02");
 	let a = i.next().unwrap();
 	assert_eq!(a.key(), "ab");
 	assert_eq!(a.format(), "u");
-	assert_eq!(a.value(), b"\x03\0\0\x03");
+	assert_eq!(a.value(), b"\0\0\0\0\0\0\0\x03\x03\0\0\x03");
 
 	assert!(i.next().is_none());
 }
 
-fn write_many<W: std::io::Write+Send>(w: &mut Writer<W>, key: &str, n:u32)
+fn write_many<W: std::io::Write+Send>(w: &mut Writer<W>, key: &str, range: std::ops::Range<u32>)
 {
-  for n in 0..n
+  for n in range
   {
-    let mut buf = [0u8; 4];
-    byteorder::BigEndian::write_u32(&mut buf[..], n);
+    let mut buf = [0u8; 12];
+    byteorder::BigEndian::write_u64(&mut buf[..], n as u64);
+    byteorder::BigEndian::write_u32(&mut buf[8..12], n);
     w.add_record(key, "u", &buf).unwrap();
   }
 }
@@ -70,9 +71,9 @@ fn basic2()
 		let w = BufWriter::new(w);
 
 		let mut w = Writer::new(w);
-		write_many(&mut w, "aa", 70000);
-		write_many(&mut w, "aabq", 50000);
-		write_many(&mut w, "n", 10000);
+		write_many(&mut w, "aa", 0..70000);
+		write_many(&mut w, "aabq", 0..50000);
+		write_many(&mut w, "n", 0..10000);
 		w.finish().unwrap();
 	}
 
@@ -110,10 +111,10 @@ fn basic_huge()
 				for c in &["a", "b", "c", "d", "e", "f", "g"]
 				{
 					let n = format!("{}{}{}",a,b,c);
-					write_many(&mut w, &n, 1000);
+					write_many(&mut w, &n, 0..1000);
 					if n == "abc"
 					{
-						write_many(&mut w, &n, 900000);
+						write_many(&mut w, &n, 1000..901000);
 					}
 				}
 			}
@@ -140,8 +141,8 @@ fn range_before()
 			let mut tx = CreateTx::new(t.path()).expect("creating tx");
 			let data=
 				"aa 2010-01-01_00:00:00 10\n\
-				bb 2010-01-04_00:00:00 20\n\
-				cc 2010-01-02_00:00:00 20\n\
+				bb 2010-01-02_00:00:00 20\n\
+				cc 2010-01-03_00:00:00 20\n\
 				";
 
 			add_from_stream(
@@ -212,6 +213,29 @@ fn multicolumn()
 		"
 	);
 }
+#[test]
+#[should_panic]
+fn violate_time_order()
+{
+	let t = tempfile::TempDir::new().unwrap();
+
+	{
+		let r = DatabaseReader::without_main_db(t.path()).unwrap();
+
+		let mut tx = CreateTx::new(t.path()).expect("creating tx");
+		let data=
+			"a 2010-01-01_00:00:00 10\n\
+			a 2010-01-01_00:00:00 20\n";
+
+		add_from_stream(
+			&mut tx, &r, "u",
+			&mut std::io::Cursor::new(data),
+			Some("%F_%T"),
+			true
+		).expect("writing");
+		tx.commit_to(&t.path().join("main")).expect("committed");
+	}
+}
 
 #[test]
 fn multicolumn_string()
@@ -220,7 +244,7 @@ fn multicolumn_string()
 
 	let data= "\
 		a\t2010-01-01_00:00:00\tss\tMany\\ words Lotsa\\ stuff\\ here\n\
-		b\t2010-01-01_00:00:00\tsu\tFluffy\\ cat 42\n\
+		b\t2010-01-02_00:00:00\tsu\tFluffy\\ cat 42\n\
 		c\t2010-01-01_00:00:00\tus\t900 It's\\ a\\ cat!\
 		";
 	{
@@ -279,7 +303,7 @@ fn write()
 		let w = BufWriter::new(w);
 
 		let mut w = Writer::new(w);
-		w.add_record("a", "u", b"\0\0\0\0").unwrap();
+		w.add_record("a", "u", b"\0\0\0\0\0\0\0\0\0\0\0\0").unwrap();
 		w.finish().unwrap();
 	}
 
