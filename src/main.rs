@@ -161,7 +161,7 @@ fn main()
 			{
 				for record in $filter
 				{
-					formatted::print_record2(
+					formatted::print_record(
 						&record,
 						&mut stdout,
 						print_timestamp,
@@ -251,7 +251,7 @@ fn compact(
 				let reader = reader_db.get_range(..);
 				for record in reader
 				{
-					formatted::print_record2(
+					formatted::print_record(
 						&record, &mut childinput,
 						timestamp_format,
 						formatted::PrintRecordFormat::Yes,

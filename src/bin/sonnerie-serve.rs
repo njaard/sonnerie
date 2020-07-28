@@ -330,7 +330,7 @@ impl Tsrv
 					for record in searcher
 					{
 						let mut row: Vec<u8> = vec!();
-						sonnerie::formatted::print_record2(
+						sonnerie::formatted::print_record(
 							&record,
 							&mut row,
 							timestamp_fmt,

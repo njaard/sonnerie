@@ -186,13 +186,13 @@ fn multicolumn()
 	let mut i = s.into_iter();
 
 	let mut out = vec!();
-	print_record2(
+	print_record(
 		&i.next().expect("row1"), &mut out,
 		PrintTimestamp::FormatString("%F_%T"),
 		PrintRecordFormat::Yes
 	).expect("formatting");
 	std::io::Write::write_all(&mut out, b"\n").unwrap();
-	print_record2(
+	print_record(
 		&i.next().expect("row2"), &mut out,
 		PrintTimestamp::FormatString("%F_%T"),
 		PrintRecordFormat::Yes
@@ -255,19 +255,19 @@ fn multicolumn_string()
 	let mut i = s.into_iter();
 
 	let mut out = vec!();
-	print_record2(
+	print_record(
 		&i.next().expect("row1"), &mut out,
 		PrintTimestamp::FormatString("%F_%T"),
 		PrintRecordFormat::Yes
 	).expect("formatting");
 	std::io::Write::write_all(&mut out, b"\n").unwrap();
-	print_record2(
+	print_record(
 		&i.next().expect("row2"), &mut out,
 		PrintTimestamp::FormatString("%F_%T"),
 		PrintRecordFormat::Yes
 	).expect("formatting");
 	std::io::Write::write_all(&mut out, b"\n").unwrap();
-	print_record2(
+	print_record(
 		&i.next().expect("row3"), &mut out,
 		PrintTimestamp::FormatString("%F_%T"),
 		PrintRecordFormat::Yes
@@ -418,7 +418,7 @@ fn homogenic_types()
 	let mut out = vec!();
 	for _ in 0 .. 4
 	{
-		print_record2(
+		print_record(
 			&i.next().expect("row1"), &mut out,
 			PrintTimestamp::FormatString("%F_%T"),
 			PrintRecordFormat::Yes

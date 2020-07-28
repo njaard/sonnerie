@@ -34,7 +34,7 @@ fn main()
 	let r = Reader::new(w).unwrap();
 	for record in r.get_filter(&filter).into_iter()
 	{
-		sonnerie::formatted::print_record(
+		sonnerie::formatted::print_record2(
 			&record, &mut stdout
 		)?;
 		writeln!(&mut stdout, "")?;

@@ -102,86 +102,6 @@ pub fn add_from_stream_with_fmt<R: std::io::BufRead>(
 	Ok(())
 }
 
-/// Write a formatted record to a stream
-///
-/// Deprecated: Use [`print_record2`] instead.
-///
-/// Each row is written in the same format that [`add_from_stream`]
-/// accepts, with the timestamp being formatted as `%FT%T`.
-#[deprecated]
-pub fn print_record<W: std::io::Write>(
-	record: &crate::record::OwnedRecord,
-	out: &mut W,
-) -> std::io::Result<()>
-{
-	let fmt = parse_row_format(record.format());
-	let key = record.key();
-	let ts = &record.value()[0..8];
-	let value = &record.value()[8..];
-	let ts: u64 = byteorder::BigEndian::read_u64(ts);
-	let ts = chrono::NaiveDateTime::from_timestamp(
-		(ts/1_000_000_000) as i64, (ts%1_000_000_000) as u32
-	);
-
-	write!(out, "{}\t{}\t", escape_string::escape(key), ts)?;
-
-	fmt.to_protocol_format(value, out)
-}
-
-/// Write a formatted record to a stream with format name.
-///
-/// Each row is written in the same format that [`add_from_stream_with_fmt`]
-/// accepts, with the timestamp being formatted as `timestamp_format`.
-#[deprecated]
-pub fn print_record_with_fmt<W: std::io::Write>(
-	record: &crate::record::OwnedRecord,
-	timestamp_format: &str,
-	out: &mut W,
-) -> std::io::Result<()>
-{
-	let fmt_string = record.format();
-	let fmt = parse_row_format(fmt_string);
-	let key = record.key();
-	let ts = &record.value()[0..8];
-	let value = &record.value()[8..];
-	let ts: u64 = byteorder::BigEndian::read_u64(ts);
-	let ts = chrono::NaiveDateTime::from_timestamp(
-		(ts/1_000_000_000) as i64, (ts%1_000_000_000) as u32
-	);
-
-	write!(
-		out, "{}\t{}\t{}\t",
-		escape_string::escape(key),
-		ts.format(timestamp_format),
-		fmt_string,
-	)?;
-
-	fmt.to_protocol_format(value, out)
-}
-
-/// Write formatted output with nanosecond timestamps.
-///
-/// Deprecated: Use [`print_record2`] instead.
-///
-/// Same as [`print_record`] but the timestamps are
-/// nanoseconds since the epoch.
-#[deprecated]
-pub fn print_record_nanos<W: std::io::Write>(
-	record: &crate::record::OwnedRecord,
-	out: &mut W,
-) -> std::io::Result<()>
-{
-	let fmt = parse_row_format(record.format());
-	let key = record.key();
-	let ts = &record.value()[0..8];
-	let value = &record.value()[8..];
-	let ts: u64 = byteorder::BigEndian::read_u64(ts);
-
-	write!(out, "{}\t{}\t", escape_string::escape(key), ts)?;
-
-	fmt.to_protocol_format(value, out)
-}
-
 /// Print the record format (`uUfF`) right after the timestamp
 #[derive(Debug,Copy,Clone)]
 pub enum PrintRecordFormat
@@ -232,7 +152,7 @@ impl std::default::Default for PrintTimestamp<'static>
 /// or [`add_from_stream_with_fmt`] accept, depending
 /// on the options for the parameters `print_timestamp`
 /// or `print_record_format`.
-pub fn print_record2<W: std::io::Write>(
+pub fn print_record<W: std::io::Write>(
 	record: &crate::record::OwnedRecord,
 	out: &mut W,
 	print_timestamp: PrintTimestamp<'_>,
