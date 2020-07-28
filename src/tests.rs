@@ -220,8 +220,8 @@ fn multicolumn_string()
 
 	let data= "\
 		a\t2010-01-01_00:00:00\tss\tMany\\ words Lotsa\\ stuff\\ here\n\
-		b\t2010-01-01_00:00:00\tsu\tFluffy\\ cat 42\n\
-		c\t2010-01-01_00:00:00\tus\t900 It's\\ a\\ cat!\
+		b\t2010-01-02_00:00:00\tsu\tFluffy\\ cat 42\n\
+		c\t2010-01-03_00:00:00\tus\t900 It's\\ a\\ cat!\
 		";
 	{
 		let r = DatabaseReader::without_main_db(t.path()).unwrap();
@@ -383,9 +383,9 @@ fn homogenic_types()
 	let t = tempfile::TempDir::new().unwrap();
 	let data= "\
 		a\t2010-01-01_00:00:00\tu\t42\n\
-		a\t2010-01-01_00:00:00\tu\t84\n\
-		a\t2010-01-01_00:00:00\tf\t32.5\n\
-		a\t2010-01-01_00:00:00\ts\tHello\n\
+		a\t2010-01-02_00:00:00\tu\t84\n\
+		a\t2010-01-03_00:00:00\tf\t32.5\n\
+		a\t2010-01-04_00:00:00\ts\tHello\n\
 		";
 
 	{
@@ -422,9 +422,9 @@ fn homogenic_types()
 		&String::from_utf8(out).unwrap(),
 		"\
 			a\t2010-01-01_00:00:00\tu\t42\n\
-			a\t2010-01-01_00:00:00\tu\t84\n\
-			a\t2010-01-01_00:00:00\tf\t32.50000000000000000\n\
-			a\t2010-01-01_00:00:00\ts\tHello\n\
+			a\t2010-01-02_00:00:00\tu\t84\n\
+			a\t2010-01-03_00:00:00\tf\t32.50000000000000000\n\
+			a\t2010-01-04_00:00:00\ts\tHello\n\
 		"
 	);
 }
