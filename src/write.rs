@@ -16,6 +16,7 @@ pub(crate) struct Writer<W: Write+Send+'static>
 	last_segment_key: String,
 	current_segment_data: Vec<u8>,
 	current_key_data: Vec<u8>,
+	current_timestamp: [u8; 8],
 	worker_threads: Option<channel::Sender<WorkerMessage>>,
 	thread_handles: Vec<std::thread::JoinHandle<std::io::Result<()>>>,
 	// a counter to keep each thread writing its output in the right order
@@ -109,6 +110,7 @@ impl<W: Write+Send> Writer<W>
 			last_segment_key: String::new(),
 			current_key_data: Vec::with_capacity(SEGMENT_SIZE_EXTRA),
 			current_segment_data: Vec::with_capacity(SEGMENT_SIZE_EXTRA),
+			current_timestamp: [0; 8],
 			worker_threads: Some(send),
 			thread_handles,
 			thread_ordering: 0,
@@ -166,6 +168,15 @@ impl<W: Write+Send> Writer<W>
 				));
 			}
 
+			if key.as_bytes() == self.last_key.as_bytes()
+					&& data[0 .. 8] <= self.current_timestamp[..]
+			{
+				return Err(WriteFailure::OrderingViolation(
+					key.to_string(),
+					self.last_key.clone(),
+				));
+			}
+
 			if key != self.last_key || format != self.last_format
 			{
 				self.flush_current_key();
@@ -185,8 +196,9 @@ impl<W: Write+Send> Writer<W>
 				self.store_current_segment()?;
 				self.first_segment_key.replace_range(.., key);
 			}
-
 		}
+
+		self.current_timestamp.copy_from_slice(&data[0..8]);
 
 		self.current_key_data.write_all(data).unwrap();
 		Ok(())
