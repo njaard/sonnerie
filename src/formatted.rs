@@ -18,17 +18,14 @@ use byteorder::ByteOrder;
 /// * `nocheck` - turns off slow type checking (with `db`).
 pub fn add_from_stream<R: std::io::BufRead>(
 	tx: &mut crate::CreateTx,
-	db: &crate::DatabaseReader,
 	format: &str, input: &mut R,
 	timestamp_format: Option<&str>,
-	nocheck: bool,
 ) -> Result<(), crate::WriteFailure>
 {
 	let row_format = parse_row_format(format);
 
 	let mut line = String::new();
 	let mut row_data = vec!();
-	let mut key_format_identified = String::new();
 
 	while 0 != input.read_line(&mut line).unwrap()
 	{
@@ -51,22 +48,6 @@ pub fn add_from_stream<R: std::io::BufRead>(
 		row_format.to_stored_format(ts, &tail, &mut row_data)
 			.expect(&format!("parsing values \"{}\"", tail));
 
-		if !nocheck && key_format_identified != key
-		{
-			if let Some(record) = db.get(&key).next()
-			{
-				if record.format() != format
-				{
-					return Err(crate::WriteFailure::HeterogeneousFormats(
-						key.to_string(),
-						record.format().to_owned(),
-						format.to_owned()
-					));
-				}
-			}
-			key_format_identified = key.to_string();
-		}
-
 		tx.add_record(&key, format, &row_data)?;
 		row_data.clear();
 		line.clear();
@@ -81,16 +62,13 @@ pub fn add_from_stream<R: std::io::BufRead>(
 /// comes after the timestamp
 pub fn add_from_stream_with_fmt<R: std::io::BufRead>(
 	tx: &mut crate::CreateTx,
-	db: &crate::DatabaseReader,
 	input: &mut R,
 	timestamp_format: Option<&str>,
-	nocheck: bool,
 ) -> Result<(), crate::WriteFailure>
 {
 
 	let mut line = String::new();
 	let mut row_data = vec!();
-	let mut key_format_identified = String::new();
 
 	while 0 != input.read_line(&mut line).unwrap()
 	{
@@ -115,22 +93,6 @@ pub fn add_from_stream_with_fmt<R: std::io::BufRead>(
 
 		row_format.to_stored_format(ts, &values, &mut row_data)
 			.unwrap();
-
-		if !nocheck && key_format_identified != key
-		{
-			if let Some(record) = db.get(&key).next()
-			{
-				if record.format() != format
-				{
-					return Err(crate::WriteFailure::HeterogeneousFormats(
-						key.to_string(),
-						record.format().to_owned(),
-						format.to_string()
-					));
-				}
-			}
-			key_format_identified = key.to_string();
-		}
 
 		tx.add_record(&key, &format, &row_data)?;
 		row_data.clear();

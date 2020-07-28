@@ -34,10 +34,6 @@ fn main()
 						.help("instead of nanoseconds since the epoch, use this strftime format")
 						.takes_value(true)
 					)
-					.arg(Arg::with_name("unsafe-nocheck")
-						.long("unsafe-nocheck")
-						.help("suppress the format coherency check (makes insertions faster)")
-					)
 			)
 			.subcommand(
 				SubCommand::with_name("compact")
@@ -63,11 +59,6 @@ fn main()
 						.takes_value(true)
 						.requires("gegnum")
 						.takes_value(true)
-					)
-					.arg(Arg::with_name("unsafe-nocheck")
-						.long("unsafe-nocheck")
-						.help("suppress the format coherency check (makes insertions faster)")
-						.requires("gegnum")
 					)
 			)
 			.subcommand(
@@ -120,22 +111,19 @@ fn main()
 	if let Some(matches) = matches.subcommand_matches("add")
 	{
 		let format = matches.value_of("format").unwrap();
-		let nocheck = matches.is_present("unsafe-nocheck");
 		let ts_format = matches.value_of("timestamp-format");
-		add(&dir, format, ts_format, nocheck);
+		add(&dir, format, ts_format);
 	}
 	else if let Some(matches) = matches.subcommand_matches("compact")
 	{
 		let gegnum = matches.value_of_os("gegnum");
 		let ts_format = matches.value_of("timestamp-format").unwrap_or("%FT%T");
-		let nocheck = matches.is_present("unsafe-nocheck");
 
 		compact(
 			&dir,
 			matches.is_present("major"),
 			gegnum,
 			ts_format,
-			nocheck,
 		).expect("compacting");
 	}
 	else if let Some(matches) = matches.subcommand_matches("read")
@@ -207,22 +195,22 @@ fn main()
 	Ok(())
 }
 
-fn add(dir: &Path, fmt: &str, ts_format: Option<&str>, nocheck: bool)
+fn add(dir: &Path, fmt: &str, ts_format: Option<&str>)
 {
-	let db = DatabaseReader::new(dir).expect("opening db");
+	let _db = DatabaseReader::new(dir).expect("opening db");
 	let mut tx = CreateTx::new(dir).expect("creating tx");
 
 	let stdin = std::io::stdin();
 	let mut stdin = stdin.lock();
 
-	formatted::add_from_stream(&mut tx, &db, fmt, &mut stdin, ts_format, nocheck)
+	formatted::add_from_stream(&mut tx, fmt, &mut stdin, ts_format)
 		.expect("adding value");
 	tx.commit().expect("failed to commit transaction");
 }
 
 fn compact(
 	dir: &Path, major: bool,
-	gegnum: Option<&std::ffi::OsStr>, ts_format: &str, nocheck: bool)
+	gegnum: Option<&std::ffi::OsStr>, ts_format: &str)
 	-> Result<(), crate::WriteFailure>
 {
 	use fs2::FileExt;
@@ -277,9 +265,8 @@ fn compact(
 		let childoutput = child.stdout.take().expect("process had no stdout");
 		let mut childoutput = std::io::BufReader::new(childoutput);
 		formatted::add_from_stream_with_fmt(
-			&mut compacted, &db, &mut childoutput,
+			&mut compacted, &mut childoutput,
 			Some(ts_format),
-			nocheck,
 		)?;
 
 		reader_thread.join()

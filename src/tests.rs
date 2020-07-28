@@ -135,8 +135,6 @@ fn range_before()
 	let t = tempfile::TempDir::new().unwrap();
 
 	{
-		let r = DatabaseReader::without_main_db(t.path()).unwrap();
-
 		{
 			let mut tx = CreateTx::new(t.path()).expect("creating tx");
 			let data=
@@ -146,10 +144,9 @@ fn range_before()
 				";
 
 			add_from_stream(
-				&mut tx, &r, "u",
+				&mut tx, "u",
 				&mut std::io::Cursor::new(data),
 				Some("%F_%T"),
-				true
 			).expect("writing");
 			tx.commit_to(&t.path().join("main")).expect("committed");
 		}
@@ -170,18 +167,15 @@ fn multicolumn()
 	let t = tempfile::TempDir::new().unwrap();
 
 	{
-		let r = DatabaseReader::without_main_db(t.path()).unwrap();
-
 		let mut tx = CreateTx::new(t.path()).expect("creating tx");
 		let data=
 			"a 2010-01-01_00:00:00 10 20\n\
 			a 2010-01-02_00:00:00 20 30\n";
 
 		add_from_stream(
-			&mut tx, &r, "uu",
+			&mut tx, "uu",
 			&mut std::io::Cursor::new(data),
 			Some("%F_%T"),
-			true
 		).expect("writing");
 		tx.commit_to(&t.path().join("main")).expect("committed");
 	}
@@ -220,18 +214,15 @@ fn violate_time_order()
 	let t = tempfile::TempDir::new().unwrap();
 
 	{
-		let r = DatabaseReader::without_main_db(t.path()).unwrap();
-
 		let mut tx = CreateTx::new(t.path()).expect("creating tx");
 		let data=
 			"a 2010-01-01_00:00:00 10\n\
 			a 2010-01-01_00:00:00 20\n";
 
 		add_from_stream(
-			&mut tx, &r, "u",
+			&mut tx, "u",
 			&mut std::io::Cursor::new(data),
 			Some("%F_%T"),
-			true
 		).expect("writing");
 		tx.commit_to(&t.path().join("main")).expect("committed");
 	}
@@ -248,15 +239,12 @@ fn multicolumn_string()
 		c\t2010-01-01_00:00:00\tus\t900 It's\\ a\\ cat!\
 		";
 	{
-		let r = DatabaseReader::without_main_db(t.path()).unwrap();
-
 		let mut tx = CreateTx::new(t.path()).expect("creating tx");
 
 		add_from_stream_with_fmt(
-			&mut tx, &r,
+			&mut tx,
 			&mut std::io::Cursor::new(data),
 			Some("%F_%T"),
-			true
 		).expect("writing");
 		tx.commit_to(&t.path().join("main")).expect("committed");
 	}
@@ -411,15 +399,12 @@ fn homogenic_types()
 		";
 
 	{
-		let r = DatabaseReader::without_main_db(t.path()).unwrap();
-
 		let mut tx = CreateTx::new(t.path()).expect("creating tx");
 
 		add_from_stream_with_fmt(
-			&mut tx, &r,
+			&mut tx,
 			&mut std::io::Cursor::new(data),
 			Some("%F_%T"),
-			true
 		).expect("writing");
 		tx.commit_to(&t.path().join("main")).expect("committed");
 	}
