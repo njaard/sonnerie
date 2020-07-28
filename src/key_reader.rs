@@ -85,10 +85,7 @@ impl Reader
 				}
 			}
 
-			let mut decoder = lz4::Decoder::new( std::io::Cursor::new(d.payload ) )
-				.expect("lz4 decoding");
-			decoder.read_to_end(&mut data)
-				.expect("lz4 decoding 2");
+			decode_into_with_unescaping(&mut data, d.payload);
 		}
 
 		StringKeyRangeReader
@@ -155,6 +152,8 @@ where
 	_phantom: std::marker::PhantomData<&'k str>,
 }
 
+
+
 impl<'rdr, 'k, RB> StringKeyRangeReader<'rdr, 'k, RB>
 where
 	RB: std::ops::RangeBounds<&'k str>
@@ -175,10 +174,7 @@ where
 			else
 				{ old_vec = vec!(); }
 			old_vec.clear();
-			let mut decoder = lz4::Decoder::new( std::io::Cursor::new( s.payload ) )
-				.expect("lz4 decoding");
-			decoder.read_to_end(&mut old_vec)
-				.expect("lz4 decoding 2");
+			decode_into_with_unescaping(&mut old_vec, s.payload);
 			self.decoded = Rc::new(old_vec);
 		}
 	}
@@ -316,4 +312,39 @@ where
 		}
 		None
 	}
+}
+
+
+fn decode_into_with_unescaping(into: &mut Vec<u8>, from: &[u8])
+{
+	let mut segmented: smallvec::SmallVec<[_; 4]> = smallvec::smallvec![];
+	{
+		let mut start = 0;
+		while let Some(pos) = twoway::find_bytes(&from[start ..], crate::segment::ESCAPE_SEGMENT_INVOCATION)
+		{
+			segmented.push(&from[start .. pos+start]);
+			segmented.push(crate::segment::SEGMENT_INVOCATION);
+			start = start + pos + crate::segment::ESCAPE_SEGMENT_INVOCATION.len();
+		}
+		segmented.push(&from[start ..]);
+	}
+
+	let mut reader: Option<Box<dyn Read>> = None;
+
+	for segment in segmented
+	{
+		if let Some(head) = reader
+		{
+			reader = Some(Box::new( head.chain( std::io::Cursor::new(segment) ) ) as Box<_>);
+		}
+		else
+		{
+			reader = Some(Box::new( std::io::Cursor::new(segment) ) as Box<_>);
+		}
+	}
+
+	let mut decoder = lz4::Decoder::new( reader.expect("empty segment") )
+		.expect("lz4 decoding");
+	decoder.read_to_end(into)
+		.expect("lz4 decoding 2");
 }

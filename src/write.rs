@@ -315,7 +315,6 @@ fn worker_thread<W: Write+Send>(
 	writer_notifier: &Condvar,
 ) -> std::io::Result<()>
 {
-
 	for message in recv
 	{
 		let WorkerMessage { counter, header, payload }
@@ -328,6 +327,18 @@ fn worker_thread<W: Write+Send>(
 		encoder.write_all(&payload)?;
 		let (compressed, e) = encoder.finish();
 		e?;
+
+		let mut segmented: smallvec::SmallVec<[_; 4]> = smallvec::smallvec![];
+		{
+			let mut start = 0;
+			while let Some(pos) = twoway::find_bytes(&compressed[start ..], crate::segment::SEGMENT_INVOCATION)
+			{
+				segmented.push(&compressed[start .. pos+start]);
+				segmented.push(crate::segment::ESCAPE_SEGMENT_INVOCATION);
+				start = start + pos + crate::segment::SEGMENT_INVOCATION.len();
+			}
+			segmented.push(&compressed[start ..]);
+		}
 
 		let mut wl = writer_state.lock();
 		while counter != wl.counter
@@ -373,8 +384,11 @@ fn worker_thread<W: Write+Send>(
 			bc.write_all(&header.first_key)?;
 			bc.write_all(&header.last_key)?;
 
-			bc.write_all(&compressed)
-				.expect("failed to write compressed data");
+			for segment in segmented
+			{
+				bc.write_all(&segment)
+					.expect("failed to write compressed data");
+			}
 			wrote_size = bc.count().try_into().map_err(|e| ee(e))?;
 		}
 		if header.last_key == header.first_key

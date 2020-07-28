@@ -353,3 +353,27 @@ fn database_merge_last()
 	assert_eq!(last.value()[8], 2);
 }
 
+#[test]
+fn escape_invocation()
+{
+	let t = tempfile::TempDir::new().unwrap();
+	{
+		let _ = std::fs::File::create(t.path().join("main")).unwrap();
+
+		let mut tx = CreateTx::new(t.path()).unwrap();
+		let mut naughty = vec![14];
+		assert_eq!(14, crate::segment::SEGMENT_INVOCATION.len());
+		naughty.extend_from_slice(crate::segment::SEGMENT_INVOCATION);
+
+		tx.add_record("b", "s", &naughty).unwrap();
+		tx.add_record("c", "u", &[0x42,42,0,0]).unwrap();
+		tx.commit().unwrap();
+		//std::process::exit(0);
+
+	}
+
+	let r = DatabaseReader::new(t.path()).unwrap();
+	let last = r.get_range(..).into_iter();
+	assert_eq!(last.count(), 2);
+}
+
