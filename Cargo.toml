@@ -1,6 +1,6 @@
 [package]
 name = "sonnerie"
-version = "0.5.8"
+version = "0.5.9"
 authors = ["Charles Samuels <kalle@eventures.vc>", "e.ventures Management LLC"]
 edition = "2018"
 description = "An easy timeseries database"
