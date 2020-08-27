@@ -165,6 +165,7 @@ fn get_umask() -> Option<libc::mode_t>
 		if line.starts_with("Umask:")
 		{
 			let line = &line["Umask:".len() ..];
+			let line = line.trim();
 			return libc::mode_t::from_str_radix(&line, 8).ok();
 		}
 	}
