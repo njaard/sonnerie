@@ -352,7 +352,7 @@ impl Element for ElementString
 	{
 		let (len, tail) = unsigned_varint::decode::u64(from)
 			.map_err(
-				|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e)
+				|e| std::io::Error::new(std::io::ErrorKind::InvalidData, format!("{:?}", e))
 			)?;
 
 		let s = std::str::from_utf8(&tail[0 .. len as usize])
