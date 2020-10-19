@@ -18,6 +18,7 @@ pub(crate) struct Writer<W: Write+Send+'static>
 	current_key_data: Vec<u8>,
 	current_timestamp: [u8; 8],
 	worker_threads: Option<channel::Sender<WorkerMessage>>,
+	current_record_size: Option<usize>,
 	thread_handles: Vec<std::thread::JoinHandle<std::io::Result<()>>>,
 	// a counter to keep each thread writing its output in the right order
 	thread_ordering: usize,
@@ -51,8 +52,8 @@ pub enum WriteFailure
 {
 	/// The key (`.0`) came lexicographically before key `.1`.
 	OrderingViolation(String, String),
-	/// The formats must must for a single key.
-	HeterogeneousFormats(String, String, String),
+	/// The size of data was not expected
+	IncorrectLength(usize),
 	/// An IO error from the OS
 	IOError(std::io::Error),
 }
@@ -114,10 +115,11 @@ impl<W: Write+Send> Writer<W>
 			worker_threads: Some(send),
 			thread_handles,
 			thread_ordering: 0,
+			current_record_size: None,
 		}
 	}
 
-	fn new_key_begin(&mut self, key: &str, format: &str, fmtlen: usize)
+	fn new_key_begin(&mut self, key: &str, format: &str)
 	{
 		self.last_key.replace_range(.., key);
 		self.last_format.replace_range(.., format);
@@ -126,13 +128,14 @@ impl<W: Write+Send> Writer<W>
 			.unwrap();
 		self.current_key_data.write_u32::<BigEndian>(format.len() as u32)
 			.unwrap();
-		self.current_key_data.write_u32::<BigEndian>(fmtlen as u32)
-			.unwrap();
 		// key data length, filled in later
 		self.current_key_data.write_u32::<BigEndian>(0)
 			.unwrap();
 		self.current_key_data.write_all(key.as_bytes()).unwrap();
 		self.current_key_data.write_all(format.as_bytes()).unwrap();
+
+		self.current_record_size = crate::row_format::row_format_size(format)
+			.map(|m| m+crate::record::TIMESTAMP_SIZE);
 	}
 
 	fn flush_current_key(&mut self)
@@ -140,9 +143,9 @@ impl<W: Write+Send> Writer<W>
 		if ! self.current_key_data.is_empty()
 		{
 			let l = self.current_key_data.len() as u32
-				- 16 - self.last_key.len() as u32
+				- 12 - self.last_key.len() as u32
 				- self.last_format.len() as u32;
-			BigEndian::write_u32(&mut self.current_key_data[12..16], l);
+			BigEndian::write_u32(&mut self.current_key_data[8..12], l);
 			self.current_segment_data.extend_from_slice(&self.current_key_data);
 			self.current_key_data.clear();
 		}
@@ -152,11 +155,19 @@ impl<W: Write+Send> Writer<W>
 	pub(crate) fn add_record(&mut self, key: &str, format: &str, data: &[u8])
 		-> std::result::Result<(), WriteFailure>
 	{
+
 		// this is the first key ever seen
 		if self.current_key_data.is_empty()
 		{
-			self.new_key_begin(key, format, data.len());
+			self.new_key_begin(key, format);
 			self.first_segment_key.replace_range(.., key);
+			if let Some(sz) = self.current_record_size
+			{
+				if data.len() != sz
+				{
+					return Err(WriteFailure::IncorrectLength(sz));
+				}
+			}
 		}
 		else
 		{
@@ -180,7 +191,14 @@ impl<W: Write+Send> Writer<W>
 			if key != self.last_key || format != self.last_format
 			{
 				self.flush_current_key();
-				self.new_key_begin(key, format, data.len());
+				self.new_key_begin(key, format);
+			}
+			if let Some(sz) = self.current_record_size
+			{
+				if data.len() != sz
+				{
+					return Err(WriteFailure::IncorrectLength(sz));
+				}
 			}
 
 			if self.current_segment_data.len() + self.current_key_data.len() >= SEGMENT_SIZE_GOAL
@@ -189,7 +207,7 @@ impl<W: Write+Send> Writer<W>
 				if self.current_key_data.len() > 128
 				{
 					self.flush_current_key();
-					self.new_key_begin(key, format, data.len());
+					self.new_key_begin(key, format);
 				}
 
 				// the segment is full, flush it
@@ -199,6 +217,14 @@ impl<W: Write+Send> Writer<W>
 		}
 
 		self.current_timestamp.copy_from_slice(&data[0..8]);
+
+		if self.current_record_size.is_none()
+		{
+			let mut buf = unsigned_varint::encode::u32_buffer();
+			// subtract 8, for the timestamp
+			let o = unsigned_varint::encode::u32(data.len() as u32-8, &mut buf);
+			self.current_key_data.write_all(&o).unwrap();
+		}
 
 		self.current_key_data.write_all(data).unwrap();
 		Ok(())
@@ -416,6 +442,7 @@ fn worker_thread<W: Write+Send>(
 }
 
 
+/// counts bytes written to a Write
 struct WriteCounter<W: Write>
 {
 	count: usize,

@@ -14,15 +14,16 @@ pub trait RowFormat
 	/// Decode the data into something human readable
 	fn to_protocol_format(&self, from: &[u8], dest: &mut dyn ::std::io::Write)
 		-> ::std::io::Result<()>;
-	/// The minimum size in bytes of a row payload, including its timestamp
-	/// (Exceeded in rows with string data)
-	fn row_size(&self) -> usize;
+	/// The size in bytes of a row payload, including its timestamp.
+	///
+	/// None indicates that it has a variable-sized encoding (Strings)
+	fn row_size(&self) -> Option<usize>;
 }
 
 
 struct RowFormatImpl
 {
-	size: usize,
+	size: Option<usize>,
 	elements: Vec<Box<dyn Element>>,
 }
 
@@ -32,7 +33,7 @@ impl RowFormat for RowFormatImpl
 		-> Result<(), String>
 	{
 		let at = dest.len();
-		dest.reserve(at+self.row_size());
+		dest.reserve(at+self.row_size().unwrap_or(0)+8);
 		dest.resize(at+8, 0);
 		BigEndian::write_u64(&mut dest[at..], ts);
 		for e in self.elements.iter()
@@ -59,9 +60,9 @@ impl RowFormat for RowFormatImpl
 		}
 		Ok(())
 	}
-	fn row_size(&self) -> usize
+	fn row_size(&self) -> Option<usize>
 	{
-		self.size+8
+		Some(self.size?+8)
 	}
 
 }
@@ -89,6 +90,7 @@ pub fn parse_row_format(human: &str) -> Box<dyn RowFormat>
 	let human = human.as_bytes();
 
 	let mut size = 0usize;
+	let mut has_size = true;
 	let mut elements: Vec<Box<dyn Element>> = vec!();
 	elements.reserve(human.len());
 
@@ -128,7 +130,7 @@ pub fn parse_row_format(human: &str) -> Box<dyn RowFormat>
 			},
 			b's' =>
 			{
-				size += 1;
+				has_size = false;
 				elements.push( Box::new(ElementString) );
 			},
 			a =>
@@ -141,11 +143,39 @@ pub fn parse_row_format(human: &str) -> Box<dyn RowFormat>
 	Box::new(
 		RowFormatImpl
 		{
-			size: size,
-			elements: elements,
+			size: if has_size { Some(size) } else { None },
+			elements,
 		}
 	)
 }
+
+pub fn row_format_size(human: &str) -> Option<usize>
+{
+	let human = human.as_bytes();
+
+	let mut size = 0usize;
+
+	for t in human
+	{
+		match t
+		{
+			b'i' => size += 4,
+			b'u' => size += 4,
+			b'I' => size += 8,
+			b'U' => size += 8,
+			b'f' => size += 4,
+			b'F' => size += 8,
+			b's' => return None,
+			a =>
+			{
+				panic!("invalid format character '{}'", a);
+			}
+		}
+	}
+
+	Some(size)
+}
+
 
 
 trait Element

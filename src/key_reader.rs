@@ -100,7 +100,8 @@ impl Reader
 			current_fmt_len: 0,
 			current_fmt_pos: 0,
 			current_key_data_len: 0,
-			current_key_record_len: 0,
+			current_record_len: 0,
+			current_key_record_len: None,
 			_phantom: std::marker::PhantomData,
 			prefix: "",
 			matcher: None,
@@ -144,7 +145,10 @@ where
 	current_key_len: usize,
 	current_fmt_pos: usize,
 	current_fmt_len: usize,
-	current_key_record_len: usize, // the size of each record for this key
+	/// the size of the current record for this key (from the format string)
+	current_key_record_len: Option<usize>,
+	/// the size of the current record for this key (decoded or from the format string)
+	current_record_len: usize,
 	current_key_data_len: usize, // the total size of all the records for this key
 	segment: Option<Segment<'rdr>>,
 	matcher: Option<regex::Regex>,
@@ -181,30 +185,54 @@ where
 
 	fn next_key(&mut self) -> bool
 	{
-		while self.segment.is_some()
+		while let Some(segment) = self.segment.as_ref()
 		{
 			while self.pos != self.decoded.len()
 			{
 				let data = &self.decoded;
 				let klen = BigEndian::read_u32(&data[self.pos .. self.pos+4]) as usize;
 				let flen = BigEndian::read_u32(&data[self.pos+4 .. self.pos+8]) as usize;
-				let rlen = BigEndian::read_u32(&data[self.pos+8 .. self.pos+12]) as usize;
-				let dlen = BigEndian::read_u32(&data[self.pos+12 .. self.pos+16]) as usize;
 
-				let key = &data[self.pos+16 .. self.pos+16+klen];
+				let pos;
+				if segment.segment_version == 0x0000 { pos = self.pos+12; }
+				else { pos = self.pos+8; }
+
+				let dlen = BigEndian::read_u32(&data[pos .. pos+4]) as usize;
+
+				let pos = pos+4;
+
+				let key = &data[pos .. pos+klen];
 				let key = std::str::from_utf8(&key)
 					.expect("input data is not utf8");
-				let fmt = &data[self.pos+16+klen .. self.pos+16+klen+flen];
-				let _fmt = std::str::from_utf8(&fmt)
+				let fmt = &data[pos+klen .. pos+klen+flen];
+				let fmt = std::str::from_utf8(&fmt)
 					.expect("input data is not utf8");
 
-				self.current_key_pos = self.pos+16;
+				self.current_key_pos = pos;
 				self.current_key_len = klen;
-				self.current_fmt_pos = self.pos+16+klen;
+				self.current_fmt_pos = pos+klen;
 				self.current_fmt_len = flen;
-				self.current_key_record_len = rlen;
-				self.current_key_data_len = dlen;
-				self.pos = self.pos+16 + klen + flen;
+				let pos = pos + klen + flen;
+
+				if let Some(len) = crate::row_format::row_format_size(fmt)
+				{
+					self.current_record_len = len;
+					self.pos = pos;
+					self.current_key_data_len = dlen + key.len() + fmt.len() + 12;
+					self.current_key_record_len = Some(len);
+				}
+				else
+				{
+					let data = &data[pos .. dlen];
+					let (len, tail) = unsigned_varint::decode::u64(data).unwrap();
+					let varint_len = data.len() - tail.len();
+
+					self.current_record_len = len as usize;
+					self.pos += pos + varint_len;
+					self.current_key_data_len = dlen-varint_len;
+					self.current_key_record_len = None;
+				}
+
 
 				match self.range.start_bound()
 				{
@@ -288,10 +316,7 @@ where
 	{
 		while self.segment.is_some()
 		{
-			if self.pos == self.current_key_pos
-				+ self.current_key_data_len
-				+ self.current_key_len
-				+ self.current_fmt_len
+			if self.pos == self.current_key_data_len
 			{
 				if !self.next_key() { return None; }
 			}
@@ -304,10 +329,10 @@ where
 					fmt_pos: self.current_fmt_pos,
 					fmt_len: self.current_fmt_len,
 					value_pos: self.pos,
-					value_len: self.current_key_record_len,
+					value_len: self.current_record_len+crate::record::TIMESTAMP_SIZE,
 					data: self.decoded.clone(),
 				};
-			self.pos += self.current_key_record_len;
+			self.pos += self.current_record_len+crate::record::TIMESTAMP_SIZE;
 			return Some(r);
 		}
 		None

@@ -2,6 +2,8 @@
 
 use std::rc::Rc;
 
+pub(crate) const TIMESTAMP_SIZE: usize = 8;
+
 /// Store the data for a record.
 ///
 /// This object is cheaply copied because it is

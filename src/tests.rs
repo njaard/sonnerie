@@ -50,6 +50,47 @@ fn basic1()
 	assert!(i.next().is_none());
 }
 
+#[test]
+fn basic3()
+{
+	let t = tempfile::TempDir::new().unwrap();
+
+	{
+		let w = std::fs::File::create(t.path().join("w")).unwrap();
+		let w = BufWriter::new(w);
+
+		let mut w = Writer::new(w);
+		w.add_record("a", "u", b"\0\0\0\0\0\0\0\0\0\0\0\0").unwrap();
+		w.add_record("a", "u", b"\0\0\0\0\0\0\0\x01\0\0\0\x01").unwrap();
+		w.add_record("b", "u", b"\0\0\0\0\0\0\0\x02\0\0\0\x02").unwrap();
+		w.add_record("b", "u", b"\0\0\0\0\0\0\0\x03\x03\0\0\x03").unwrap();
+		w.finish().unwrap();
+	}
+
+	let w = std::fs::File::open(t.path().join("w")).unwrap();
+	let o = Reader::new(w).unwrap();
+	let s = o.get_range( .. );
+	let mut i = s.into_iter();
+	let a = i.next().unwrap();
+	assert_eq!(a.key(), "a");
+	assert_eq!(a.format(), "u");
+	assert_eq!(a.value(), b"\0\0\0\0\0\0\0\0\0\0\0\0");
+	let a = i.next().unwrap();
+	assert_eq!(a.key(), "a");
+	assert_eq!(a.format(), "u");
+	assert_eq!(a.value(), b"\0\0\0\0\0\0\0\x01\0\0\0\x01");
+	let a = i.next().unwrap();
+	assert_eq!(a.key(), "b");
+	assert_eq!(a.format(), "u");
+	assert_eq!(a.value(), b"\0\0\0\0\0\0\0\x02\0\0\0\x02");
+	let a = i.next().unwrap();
+	assert_eq!(a.key(), "b");
+	assert_eq!(a.format(), "u");
+	assert_eq!(a.value(), b"\0\0\0\0\0\0\0\x03\x03\0\0\x03");
+
+	assert!(i.next().is_none());
+}
+
 fn write_many<W: std::io::Write+Send>(w: &mut Writer<W>, key: &str, range: std::ops::Range<u32>)
 {
   for n in range
@@ -302,7 +343,7 @@ fn write()
 }
 
 #[test]
-fn database_merge()
+fn database_merge1()
 {
 	let t = tempfile::TempDir::new().unwrap();
 	{
@@ -313,17 +354,17 @@ fn database_merge()
 		}
 
 		let mut tx = CreateTx::new(t.path()).unwrap();
-		tx.add_record("a", "U", &[0,0,0,0,0,0,0,0]).unwrap();
-		tx.add_record("a", "U", &[1,0,0,0,0,0,0,0]).unwrap();
-		tx.add_record("c", "U", &[0,0,0,0,0,0,0,0]).unwrap();
-		tx.add_record("c", "U", &[1,0,0,0,0,0,0,0]).unwrap();
+		tx.add_record("a", "U", &[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]).unwrap();
+		tx.add_record("a", "U", &[1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]).unwrap();
+		tx.add_record("c", "U", &[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]).unwrap();
+		tx.add_record("c", "U", &[1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]).unwrap();
 		tx.commit().unwrap();
 
 		let mut tx = CreateTx::new(t.path()).unwrap();
-		tx.add_record("b", "U", &[0,0,0,0,0,0,0,0]).unwrap();
-		tx.add_record("b", "U", &[1,0,0,0,0,0,0,0]).unwrap();
-		tx.add_record("d", "U", &[0,0,0,0,0,0,0,0]).unwrap();
-		tx.add_record("d", "U", &[1,0,0,0,0,0,0,0]).unwrap();
+		tx.add_record("b", "U", &[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]).unwrap();
+		tx.add_record("b", "U", &[1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]).unwrap();
+		tx.add_record("d", "U", &[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]).unwrap();
+		tx.add_record("d", "U", &[1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]).unwrap();
 		tx.commit().unwrap();
 	}
 
@@ -341,6 +382,24 @@ fn database_merge()
 }
 
 #[test]
+#[should_panic]
+fn correct_size()
+{
+	let t = tempfile::TempDir::new().unwrap();
+	{
+		use std::io::Write;
+		let mut main = std::fs::File::create(t.path().join("main")).unwrap();
+		main.write_all(&[0u8]).unwrap();
+	}
+	{
+		let mut tx = CreateTx::new(t.path()).unwrap();
+		tx.add_record("a", "U", &[0,0,0,0,0,0,0,0,1]).unwrap();
+		tx.commit().unwrap();
+	}
+}
+
+
+#[test]
 fn database_merge_last()
 {
 	let t = tempfile::TempDir::new().unwrap();
@@ -352,11 +411,11 @@ fn database_merge_last()
 		}
 
 		let mut tx = CreateTx::new(t.path()).unwrap();
-		tx.add_record("a", "U", &[0,0,0,0,0,0,0,0,1]).unwrap();
+		tx.add_record("a", "U", &[0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0]).unwrap();
 		tx.commit().unwrap();
 
 		let mut tx = CreateTx::new(t.path()).unwrap();
-		tx.add_record("a","U", &[0,0,0,0,0,0,0,0,2]).unwrap();
+		tx.add_record("a","U", &[0,0,0,0,0,0,0,0,2,0,0,0,0,0,0,0]).unwrap();
 		tx.commit().unwrap();
 	}
 
@@ -364,6 +423,47 @@ fn database_merge_last()
 	let last = r.get_range(..).next().unwrap();
 	assert_eq!(last.value()[8], 2);
 }
+
+
+#[test]
+fn store_string1()
+{
+	let t = tempfile::TempDir::new().unwrap();
+	let data= "\
+		a\t2010-01-04_00:00:00\ts\tHello\n\
+		";
+
+	{
+		let mut tx = CreateTx::new(t.path()).expect("creating tx");
+
+		add_from_stream_with_fmt(
+			&mut tx,
+			&mut std::io::Cursor::new(data),
+			Some("%F_%T"),
+		).expect("writing");
+		tx.commit_to(&t.path().join("main")).expect("committed");
+	}
+
+
+	let w = std::fs::File::open(t.path().join("main")).unwrap();
+	let o = Reader::new(w).unwrap();
+	let s = o.get_range("a" .. "z");
+	let mut i = s.into_iter();
+
+	let mut out = vec!();
+	print_record(
+		&i.next().expect("row1"), &mut out,
+		PrintTimestamp::FormatString("%F_%T"),
+		PrintRecordFormat::Yes
+	).expect("formatting");
+	assert!(i.next().is_none());
+
+	assert_eq!(
+		&String::from_utf8(out).unwrap(),
+		"a\t2010-01-04_00:00:00\ts\tHello"
+	);
+}
+
 
 #[test]
 fn escape_invocation()

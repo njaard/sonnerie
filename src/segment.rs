@@ -15,6 +15,7 @@ pub(crate) struct Segment<'data>
 	pub(crate) pos: usize,
 	pub(crate) prev_size: usize,
 	pub(crate) this_key_prev: usize,
+	pub(crate) segment_version: u16,
 }
 
 
@@ -34,8 +35,7 @@ impl<'data> Segment<'data>
 			if at.is_none() { return None; }
 			let at = searching_from + at.unwrap() + SEGMENT_INVOCATION.len();
 
-
-			let segment_version = BigEndian::read_u16(&from[at+0 .. at+2]) as usize;
+			let segment_version = BigEndian::read_u16(&from[at+0 .. at+2]);
 
 			match segment_version
 			{
@@ -72,6 +72,7 @@ impl<'data> Segment<'data>
 							pos: at + origin,
 							prev_size,
 							this_key_prev: 0,
+							segment_version,
 						}
 					);
 				},
@@ -119,6 +120,7 @@ impl<'data> Segment<'data>
 							pos,
 							prev_size,
 							this_key_prev,
+							segment_version,
 						}
 					);
 				},
