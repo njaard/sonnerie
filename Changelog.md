@@ -1,3 +1,13 @@
+# 0.6.0: Not released
+* Columns don't need to keep the same type between samples anymore,
+replacing "unsafe-unchecked" mode.
+* The new file format is slightly more compact. Sonnerie 0.6 can read
+databases created with version 0.5, but only writes 0.6-format databases,
+therefor you will not be able to switch back to 0.5 after modifying a database.
+* Support for string types had a number of subtle bugs that are now fixed.
+* The `--before` and `--after` options are renamed `--before-key` and
+`--after-key`.
+
 # 0.5.9: 2020-08-27
 * Set the correct permissions on new transactions
 

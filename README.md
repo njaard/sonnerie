@@ -2,7 +2,7 @@
 [![Crates.io](https://img.shields.io/crates/v/sonnerie.svg)](https://crates.io/crates/sonnerie)
 [![docs](https://img.shields.io/badge/docs-api-green)](https://docs.rs/sonnerie)
 
-NEWS: 2019-12-23: 0.5 is a total rewrite!
+NEWS: 2020-10-22: 0.6 is a new major version!
 
 # Introduction
 
@@ -115,11 +115,18 @@ for two floating point values representing latitude and longitude:
 	oceanic-airlines 2018-01-01T00:00:04 ff 37.687364 -122.610945
 	oceanic-airlines 2018-01-01T00:00:05 ff 37.687503 -122.615211
 
-## Checked mode is slow
-The command line tools by default use a safe "checked" mode, in which
-new rows' format must be the same as the existing format for their key. This
-has a significant (10x) performance penalty, so you can turn it off with the
-`--unsafe-unchecked` option. The HTTP server is *always* unsafe and fast.
+## Sonnerie allows heterogeneous formats.
+A single key may change its format, for example:
+
+	keyname 2020-01-01T00:00:00 u 42
+	keyname 2020-01-02T00:00:00 f 3.1415
+	keyname 2020-01-03T00:00:00 s Now\ a\ string
+
+While a key may change its format, it has more storage overhead,
+so it's best to not allow keys to oscillate between types.
+
+This is permitted new in version 0.6, older versions had an "unsafe" mode
+that allowed the test to be bypassed for performance.
 
 ## No server is necessary
 
@@ -179,10 +186,6 @@ You can also see a preview of its output by piping your command into `| tee /dev
 
 Note that the rows come as "key\ttimestamp\tformat\tvalue"
 
-By default, gegnum compactions run in a "safe" mode. This is safer but very slow, as
-each key must be verified on insertion to make sure the datatypes are homogenous. Use
-the `--unsafe-nocheck` option to disable the feature.
-
 You can also "read | filter | add" into a different database, but `gegnum` allows
 you to modify an existing database which is useful for online maintenance on a database
 that gets concurrent updates.
@@ -221,9 +224,6 @@ memory utilization will be reasonable.
 
 You may continue to read and modify your sonnerie database by the command
 line or even via another concurrently-running `sonnerie-serve`s.
-
-`sonnerie-serve` is always "unsafe unchecked", meaning that if the format you specify
-is not the same as the existing value for that key, you will get corruptions.
 
 An alternate approach is to use "sshfs" to mount the database remotely. This
 approach is very performant because only compressed data goes through the network
