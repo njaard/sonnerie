@@ -102,6 +102,16 @@ fn write_many<W: std::io::Write+Send>(w: &mut Writer<W>, key: &str, range: std::
     w.add_record(key, "u", &buf).unwrap();
   }
 }
+fn write_many_u64<W: std::io::Write+Send>(w: &mut Writer<W>, key: &str, range: std::ops::Range<u64>)
+{
+  for n in range
+  {
+    let mut buf = [0u8; 16];
+    byteorder::BigEndian::write_u64(&mut buf[..], n as u64);
+    byteorder::BigEndian::write_u64(&mut buf[8..16], n);
+    w.add_record(key, "U", &buf).unwrap();
+  }
+}
 
 #[test]
 fn basic2()
@@ -535,6 +545,38 @@ fn homogenic_types()
 			a\t2010-01-01_00:00:04\ts\tHello\n\
 		"
 	);
+}
+
+
+#[test]
+fn keys_split()
+{
+	let t = tempfile::TempDir::new().unwrap();
+	{
+		let w = std::fs::File::create(t.path().join("w")).unwrap();
+		let w = BufWriter::new(w);
+
+		let mut w = Writer::new(w);
+		write_many(&mut w, "aa", 0..70000);
+		write_many_u64(&mut w, "aa", 70000..600000);
+		write_many(&mut w, "aa", 600000..1000000);
+		write_many_u64(&mut w, "aa", 1000000..1010000);
+		write_many(&mut w, "aa", 1010000..1030000);
+		write_many_u64(&mut w, "aa", 1030000..1040000);
+		write_many(&mut w, "aa", 1040000..1050000);
+		w.finish().unwrap();
+	}
+	let mut f = std::fs::File::open(&t.path().join("w")).unwrap();
+	let o = SegmentReader::open(&mut f).unwrap();
+	{
+		let f = o.first().unwrap();
+		assert!(o.segment_after(&f).is_some());
+	}
+
+	let w = std::fs::File::open(t.path().join("w")).unwrap();
+	let o = Reader::new(w).unwrap();
+	let s = o.get("aa").count();
+	assert_eq!(s, 1050000);
 }
 
 
