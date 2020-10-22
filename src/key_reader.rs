@@ -95,11 +95,11 @@ impl Reader
 			decoded: Rc::new(data),
 			pos: 0,
 			segment: segment,
-			current_key_len: 0,
-			current_key_pos: 0,
-			current_fmt_len: 0,
-			current_fmt_pos: 0,
-			current_key_data_len: 0,
+			current_key_text_len: 0,
+			current_key_text_pos: 0,
+			current_fmt_text_len: 0,
+			current_fmt_text_pos: 0,
+			current_key_data_end: 0,
 			current_record_len: 0,
 			current_key_record_len: None,
 			_phantom: std::marker::PhantomData,
@@ -141,15 +141,15 @@ where
 	range: RB,
 	decoded: Rc<Vec<u8>>,
 	pos: usize,
-	current_key_pos: usize,
-	current_key_len: usize,
-	current_fmt_pos: usize,
-	current_fmt_len: usize,
+	current_key_text_pos: usize,
+	current_key_text_len: usize,
+	current_fmt_text_pos: usize,
+	current_fmt_text_len: usize,
 	/// the size of the current record for this key (from the format string)
 	current_key_record_len: Option<usize>,
 	/// the size of the current record for this key (decoded or from the format string)
 	current_record_len: usize,
-	current_key_data_len: usize, // the total size of all the records for this key
+	current_key_data_end: usize, // where the next key begins
 	segment: Option<Segment<'rdr>>,
 	matcher: Option<regex::Regex>,
 	prefix: &'k str,
@@ -208,28 +208,28 @@ where
 				let fmt = std::str::from_utf8(&fmt)
 					.expect("input data is not utf8");
 
-				self.current_key_pos = pos;
-				self.current_key_len = klen;
-				self.current_fmt_pos = pos+klen;
-				self.current_fmt_len = flen;
+				self.current_key_text_pos = pos;
+				self.current_key_text_len = klen;
+				self.current_fmt_text_pos = pos+klen;
+				self.current_fmt_text_len = flen;
 				let pos = pos + klen + flen;
 
 				if let Some(len) = crate::row_format::row_format_size(fmt)
 				{
 					self.current_record_len = len;
 					self.pos = pos;
-					self.current_key_data_len = dlen + key.len() + fmt.len() + 12;
+					self.current_key_data_end = pos + dlen;
 					self.current_key_record_len = Some(len);
 				}
 				else
 				{
-					let data = &data[pos .. dlen];
+					let data = &data[pos .. pos+dlen];
 					let (len, tail) = unsigned_varint::decode::u64(data).unwrap();
 					let varint_len = data.len() - tail.len();
 
 					self.current_record_len = len as usize;
-					self.pos += pos + varint_len;
-					self.current_key_data_len = dlen-varint_len;
+					self.pos = pos + varint_len;
+					self.current_key_data_end = pos+dlen;
 					self.current_key_record_len = None;
 				}
 
@@ -240,7 +240,7 @@ where
 					{
 						if key < v
 						{
-							self.pos += self.current_key_data_len;
+							self.pos = self.current_key_data_end;
 							continue;
 						}
 					},
@@ -248,7 +248,7 @@ where
 					{
 						if key <= v
 						{
-							self.pos += self.current_key_data_len;
+							self.pos = self.current_key_data_end;
 							continue;
 						}
 					},
@@ -290,7 +290,7 @@ where
 				{
 					if !regex.is_match(key)
 					{
-						self.pos += self.current_key_data_len;
+						self.pos = self.current_key_data_end;
 						continue;
 					}
 				}
@@ -316,7 +316,7 @@ where
 	{
 		while self.segment.is_some()
 		{
-			if self.pos == self.current_key_data_len
+			if self.pos == self.current_key_data_end
 			{
 				if !self.next_key() { return None; }
 			}
@@ -324,10 +324,10 @@ where
 			let r =
 				OwnedRecord
 				{
-					key_pos: self.current_key_pos,
-					key_len: self.current_key_len,
-					fmt_pos: self.current_fmt_pos,
-					fmt_len: self.current_fmt_len,
+					key_pos: self.current_key_text_pos,
+					key_len: self.current_key_text_len,
+					fmt_pos: self.current_fmt_text_pos,
+					fmt_len: self.current_fmt_text_len,
 					value_pos: self.pos,
 					value_len: self.current_record_len+crate::record::TIMESTAMP_SIZE,
 					data: self.decoded.clone(),

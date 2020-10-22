@@ -1,21 +1,30 @@
 Sonnerie's file format consists of "segments" of keys. Each segment has
 uncompressed indexing data and then compressed the actual values ("Payload").
 
+Fixed-length numbers are stored big-endian.
+
+Varints use `unsigned-varint`-encoding.
+
 All numbers are stored as big endian.
 
 All strings (keys) must be valid UTF-8.
 
 # Segment header
 
-* Each segment starts with `@TSDB_SEGMENT_\0\0` (yes, those are null bytes).
-* Then four 32-bit numbers
+* Each segment starts with `@TSDB_SEGMENT_`
+* Then two bytes indicating the segment version. The current version is 0x0100. You'll
+have to look at older versions of this file to see the previous version.
+* Then five varints
   * the length in bytes of the first key in this segment
-  * the length of the last key in this segment
-  * the compressed length of the payload
-  * the compressed length of the previous segment (include all headers)
+  * the length in bytes of the last key in this segment
+  * the stpore length of the payload
+  * the stored length of the previous segment (meaning compressed, including all headers)
+  * the number of bytes of all previous segments that contain data for first_key, or 0
+  if this is the first one.
 * The first key in this segment (with a length of the first number above)
 * the last key in this segment (with a length of the second number above)
-* The LZ4-compressed payload. The compressed size is recorded in the header
+* The LZ4-compressed payload. The compressed size is recorded in the header.
+If `@TSDB_SEGMENT_` is in the _compressed_ data, then it is replaced with "@TSDB_SEGMENT_\xff\xff".
 
 The first key is always lexigraphically less than or equal to the last one.
 
@@ -25,38 +34,31 @@ The payload stores all its keys as such:
 * Four 32-bit numbers:
   * the length of the key
   * the length of the format string
-  * the length of each value (which should correspond with the format string)
-  * the length of data in bytes
+  * the length of the "actual data" in bytes for this key
 * the key (a string of the above length)
 * the format string (a string of the above length)
-* the actual data, repeated instances of the timestamp stored as a 64-bit number
-and the value for that timestamp.
+* the "actual data", repeated instances of for each timestamp:
+  * If the format string is not of a fixed size (it contains strings),
+  store a varint of the entire record length, not including timestamp.
+  * The value for each column as specified in the format.
+    * If a column is a string, store the string's length as a varint
+    * The timestamp is stored as an 8-byte integer.
 
-So a record might look like this:
-* `0x00000005` -- key length five
-* `0x00000001` -- format length 1
-* `0x00000004` -- record length 4
-* `0x0000000c` -- data length 12 ((timestamp=8 + record=4))\*number of samples
-* `abcde` - the key
-* `u` - the format
-* `0x1122334400000000` the timestamp
-* `0x00001000` a 32-bit unsigned integer as specified by the format
 
 # A segments-file
 A file of segments contains a bunch of segments, each with their
 complete header. The file of segments' segments are sorted lexicgraphically
-by key. A key must not span multiple segments, even if it results
-in a really big segment. Sonnerie chooses a reasonable approximate
+by key. A key may span multiple segments. Sonnerie chooses a reasonable approximate
 maximum segment size.
 
-Each segment's last key always comes lexigraphically before the following
-segment's first key.
+Each segment's last key always comes lexigraphically before or equal to
+the following segment's first key.
 
 # How to search for a key in a segments-file
 
 Do a binary search on the file itself, starting by taking the size of the file,
 choosing a point near the middle and then scanning it until you find
-the `@TSDB_SEGMENT_\0\0`. If you need to go backwards just a single
+the `@TSDB_SEGMENT_`. If you need to go backwards just a single
 segment, then you can use that segment's header "the compressed length of the payload"
 value to know how far to go back.
 
@@ -64,10 +66,6 @@ Once you find the segment that contains the key you're searching for
 (because the key lives lexigraphically between the 'first key' and 'last key'
 in the segment's header), you can decompress the LZ4 data and actually
 get the values.
-
-There's a bug in which if the compressed data actually magically contains
-the `@TSDB_SEGMENT_\0\0`, then you might get messed up. That sucks man,
-I feel bad for you, as it's really unlikely to ever happen.
 
 # The database format
 The database is a directory with a bunch of these segments-files where

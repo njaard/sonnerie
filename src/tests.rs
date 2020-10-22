@@ -79,6 +79,7 @@ fn basic3()
 	assert_eq!(a.key(), "a");
 	assert_eq!(a.format(), "u");
 	assert_eq!(a.value(), b"\0\0\0\0\0\0\0\x01\0\0\0\x01");
+	dbg!("next");
 	let a = i.next().unwrap();
 	assert_eq!(a.key(), "b");
 	assert_eq!(a.format(), "u");
@@ -492,10 +493,10 @@ fn homogenic_types()
 {
 	let t = tempfile::TempDir::new().unwrap();
 	let data= "\
-		a\t2010-01-01_00:00:00\tu\t42\n\
-		a\t2010-01-02_00:00:00\tu\t84\n\
-		a\t2010-01-03_00:00:00\tf\t32.5\n\
-		a\t2010-01-04_00:00:00\ts\tHello\n\
+		a\t2010-01-01_00:00:01\tu\t42\n\
+		a\t2010-01-01_00:00:02\tu\t84\n\
+		a\t2010-01-01_00:00:03\tf\t32.5\n\
+		a\t2010-01-01_00:00:04\ts\tHello\n\
 		";
 
 	{
@@ -528,10 +529,10 @@ fn homogenic_types()
 	assert_eq!(
 		&String::from_utf8(out).unwrap(),
 		"\
-			a\t2010-01-01_00:00:00\tu\t42\n\
-			a\t2010-01-02_00:00:00\tu\t84\n\
-			a\t2010-01-03_00:00:00\tf\t32.50000000000000000\n\
-			a\t2010-01-04_00:00:00\ts\tHello\n\
+			a\t2010-01-01_00:00:01\tu\t42\n\
+			a\t2010-01-01_00:00:02\tu\t84\n\
+			a\t2010-01-01_00:00:03\tf\t32.50000000000000000\n\
+			a\t2010-01-01_00:00:04\ts\tHello\n\
 		"
 	);
 }
