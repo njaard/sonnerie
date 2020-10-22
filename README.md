@@ -15,8 +15,9 @@ many values over many series, and for reading one series at a time.
 It is also very good at dumping lexicographically sequential series
 (which means: everything).
 
-It achieves this by storing each transaction in a single file. After the
-transaction is completed, it is `fsync`ed then made available for reading.
+Sonnerie can very efficiently do random insertions and updates, and works
+well for huge databases. Due to the compact disk format, sparse data such
+as keys with only a few timestamps can be very efficiently stored.
 
 # Features
 * A straight-forward protocol for reading and writing

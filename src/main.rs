@@ -10,7 +10,7 @@ fn main()
 	use clap::{SubCommand,Arg};
 	let matches
 		= clap::App::new("sonnerie")
-			.version("0.5.8")
+			.version("0.5.9")
 			.author("Charles Samuels <kalle@eventures.vc>")
 			.about("A compressed timeseries database")
 			.arg(Arg::with_name("dir")

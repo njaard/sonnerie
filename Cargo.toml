@@ -1,6 +1,6 @@
 [package]
 name = "sonnerie"
-version = "0.5.8"
+version = "0.5.9"
 authors = ["Charles Samuels <kalle@eventures.vc>", "e.ventures Management LLC"]
 edition = "2018"
 description = "An easy timeseries database"
@@ -31,7 +31,7 @@ tempfile = "3"
 tempfile-fast = "0.3"
 escape_string = {version="0.1.0", path="escape_string"}
 crossbeam = "0.7"
-unsigned-varint={version="0.4", default-features=false }
+unsigned-varint={version="0.5", default-features=false }
 clap = { version="2", optional=true }
 url = { version="2", optional=true }
 hyper = { version="0.13", optional=true }

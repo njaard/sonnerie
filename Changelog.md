@@ -1,3 +1,6 @@
+# 0.5.9: 2020-08-27
+* Set the correct permissions on new transactions
+
 # 0.5.8: 2020-07-25
 * Fix when --before is used without --after
 * Never create .tmp files (use anonymous files) on Linux
