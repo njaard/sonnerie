@@ -203,41 +203,6 @@ impl<W: Write + Send> Writer<W> {
 	}
 
 	/// send the current segment to a worker thread to get written
-	///
-	/// Write it in segment version 1
-	/*pub(crate) fn store_current_segment_1(&mut self) -> std::io::Result<()>
-	{
-		let mut header = vec!();
-		header.write_all(crate::segment::SEGMENT_INVOCATION)?;
-		header.write_u16::<BigEndian>(0)?;
-		header.write_u32::<BigEndian>(self.first_segment_key.len() as u32)?;
-		header.write_u32::<BigEndian>(self.last_key.len() as u32)?;
-		header.write_u32::<BigEndian>(0u32)?; // compressed data size (filled by worker thread)
-		header.write_u32::<BigEndian>(0u32)?; // prev_size (filled by worker thread)
-		header.write_all(&self.first_segment_key.as_bytes())?;
-		header.write_all(&self.last_key.as_bytes())?;
-
-		let payload = std::mem::replace(
-			&mut self.current_segment_data,
-			Vec::with_capacity(SEGMENT_SIZE_EXTRA)
-		);
-
-		let message =
-			WorkerMessage
-			{
-				counter: self.thread_ordering,
-				header,
-				payload,
-			};
-		self.thread_ordering += 1;
-
-		self.worker_threads
-			.as_ref().unwrap()
-			.send(message).expect("failed to send data to worker");
-		Ok(())
-	}*/
-
-	/// send the current segment to a worker thread to get written
 	pub(crate) fn store_current_segment(&mut self) -> std::io::Result<()> {
 		let header = Header {
 			first_key: self.first_segment_key.as_bytes().to_owned(),

@@ -28,7 +28,7 @@ as keys with only a few timestamps can be very efficiently stored.
 * Durable: committed data is resistant to loss from unexpected shutdown.
 * Nanosecond-resolution timestamps (64 bit), 1970-2554
 * No weird dependencies, no virtual machines, one single native binary for the command line tool
-* floating point and integer values, multiple columns per sample
+* floating point, integer, and string values, multiple columns per sample
 
 Sonnerie runs on Unix-like systems and is developed on Linux.
 
