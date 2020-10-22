@@ -30,7 +30,7 @@ libc="0.2"
 tempfile = "3"
 tempfile-fast = "0.3"
 escape_string = {version="0.1.0", path="escape_string"}
-crossbeam = "0.7"
+crossbeam = "0.8"
 unsigned-varint={version="0.5", default-features=false }
 clap = { version="2", optional=true }
 url = { version="2", optional=true }
