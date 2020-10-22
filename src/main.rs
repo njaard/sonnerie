@@ -1,13 +1,11 @@
 use sonnerie::formatted;
-use std::path::Path;
-use std::fs::File;
 use sonnerie::*;
+use std::fs::File;
 use std::io::Write;
+use std::path::Path;
 
-fn main()
-	-> std::io::Result<()>
-{
-	use clap::{SubCommand,Arg};
+fn main() -> std::io::Result<()> {
+	use clap::{Arg, SubCommand};
 	let matches
 		= clap::App::new("sonnerie")
 			.version("0.5.9")
@@ -108,29 +106,18 @@ fn main()
 	let dir = matches.value_of_os("dir").expect("--dir");
 	let dir = std::path::Path::new(dir);
 
-	if let Some(matches) = matches.subcommand_matches("add")
-	{
+	if let Some(matches) = matches.subcommand_matches("add") {
 		let format = matches.value_of("format").unwrap();
 		let ts_format = matches.value_of("timestamp-format");
 		add(&dir, format, ts_format);
-	}
-	else if let Some(matches) = matches.subcommand_matches("compact")
-	{
+	} else if let Some(matches) = matches.subcommand_matches("compact") {
 		let gegnum = matches.value_of_os("gegnum");
 		let ts_format = matches.value_of("timestamp-format").unwrap_or("%FT%T");
 
-		compact(
-			&dir,
-			matches.is_present("major"),
-			gegnum,
-			ts_format,
-		).expect("compacting");
-	}
-	else if let Some(matches) = matches.subcommand_matches("read")
-	{
+		compact(&dir, matches.is_present("major"), gegnum, ts_format).expect("compacting");
+	} else if let Some(matches) = matches.subcommand_matches("read") {
 		let print_format = matches.is_present("print-format");
-		let timestamp_format = matches.value_of("timestamp-format")
-			.unwrap_or("%F %T");
+		let timestamp_format = matches.value_of("timestamp-format").unwrap_or("%F %T");
 		let timestamp_nanos = matches.is_present("timestamp-nanos");
 		let timestamp_seconds = matches.is_present("timestamp-seconds");
 
@@ -142,52 +129,41 @@ fn main()
 		let mut stdout = std::io::BufWriter::new(stdout.lock());
 		let db = DatabaseReader::new(dir)?;
 
-		let print_record_format =
-			if print_format
-				{ formatted::PrintRecordFormat::Yes }
-			else
-				{ formatted::PrintRecordFormat::No };
-		let print_timestamp =
-			if timestamp_nanos
-				{ formatted::PrintTimestamp::Nanos }
-			else if timestamp_seconds
-				{ formatted::PrintTimestamp::Seconds }
-			else
-				{ formatted::PrintTimestamp::FormatString(timestamp_format) };
+		let print_record_format = if print_format {
+			formatted::PrintRecordFormat::Yes
+		} else {
+			formatted::PrintRecordFormat::No
+		};
+		let print_timestamp = if timestamp_nanos {
+			formatted::PrintTimestamp::Nanos
+		} else if timestamp_seconds {
+			formatted::PrintTimestamp::Seconds
+		} else {
+			formatted::PrintTimestamp::FormatString(timestamp_format)
+		};
 
-		macro_rules! filter
-		{
-			($filter:expr) =>
-			{
-				for record in $filter
-				{
+		macro_rules! filter {
+			($filter:expr) => {
+				for record in $filter {
 					formatted::print_record(
 						&record,
 						&mut stdout,
 						print_timestamp,
-						print_record_format
+						print_record_format,
 					)?;
 					writeln!(&mut stdout, "")?;
-				}
+					}
 			};
 		}
 
-		match (after, before, filter)
-		{
-			(Some(after), None, None) =>
-				filter!(db.get_range(after ..)),
-			(None, Some(before), None) =>
-				filter!(db.get_range( .. before)),
-			(Some(after), Some(before), None) =>
-				filter!(db.get_range(after .. before)),
-			(None, None, Some(filter)) =>
-				filter!(db.get_filter(&Wildcard::new(filter))),
-			_ =>
-				unreachable!(),
+		match (after, before, filter) {
+			(Some(after), None, None) => filter!(db.get_range(after..)),
+			(None, Some(before), None) => filter!(db.get_range(..before)),
+			(Some(after), Some(before), None) => filter!(db.get_range(after..before)),
+			(None, None, Some(filter)) => filter!(db.get_filter(&Wildcard::new(filter))),
+			_ => unreachable!(),
 		}
-	}
-	else
-	{
+	} else {
 		eprintln!("A command must be specified (read, add, compact)");
 		std::process::exit(1);
 	}
@@ -195,41 +171,39 @@ fn main()
 	Ok(())
 }
 
-fn add(dir: &Path, fmt: &str, ts_format: Option<&str>)
-{
+fn add(dir: &Path, fmt: &str, ts_format: Option<&str>) {
 	let _db = DatabaseReader::new(dir).expect("opening db");
 	let mut tx = CreateTx::new(dir).expect("creating tx");
 
 	let stdin = std::io::stdin();
 	let mut stdin = stdin.lock();
 
-	formatted::add_from_stream(&mut tx, fmt, &mut stdin, ts_format)
-		.expect("adding value");
+	formatted::add_from_stream(&mut tx, fmt, &mut stdin, ts_format).expect("adding value");
 	tx.commit().expect("failed to commit transaction");
 }
 
 fn compact(
-	dir: &Path, major: bool,
-	gegnum: Option<&std::ffi::OsStr>, ts_format: &str)
-	-> Result<(), crate::WriteFailure>
-{
+	dir: &Path,
+	major: bool,
+	gegnum: Option<&std::ffi::OsStr>,
+	ts_format: &str,
+) -> Result<(), crate::WriteFailure> {
 	use fs2::FileExt;
 
 	let lock = File::create(dir.join(".compact"))?;
 	lock.lock_exclusive()?;
 
 	let db;
-	if major
-		{ db = DatabaseReader::new(dir)?; }
-	else
-		{ db = DatabaseReader::without_main_db(dir)?; }
+	if major {
+		db = DatabaseReader::new(dir)?;
+	} else {
+		db = DatabaseReader::without_main_db(dir)?;
+	}
 	let db = std::sync::Arc::new(db);
-
 
 	let mut compacted = CreateTx::new(dir)?;
 
-	if let Some(gegnum) = gegnum
-	{
+	if let Some(gegnum) = gegnum {
 		let mut child = std::process::Command::new("/bin/sh")
 			.arg("-c")
 			.arg(gegnum)
@@ -244,82 +218,66 @@ fn compact(
 		let ts_format_copy = ts_format.to_owned();
 		// a thread that reads from "db" and writes to the child
 		let reader_db = db.clone();
-		let reader_thread = std::thread::spawn(
-			move || -> std::io::Result<()>
-			{
-				let timestamp_format = formatted::PrintTimestamp::FormatString(&ts_format_copy);
-				let reader = reader_db.get_range(..);
-				for record in reader
-				{
-					formatted::print_record(
-						&record, &mut childinput,
-						timestamp_format,
-						formatted::PrintRecordFormat::Yes,
-					)?;
-					writeln!(&mut childinput, "")?;
-				}
-				Ok(())
+		let reader_thread = std::thread::spawn(move || -> std::io::Result<()> {
+			let timestamp_format = formatted::PrintTimestamp::FormatString(&ts_format_copy);
+			let reader = reader_db.get_range(..);
+			for record in reader {
+				formatted::print_record(
+					&record,
+					&mut childinput,
+					timestamp_format,
+					formatted::PrintRecordFormat::Yes,
+				)?;
+				writeln!(&mut childinput, "")?;
 			}
-		);
+			Ok(())
+		});
 
 		let childoutput = child.stdout.take().expect("process had no stdout");
 		let mut childoutput = std::io::BufReader::new(childoutput);
-		formatted::add_from_stream_with_fmt(
-			&mut compacted, &mut childoutput,
-			Some(ts_format),
-		)?;
+		formatted::add_from_stream_with_fmt(&mut compacted, &mut childoutput, Some(ts_format))?;
 
-		reader_thread.join()
+		reader_thread
+			.join()
 			.expect("failed to join subprocess writing thread")
 			.expect("child writer failed");
 		let result = child.wait()?;
-		if !result.success()
-		{
+		if !result.success() {
 			panic!("child process failed: cancelling compact");
 		}
-	}
-	else
-	{
+	} else {
 		{
 			let ps = db.transaction_paths();
-			if ps.len() == 1 && ps[0].file_name().expect("filename") == "main"
-			{
+			if ps.len() == 1 && ps[0].file_name().expect("filename") == "main" {
 				eprintln!("nothing to do");
 				return Ok(());
 			}
 		}
 		// create the new transaction after opening the database reader
 		let reader = db.get_range(..);
-		let mut n=0u64;
-		for record in reader
-		{
-			compacted.add_record(
-				record.key(),
-				record.format(),
-				record.value(),
-			)?;
-			n+= 1;
+		let mut n = 0u64;
+		for record in reader {
+			compacted.add_record(record.key(), record.format(), record.value())?;
+			n += 1;
 		}
 		eprintln!("compacted {} records", n);
 	}
 
-	if major
-	{
-		compacted.commit_to(&dir.join("main"))
+	if major {
+		compacted
+			.commit_to(&dir.join("main"))
 			.expect("failed to replace main database");
-	}
-	else
-	{
-		compacted.commit()
+	} else {
+		compacted
+			.commit()
 			.expect("failed to commit compacted database");
 	}
 
-	for txfile in db.transaction_paths()
-	{
-		if txfile.file_name().expect("filename in txfile") == "main"
-			{ continue; }
-		if let Err(e) = std::fs::remove_file(&txfile)
-		{
+	for txfile in db.transaction_paths() {
+		if txfile.file_name().expect("filename in txfile") == "main" {
+			continue;
+		}
+		if let Err(e) = std::fs::remove_file(&txfile) {
 			eprintln!("warning: failed to remove {:?}: {}", txfile, e);
 		}
 	}
