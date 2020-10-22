@@ -65,7 +65,7 @@ fn main() -> std::io::Result<()> {
 					.arg(Arg::with_name("filter")
 						.help("select the keys to print out, \"%\" is the wildcard")
 						.takes_value(true)
-						.required_unless_one(&["before", "after"])
+						.required_unless_one(&["before-key", "after-key"])
 
 					)
 					.arg(Arg::with_name("print-format")
@@ -88,14 +88,14 @@ fn main() -> std::io::Result<()> {
 						.conflicts_with("timestamp-format")
 						.conflicts_with("timestamp-nanos")
 					)
-					.arg(Arg::with_name("before")
-						.long("before")
+					.arg(Arg::with_name("before-key")
+						.long("before-key")
 						.help("read values before (but not including) this key")
 						.takes_value(true)
 						.conflicts_with("filter")
 					)
-					.arg(Arg::with_name("after")
-						.long("after")
+					.arg(Arg::with_name("after-key")
+						.long("after-key")
 						.help("read values after (and including) this key")
 						.takes_value(true)
 						.conflicts_with("filter")
@@ -121,8 +121,8 @@ fn main() -> std::io::Result<()> {
 		let timestamp_nanos = matches.is_present("timestamp-nanos");
 		let timestamp_seconds = matches.is_present("timestamp-seconds");
 
-		let after = matches.value_of("after");
-		let before = matches.value_of("before");
+		let after_key = matches.value_of("after-key");
+		let before_key = matches.value_of("before-key");
 		let filter = matches.value_of("filter");
 
 		let stdout = std::io::stdout();
@@ -156,10 +156,10 @@ fn main() -> std::io::Result<()> {
 			};
 		}
 
-		match (after, before, filter) {
-			(Some(after), None, None) => filter!(db.get_range(after..)),
-			(None, Some(before), None) => filter!(db.get_range(..before)),
-			(Some(after), Some(before), None) => filter!(db.get_range(after..before)),
+		match (after_key, before_key, filter) {
+			(Some(a), None, None) => filter!(db.get_range(a..)),
+			(None, Some(b), None) => filter!(db.get_range(..b)),
+			(Some(a), Some(b), None) => filter!(db.get_range(a..b)),
 			(None, None, Some(filter)) => filter!(db.get_filter(&Wildcard::new(filter))),
 			_ => unreachable!(),
 		}
