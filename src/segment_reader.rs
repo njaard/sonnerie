@@ -47,7 +47,7 @@ impl SegmentReader {
 				offset={}, len={}, prev_sz={}, this_key_prev={}",
 				fk,
 				lk,
-				s.pos,
+				s.segment_offset,
 				s.payload.len(),
 				s.prev_size,
 				s.this_key_prev,
@@ -89,7 +89,7 @@ impl SegmentReader {
 				}
 
 				if key == segment.first_key && segment.this_key_prev != 0 {
-					pos = segment.pos - segment.this_key_prev;
+					pos = segment.segment_offset - segment.this_key_prev;
 					search_here = true;
 					continue;
 				}
@@ -103,20 +103,16 @@ impl SegmentReader {
 					end = std::cmp::min(
 						pos - 1,
 						std::cmp::min(
-							segment.pos - segment.prev_size,
+							segment.segment_offset - segment.prev_size,
 							// we know we can reverse past this entire key
-							segment.pos - segment.this_key_prev,
+							segment.segment_offset - segment.this_key_prev,
 						),
 					);
 					if end < begin {
 						return None;
 					}
 				} else if key > segment.last_key {
-					// go to a larger index
-					if begin == segment.pos {
-						return None;
-					}
-					begin = segment.pos + segment.payload.len();
+					begin = segment.segment_offset + segment.stride;
 					if begin > end {
 						return None;
 					}
@@ -129,9 +125,7 @@ impl SegmentReader {
 
 	pub(crate) fn segment_after<'s>(&'s self, segment: &Segment<'s>) -> Option<Segment<'s>> {
 		let data = &self.map;
-		Segment::scan(
-			&data[segment.pos + segment.payload.len()..],
-			segment.pos + segment.payload.len(),
-		)
+		let next = segment.segment_offset + segment.stride;
+		Segment::scan(&data[next..], next)
 	}
 }

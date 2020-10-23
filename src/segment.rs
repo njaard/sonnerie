@@ -10,70 +10,75 @@ pub(crate) struct Segment<'data> {
 	pub(crate) first_key: &'data [u8],
 	pub(crate) last_key: &'data [u8],
 	pub(crate) payload: &'data [u8],
-	pub(crate) pos: usize,
+	pub(crate) segment_offset: usize,
 	pub(crate) prev_size: usize,
 	pub(crate) this_key_prev: usize,
 	pub(crate) segment_version: u16,
+	pub(crate) stride: usize, // bytes from the start of the invocation to the next invocation
 }
 
 impl<'data> Segment<'data> {
 	// read from `from` until I find a header, returning it
 	// if there is one
 	pub(crate) fn scan(from: &'data [u8], origin: usize) -> Option<Segment<'data>> {
-		let mut searching_from = 0;
+		// relative_search_start makes it possible to skip invocation escape sequences
+		let mut relative_search_start = 0;
 		loop {
-			let first_len = from.len();
-
-			let at = twoway::find_bytes(&from[searching_from..], SEGMENT_INVOCATION);
-			if at.is_none() {
+			let invocation_relative_at =
+				twoway::find_bytes(&from[relative_search_start..], SEGMENT_INVOCATION)?;
+			let header =
+				&from[relative_search_start + invocation_relative_at + SEGMENT_INVOCATION.len()..];
+			if header.len() < 2 {
+				// invalid
 				return None;
 			}
-			let at = searching_from + at.unwrap() + SEGMENT_INVOCATION.len();
+			let segment_offset = invocation_relative_at + relative_search_start + origin;
 
-			let segment_version = BigEndian::read_u16(&from[at + 0..at + 2]);
+			let segment_version = BigEndian::read_u16(&header[0..2]);
 
 			match segment_version {
 				0 => {
-					if from[at..].len() < 18 {
+					if header.len() < 18 {
 						return None;
 					}
-					let at = at + 2;
 					// the length of the first key
-					let len1 = BigEndian::read_u32(&from[at + 0..at + 4]) as usize;
+					let len1 = BigEndian::read_u32(&header[2..6]) as usize;
 					// the length of the last key
-					let len2 = BigEndian::read_u32(&from[at + 4..at + 8]) as usize;
+					let len2 = BigEndian::read_u32(&header[6..10]) as usize;
 					// the length of the payload
-					let len3 = BigEndian::read_u32(&from[at + 8..at + 12]) as usize;
+					let len3 = BigEndian::read_u32(&header[10..14]) as usize;
 					// the compressed size of the previous segment
-					let prev_size = BigEndian::read_u32(&from[at + 12..at + 16]) as usize;
-					let at = at + 16;
+					let prev_size = BigEndian::read_u32(&header[14..18]) as usize;
 
-					if from[at..].len() < len1 + len2 + len3 {
+					let at = 18;
+
+					if header[at..].len() < len1 + len2 + len3 {
 						return None;
 					}
 
-					let first_key = &from[at..at + len1];
+					let first_key = &header[at..at + len1];
 
 					let at = at + len1;
-					let last_key = &from[at..at + len2];
+					let last_key = &header[at..at + len2];
 
-					let at = at + len2;
-					let payload = &from[at..at + len3];
+					let header_len = 18 + len1 + len2;
+					let payload = &header[header_len..header_len + len3];
 
 					return Some(Segment {
 						first_key,
 						last_key,
 						payload,
-						pos: at + origin,
+						segment_offset,
 						prev_size,
 						this_key_prev: 0,
 						segment_version,
+						stride: SEGMENT_INVOCATION.len() + header_len + len3,
 					});
 				}
 
 				0x0100 => {
 					use unsigned_varint::decode::u32 as v32;
-					let from = &from[at + 2..];
+					let from = &header[2..];
 
 					// the length of the first key
 					let (len1, from) = v32(from).ok()?;
@@ -97,28 +102,27 @@ impl<'data> Segment<'data> {
 						return None;
 					}
 
+					let header_len = len1 + len2 + (header.len() - from.len());
 					let first_key = &from[0..len1];
-
 					let last_key = &from[len1..len1 + len2];
 
-					let pos = first_len - from.len() + origin + len1 + len2;
-
-					let payload = &from[len1 + len2..len1 + len2 + len3];
+					let payload = &header[header_len..header_len + len3];
 
 					return Some(Segment {
 						first_key,
 						last_key,
 						payload,
-						pos,
+						segment_offset,
 						prev_size,
 						this_key_prev,
 						segment_version,
+						stride: SEGMENT_INVOCATION.len() + header_len + len3,
 					});
 				}
 
 				0xffff => {
 					// we found the escape character
-					searching_from = at;
+					relative_search_start = invocation_relative_at + SEGMENT_INVOCATION.len();
 					continue;
 				}
 				a => {
