@@ -4,8 +4,8 @@ use parking_lot::{Condvar, Mutex};
 use std::io::Write;
 use std::sync::Arc;
 
-const SEGMENT_SIZE_GOAL: usize = 1024 * 128;
-const SEGMENT_SIZE_EXTRA: usize = 1024 * 128 + 1024 * 32;
+const SEGMENT_SIZE_GOAL: usize = 1024 * 1024;
+const SEGMENT_SIZE_EXTRA: usize = 1024 * 1024 + 1024 * 32;
 
 pub(crate) struct Writer<W: Write + Send + 'static> {
 	writer_state: Option<Arc<Mutex<WriterState<W>>>>,
