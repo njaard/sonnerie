@@ -13,7 +13,7 @@ use std::path::{Path, PathBuf};
 /// the transaction is on disk. Not calling commit will
 /// rollback the transaction.
 pub struct CreateTx {
-	writer: Option<Writer<std::fs::File>>,
+	writer: Writer<std::fs::File>,
 	tmp: tempfile_fast::PersistableTempFile,
 	dir: PathBuf,
 }
@@ -33,7 +33,7 @@ impl CreateTx {
 		let writer = Writer::new(f);
 
 		let tx = CreateTx {
-			writer: Some(writer),
+			writer,
 			tmp,
 			dir: dir.to_owned(),
 		};
@@ -55,15 +55,15 @@ impl CreateTx {
 		format: &str,
 		data: &[u8],
 	) -> std::result::Result<(), crate::write::WriteFailure> {
-		self.writer.as_mut().unwrap().add_record(key, format, data)
+		self.writer.add_record(key, format, data)
 	}
 
 	/// Commit the transaction, but give it a specific name.
 	///
 	/// This function is necessary for compacting, normally
 	/// you would just call the basic [`commit`].
-	pub fn commit_to(mut self, final_name: &Path) -> std::io::Result<()> {
-		let writer = self.writer.take().unwrap();
+	pub fn commit_to(self, final_name: &Path) -> std::io::Result<()> {
+		let writer = self.writer;
 		let mut file = writer.finish()?;
 		file.flush()?;
 		let len = file.seek(std::io::SeekFrom::End(0))? as usize;
