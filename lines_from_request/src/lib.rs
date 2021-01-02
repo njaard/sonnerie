@@ -1,6 +1,6 @@
 //! Create an iterator of lines from a hyper::Body
 
-use hyper::{Body, error::Error};
+use hyper::{Body, Error};
 use std::collections::VecDeque;
 use futures::stream::StreamExt;
 

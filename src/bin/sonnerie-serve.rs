@@ -46,9 +46,7 @@ fn main() {
 	let dir = matches.value_of_os("dir").expect("--dir");
 	let dir = std::path::Path::new(dir);
 
-	let mut runtime = tokio::runtime::Builder::new()
-		.threaded_scheduler()
-		.core_threads(4)
+	let runtime = tokio::runtime::Builder::new_multi_thread()
 		.thread_name("sonnerie")
 		.thread_stack_size(1024 * 1024)
 		.enable_all()

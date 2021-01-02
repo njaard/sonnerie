@@ -34,8 +34,8 @@ crossbeam = "0.8"
 unsigned-varint={version="0.5", default-features=false }
 clap = { version="2", optional=true }
 url = { version="2", optional=true }
-hyper = { version="0.13", optional=true }
-tokio={ version="0.2", features=["full"], optional=true }
+hyper = { version="0.14", optional=true, features=["server","http1","tcp"] }
+tokio={ version="1", features=["full"], optional=true }
 futures = { version="0.3", optional=true }
 lines_from_request={ version="0.3.0", path="lines_from_request", optional=true }
 serde = { version="1", optional=true }

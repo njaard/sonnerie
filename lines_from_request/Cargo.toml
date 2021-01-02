@@ -10,5 +10,5 @@ keywords = ["lines", "stream", "socket", "nonblocking"]
 documentation = "https://docs.rs/lines_from_request/"
 
 [dependencies]
-hyper="0.13"
+hyper={version="0.14", features=["stream"]}
 futures="0.3"
