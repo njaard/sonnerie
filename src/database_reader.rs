@@ -100,10 +100,7 @@ impl DatabaseReader {
 	///
 	/// Returns an object that will read all of the
 	/// records for only one key.
-	pub fn get<'rdr, 'k>(
-		&'rdr self,
-		key: &'k str,
-	) -> DatabaseKeyReader<'rdr, 'k, std::ops::RangeInclusive<&'k str>> {
+	pub fn get<'rdr, 'k>(&'rdr self, key: &'k str) -> DatabaseKeyReader<'rdr, 'k> {
 		self.get_range(key..=key)
 	}
 
@@ -115,10 +112,10 @@ impl DatabaseReader {
 	///
 	/// Range queries are always efficient and readahead
 	/// may occur.
-	pub fn get_range<'d, 'r, RB>(&'d self, range: RB) -> DatabaseKeyReader<'d, 'r, RB>
-	where
-		RB: std::ops::RangeBounds<&'r str> + Clone,
-	{
+	pub fn get_range<'d, 'k>(
+		&'d self,
+		range: impl std::ops::RangeBounds<&'k str> + Clone + 'k,
+	) -> DatabaseKeyReader<'d, 'k> {
 		let mut readers = Vec::with_capacity(self.txes.len());
 
 		for tx in &self.txes {
@@ -141,10 +138,7 @@ impl DatabaseReader {
 	///
 	/// A wildcard filter that has a fixed prefix, such as
 	/// `"chimp%"` is always efficient.
-	pub fn get_filter<'d, 'k>(
-		&'d self,
-		wildcard: &'k Wildcard,
-	) -> DatabaseKeyReader<'d, 'k, std::ops::RangeFrom<&'k str>> {
+	pub fn get_filter<'d, 'k>(&'d self, wildcard: &'k Wildcard) -> DatabaseKeyReader<'d, 'k> {
 		let mut readers = Vec::with_capacity(self.txes.len());
 
 		for tx in &self.txes {
@@ -168,18 +162,12 @@ impl DatabaseReader {
 ///
 /// Yields an [`OwnedRecord`](record/struct.OwnedRecord.html)
 /// for each row in the database, sorted by key and timestamp.
-pub struct DatabaseKeyReader<'d, 'r, RB>
-where
-	RB: std::ops::RangeBounds<&'r str>,
-{
+pub struct DatabaseKeyReader<'d, 'k> {
 	_db: &'d DatabaseReader,
-	merge: Box<Merge<StringKeyRangeReader<'d, 'r, RB>, OwnedRecord>>,
+	merge: Box<Merge<StringKeyRangeReader<'d, 'k>, OwnedRecord>>,
 }
 
-impl<'d, 'r, RB> Iterator for DatabaseKeyReader<'d, 'r, RB>
-where
-	RB: std::ops::RangeBounds<&'r str>,
-{
+impl<'d, 'k> Iterator for DatabaseKeyReader<'d, 'k> {
 	type Item = OwnedRecord;
 
 	fn next(&mut self) -> Option<Self::Item> {

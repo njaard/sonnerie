@@ -8,6 +8,7 @@ use byteorder::{BigEndian, ByteOrder};
 use std::io::Read;
 use std::ops::Bound;
 use std::ops::Bound::*;
+use std::ops::RangeBounds;
 use std::rc::Rc;
 
 /// Read and filter keys from a single transaction file
@@ -31,10 +32,7 @@ impl Reader {
 	///
 	/// Returns an object that will read all of the
 	/// records for only one key.
-	pub fn get<'rdr, 'k>(
-		&'rdr self,
-		key: &'k str,
-	) -> StringKeyRangeReader<'rdr, 'k, std::ops::RangeInclusive<&'k str>> {
+	pub fn get<'rdr, 'k>(&'rdr self, key: &'k str) -> StringKeyRangeReader<'rdr, 'k> {
 		self.get_range(key..=key)
 	}
 
@@ -46,10 +44,10 @@ impl Reader {
 	///
 	/// Range queries are always efficient and readahead
 	/// may occur.
-	pub fn get_range<'rdr, 'k, RB>(&'rdr self, range: RB) -> StringKeyRangeReader<'rdr, 'k, RB>
-	where
-		RB: std::ops::RangeBounds<&'k str>,
-	{
+	pub fn get_range<'rdr, 'k>(
+		&'rdr self,
+		range: impl RangeBounds<&'k str> + 'k + Clone,
+	) -> StringKeyRangeReader<'rdr, 'k> {
 		let mut data = vec![];
 		let segment;
 
@@ -74,6 +72,7 @@ impl Reader {
 			decode_into_with_unescaping(&mut data, d.payload);
 		}
 
+		let range = disassemble_range_bound(range);
 		StringKeyRangeReader {
 			reader: self,
 			range,
@@ -100,11 +99,15 @@ impl Reader {
 	pub fn get_filter<'rdr, 'k>(
 		&'rdr self,
 		wildcard: &'k Wildcard,
-	) -> StringKeyRangeReader<'rdr, 'k, std::ops::RangeFrom<&'k str>> {
-		let mut filter = self.get_range(wildcard.prefix()..);
-		filter.prefix = wildcard.prefix();
-		filter.matcher = wildcard.as_regex();
-		filter
+	) -> StringKeyRangeReader<'rdr, 'k> {
+		if wildcard.is_exact() {
+			self.get(wildcard.prefix())
+		} else {
+			let mut filter = self.get_range(wildcard.prefix()..);
+			filter.prefix = wildcard.prefix();
+			filter.matcher = wildcard.as_regex();
+			filter
+		}
 	}
 
 	/// Print diagnostic information about this transaction file.
@@ -115,12 +118,24 @@ impl Reader {
 	}
 }
 
-pub struct StringKeyRangeReader<'rdr, 'k, RB>
-where
-	RB: std::ops::RangeBounds<&'k str>,
-{
+fn disassemble_range_bound<'k, T: ?Sized>(
+	rb: impl RangeBounds<&'k T>,
+) -> (Bound<&'k T>, Bound<&'k T>) {
+	fn fix_bound<'a, T: Copy>(b: Bound<&'a T>) -> Bound<T> {
+		match b {
+			Bound::Included(a) => Bound::Included(*a),
+			Bound::Excluded(a) => Bound::Excluded(*a),
+			Bound::Unbounded => Bound::Unbounded,
+		}
+	}
+	let range = (fix_bound(rb.start_bound()), fix_bound(rb.end_bound()));
+
+	range
+}
+
+pub struct StringKeyRangeReader<'rdr, 'k> {
 	reader: &'rdr Reader,
-	range: RB,
+	range: (Bound<&'k str>, Bound<&'k str>),
 	decoded: Rc<Vec<u8>>,
 	pos: usize,
 	current_key_text_pos: usize,
@@ -138,10 +153,7 @@ where
 	_phantom: std::marker::PhantomData<&'k str>,
 }
 
-impl<'rdr, 'k, RB> StringKeyRangeReader<'rdr, 'k, RB>
-where
-	RB: std::ops::RangeBounds<&'k str>,
-{
+impl<'rdr, 'k> StringKeyRangeReader<'rdr, 'k> {
 	fn next_segment(&mut self) {
 		self.pos = 0;
 
@@ -266,10 +278,7 @@ where
 	}
 }
 
-impl<'rdr, 'k, RB> Iterator for StringKeyRangeReader<'rdr, 'k, RB>
-where
-	RB: std::ops::RangeBounds<&'k str>,
-{
+impl<'rdr, 'k> Iterator for StringKeyRangeReader<'rdr, 'k> {
 	type Item = OwnedRecord;
 	fn next(&mut self) -> Option<Self::Item> {
 		while self.segment.is_some() {
