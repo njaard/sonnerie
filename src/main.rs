@@ -1,3 +1,4 @@
+use chrono::{NaiveDate, NaiveDateTime};
 use sonnerie::formatted;
 use sonnerie::*;
 use std::fs::File;
@@ -74,7 +75,7 @@ fn main() -> std::io::Result<()> {
 					)
 					.arg(Arg::with_name("timestamp-format")
 						.long("timestamp-format")
-						.help("instead of \"%F %T\", use this strftime format")
+						.help("instead of \"%F %T\", output in this strftime format")
 						.takes_value(true)
 					)
 					.arg(Arg::with_name("timestamp-nanos")
@@ -100,6 +101,16 @@ fn main() -> std::io::Result<()> {
 						.takes_value(true)
 						.conflicts_with("filter")
 					)
+					.arg(Arg::with_name("before-time")
+						.long("before-time")
+						.help("read values before (but not including) this time (in ISO-9601 format, date, seconds, or nanosecond precision)")
+						.takes_value(true)
+					)
+					.arg(Arg::with_name("after-time")
+						.long("after-time")
+						.help("read values after (and including) this key")
+						.takes_value(true)
+					)
 			)
 			.get_matches();
 
@@ -123,6 +134,33 @@ fn main() -> std::io::Result<()> {
 
 		let after_key = matches.value_of("after-key");
 		let before_key = matches.value_of("before-key");
+
+		fn parse_time(t: &str) -> Option<NaiveDateTime> {
+			if let Ok(k) = NaiveDateTime::parse_from_str(t, "%Y-%m-%dT%H:%M:%S.f") {
+				return Some(k);
+			} else if let Ok(k) = NaiveDateTime::parse_from_str(t, "%Y-%m-%dT%H:%M:%S") {
+				return Some(k);
+			} else if let Ok(k) = NaiveDateTime::parse_from_str(t, "%Y-%m-%d %H:%M:%S.f") {
+				return Some(k);
+			} else if let Ok(k) = NaiveDateTime::parse_from_str(t, "%Y-%m-%d %H:%M:%S") {
+				return Some(k);
+			} else if let Ok(k) = NaiveDateTime::parse_from_str(t, "%Y-%m-%d %H:%M:%S.f") {
+				return Some(k);
+			} else if let Ok(k) = NaiveDate::parse_from_str(t, "%Y-%m-%d") {
+				return Some(k.and_hms(0, 0, 0));
+			} else {
+				return None;
+			}
+		}
+
+		let after_time = matches
+			.value_of("after-time")
+			.map(|t| parse_time(t).expect("parsing after-time").timestamp_nanos() as u64);
+		let before_time = matches.value_of("before-time").map(|t| {
+			parse_time(t)
+				.expect("parsing before-time")
+				.timestamp_nanos() as u64
+		});
 		let filter = matches.value_of("filter");
 
 		let stdout = std::io::stdout();
@@ -145,6 +183,20 @@ fn main() -> std::io::Result<()> {
 		macro_rules! filter {
 			($filter:expr) => {
 				for record in $filter {
+					use byteorder::ByteOrder;
+					let ts = &record.value()[0..8];
+					let ts: u64 = byteorder::BigEndian::read_u64(ts);
+					if let Some(after_time) = after_time {
+						if ts < after_time {
+							continue;
+							}
+						}
+					if let Some(before_time) = before_time {
+						if ts >= before_time {
+							continue;
+							}
+						}
+
 					formatted::print_record(
 						&record,
 						&mut stdout,
