@@ -306,7 +306,7 @@ fn worker_thread<W: Write + Send>(
 			let mut buf = unsigned_varint::encode::u32_buffer();
 			let o = unsigned_varint::encode::u32(data, &mut buf);
 			vec.write_all(&o)
-		};
+		}
 
 		let this_key_prev;
 		if wl.last_key == header.first_key {
