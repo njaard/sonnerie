@@ -189,13 +189,13 @@ fn main() -> std::io::Result<()> {
 					if let Some(after_time) = after_time {
 						if ts < after_time {
 							continue;
-							}
 						}
+					}
 					if let Some(before_time) = before_time {
 						if ts >= before_time {
 							continue;
-							}
 						}
+					}
 
 					formatted::print_record(
 						&record,
@@ -204,7 +204,7 @@ fn main() -> std::io::Result<()> {
 						print_record_format,
 					)?;
 					writeln!(&mut stdout, "")?;
-					}
+				}
 			};
 		}
 

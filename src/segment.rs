@@ -1,7 +1,22 @@
 use byteorder::{BigEndian, ByteOrder};
+use static_init::dynamic;
 
 pub(crate) const SEGMENT_INVOCATION: &[u8; 14] = b"@TSDB_SEGMENT_";
 pub(crate) const ESCAPE_SEGMENT_INVOCATION: &[u8; 16] = b"@TSDB_SEGMENT_\xff\xff";
+
+#[dynamic]
+static FINDER_SEGMENT_INVOCATION: memchr::memmem::Finder<'static> =
+	memchr::memmem::Finder::new(SEGMENT_INVOCATION);
+#[dynamic]
+static FINDER_ESCAPE_SEGMENT_INVOCATION: memchr::memmem::Finder<'static> =
+	memchr::memmem::Finder::new(ESCAPE_SEGMENT_INVOCATION);
+
+pub(crate) fn find_segment_invocation(haystack: &[u8]) -> Option<usize> {
+	FINDER_SEGMENT_INVOCATION.find(haystack)
+}
+pub(crate) fn find_escape_segment_invocation(haystack: &[u8]) -> Option<usize> {
+	FINDER_ESCAPE_SEGMENT_INVOCATION.find(haystack)
+}
 
 // a segment has a fixed 16 byte invocation
 // then it has the key range it contains
@@ -25,7 +40,7 @@ impl<'data> Segment<'data> {
 		let mut relative_search_start = 0;
 		loop {
 			let invocation_relative_at =
-				twoway::find_bytes(&from[relative_search_start..], SEGMENT_INVOCATION)?;
+				self::FINDER_SEGMENT_INVOCATION.find(&from[relative_search_start..])?;
 			let header =
 				&from[relative_search_start + invocation_relative_at + SEGMENT_INVOCATION.len()..];
 			if header.len() < 2 {

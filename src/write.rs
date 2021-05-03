@@ -287,9 +287,7 @@ fn worker_thread<W: Write + Send>(
 		let mut segmented: smallvec::SmallVec<[_; 4]> = smallvec::smallvec![];
 		{
 			let mut start = 0;
-			while let Some(pos) =
-				twoway::find_bytes(&compressed[start..], crate::segment::SEGMENT_INVOCATION)
-			{
+			while let Some(pos) = crate::segment::find_segment_invocation(&compressed[start..]) {
 				segmented.push(&compressed[start..pos + start]);
 				segmented.push(crate::segment::ESCAPE_SEGMENT_INVOCATION);
 				start = start + pos + crate::segment::SEGMENT_INVOCATION.len();

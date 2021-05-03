@@ -18,8 +18,9 @@ sonnerie-serve = ["clap","url","hyper","tokio","futures",
 	"lines_from_request", "serde", "serde_derive", "shardio" ]
 
 [dependencies]
-twoway="0.2"
+memchr="2.4"
 memmap="0.7"
+static_init="1"
 byteorder="1"
 lz4="1"
 chrono="0.4"

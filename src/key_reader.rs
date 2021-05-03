@@ -308,9 +308,7 @@ fn decode_into_with_unescaping(into: &mut Vec<u8>, from: &[u8]) {
 	let mut segmented: smallvec::SmallVec<[_; 4]> = smallvec::smallvec![];
 	{
 		let mut start = 0;
-		while let Some(pos) =
-			twoway::find_bytes(&from[start..], crate::segment::ESCAPE_SEGMENT_INVOCATION)
-		{
+		while let Some(pos) = crate::segment::find_escape_segment_invocation(&from[start..]) {
 			segmented.push(&from[start..pos + start]);
 			segmented.push(crate::segment::SEGMENT_INVOCATION);
 			start = start + pos + crate::segment::ESCAPE_SEGMENT_INVOCATION.len();
