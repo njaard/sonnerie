@@ -13,18 +13,18 @@ All strings (keys) must be valid UTF-8.
 
 * Each segment starts with `@TSDB_SEGMENT_`
 * Then two bytes indicating the segment version. The current version is 0x0100. You'll
-have to look at older versions of this file to see the previous version.
+have to look at older versions of `file_format.md` to see documentation for previous versions.
 * Then five varints
   * the length in bytes of the first key in this segment
   * the length in bytes of the last key in this segment
-  * the stpore length of the payload
+  * the stored length of the payload
   * the stored length of the previous segment (meaning compressed, including all headers)
   * the number of bytes of all previous segments that contain data for first_key, or 0
   if this is the first one.
 * The first key in this segment (with a length of the first number above)
 * the last key in this segment (with a length of the second number above)
 * The LZ4-compressed payload. The compressed size is recorded in the header.
-If `@TSDB_SEGMENT_` is in the _compressed_ data, then it is replaced with "@TSDB_SEGMENT_\xff\xff".
+If `@TSDB_SEGMENT_` is in the _compressed_ data, then it is replaced with "`@TSDB_SEGMENT_\xff\xff`".
 
 The first key is always lexigraphically less than or equal to the last one.
 
