@@ -2,7 +2,9 @@
 [![Crates.io](https://img.shields.io/crates/v/sonnerie.svg)](https://crates.io/crates/sonnerie)
 [![docs](https://img.shields.io/badge/docs-api-green)](https://docs.rs/sonnerie)
 
-NEWS: 2020-10-22: 0.6 is a new major version!
+NOTE: this master branch contains a new major version; use released (on crates.io)
+or tagged versions instead! The master branch has no guarantees of file-format
+stability.
 
 # Introduction
 
