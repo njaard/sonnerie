@@ -22,14 +22,27 @@ pub(crate) fn find_escape_segment_invocation(haystack: &[u8]) -> Option<usize> {
 // then it has the key range it contains
 // then it has the compressed data
 pub(crate) struct Segment<'data> {
-	pub(crate) first_key: &'data [u8],
-	pub(crate) last_key: &'data [u8],
+	pub(crate) first_key: &'data str,
+	pub(crate) last_key: &'data str,
 	pub(crate) payload: &'data [u8],
 	pub(crate) segment_offset: usize,
 	pub(crate) prev_size: usize,
 	pub(crate) this_key_prev: usize,
 	pub(crate) segment_version: u16,
 	pub(crate) stride: usize, // bytes from the start of the invocation to the next invocation
+}
+
+impl<'data> std::fmt::Debug for Segment<'data> {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
+		f.debug_struct("first_key")
+			.field("first_key", &self.first_key)
+			.field("last_key", &self.last_key)
+			.field("segment_offset", &self.segment_offset)
+			.field("prev_size", &self.prev_size)
+			.field("this_key_prev", &self.this_key_prev)
+			.field("stride", &self.stride)
+			.finish()
+	}
 }
 
 impl<'data> Segment<'data> {
@@ -72,9 +85,11 @@ impl<'data> Segment<'data> {
 					}
 
 					let first_key = &header[at..at + len1];
+					let first_key = std::str::from_utf8(first_key).expect("first_key is not utf-8");
 
 					let at = at + len1;
 					let last_key = &header[at..at + len2];
+					let last_key = std::str::from_utf8(last_key).expect("last_key is not utf-8");
 
 					let header_len = 18 + len1 + len2;
 					let payload = &header[header_len..header_len + len3];
@@ -119,7 +134,9 @@ impl<'data> Segment<'data> {
 
 					let header_len = len1 + len2 + (header.len() - from.len());
 					let first_key = &from[0..len1];
+					let first_key = std::str::from_utf8(first_key).expect("first_key is not utf-8");
 					let last_key = &from[len1..len1 + len2];
+					let last_key = std::str::from_utf8(last_key).expect("last_key is not utf-8");
 
 					let payload = &header[header_len..header_len + len3];
 

@@ -36,11 +36,15 @@ impl SegmentReader {
 		}
 	}
 
+	pub(crate) fn number_of_bytes(&self) -> usize {
+		self.len
+	}
+
 	pub(crate) fn print_info<W: std::io::Write>(&self, w: &mut W) -> std::io::Result<()> {
 		let mut segment = self.first();
 		while let Some(s) = segment.take() {
-			let fk = String::from_utf8_lossy(s.first_key);
-			let lk = String::from_utf8_lossy(s.last_key);
+			let fk = s.first_key;
+			let lk = s.last_key;
 			writeln!(
 				w,
 				"first_key=\"{}\", last_key=\"{}\", \
@@ -57,11 +61,15 @@ impl SegmentReader {
 		Ok(())
 	}
 
-	pub(crate) fn first<'s>(&'s self) -> Option<Segment<'s>> {
+	pub(crate) fn first(&self) -> Option<Segment> {
 		Segment::scan(&self.map[..], 0)
 	}
 
-	pub(crate) fn find<'s>(&'s self, key: &[u8]) -> Option<Segment<'s>> {
+	pub(crate) fn scan_from(&self, pos: usize) -> Option<Segment> {
+		Segment::scan(&self.map[pos..], pos)
+	}
+
+	pub(crate) fn find<'s>(&'s self, key: &str) -> Option<Segment<'s>> {
 		// do a binary search for the segment that contains key
 		let mut begin = 0;
 		let mut end = self.len - 1;
@@ -78,6 +86,7 @@ impl SegmentReader {
 				}
 
 				let segment = Segment::scan(&data[pos..], pos);
+
 				if segment.is_none() {
 					end = pos - 1;
 					continue;
@@ -118,6 +127,64 @@ impl SegmentReader {
 					}
 				} else {
 					return None;
+				}
+			}
+		}
+	}
+
+	/// do a binary search for the first segment after the one
+	/// that contains `key`.
+	pub(crate) fn find_after(&self, cmp: impl Fn(&str) -> std::cmp::Ordering) -> Option<Segment> {
+		let mut begin = 0;
+		let mut end = self.len - 1;
+
+		let data = &self.map;
+
+		loop {
+			let mut pos = (end - begin) / 2 + begin;
+			let mut search_here = true;
+			while search_here {
+				search_here = false;
+				if pos < begin + 1024 * 128 {
+					pos = begin;
+				}
+
+				let segment = Segment::scan(&data[pos..], pos);
+				if segment.is_none() {
+					end = pos - 1;
+					continue;
+				}
+				let segment = segment.unwrap();
+
+				let cmp_last_key = cmp(segment.last_key);
+
+				if pos == 0 && cmp_last_key.is_ge() {
+					return Some(segment);
+				}
+
+				let cmp_first_key = cmp(segment.first_key);
+
+				if cmp_first_key.is_le() && cmp_last_key.is_ge() {
+					return Some(segment);
+				} else if cmp_last_key.is_ge() {
+					end = std::cmp::min(
+						pos - 1,
+						std::cmp::min(
+							segment.segment_offset - segment.prev_size,
+							// we know we can reverse past this entire key
+							segment.segment_offset - segment.this_key_prev,
+						),
+					);
+					if end < begin {
+						return self.segment_after(&segment);
+					}
+				} else if cmp_first_key.is_lt() {
+					begin = segment.segment_offset + segment.stride;
+					if begin > end {
+						return Some(segment);
+					}
+				} else {
+					unreachable!();
 				}
 			}
 		}

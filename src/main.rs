@@ -1,3 +1,4 @@
+use ::rayon::prelude::*;
 use chrono::{NaiveDate, NaiveDateTime};
 use sonnerie::formatted;
 use sonnerie::*;
@@ -108,7 +109,12 @@ fn main() -> std::io::Result<()> {
 					)
 					.arg(Arg::with_name("after-time")
 						.long("after-time")
-						.help("read values after (and including) this key")
+						.help("read values after (and including) this time, as --before-time")
+						.takes_value(true)
+					)
+					.arg(Arg::with_name("parallel")
+						.long("parallel")
+						.help("Run several of this command in parallel, piping a portion of the results into each. Keys are never divided between two commands.")
 						.takes_value(true)
 					)
 			)
@@ -120,12 +126,12 @@ fn main() -> std::io::Result<()> {
 	if let Some(matches) = matches.subcommand_matches("add") {
 		let format = matches.value_of("format").unwrap();
 		let ts_format = matches.value_of("timestamp-format");
-		add(&dir, format, ts_format);
+		add(dir, format, ts_format);
 	} else if let Some(matches) = matches.subcommand_matches("compact") {
 		let gegnum = matches.value_of_os("gegnum");
 		let ts_format = matches.value_of("timestamp-format").unwrap_or("%FT%T");
 
-		compact(&dir, matches.is_present("major"), gegnum, ts_format).expect("compacting");
+		compact(dir, matches.is_present("major"), gegnum, ts_format).expect("compacting");
 	} else if let Some(matches) = matches.subcommand_matches("read") {
 		let print_format = matches.is_present("print-format");
 		let timestamp_format = matches.value_of("timestamp-format").unwrap_or("%F %T");
@@ -137,19 +143,19 @@ fn main() -> std::io::Result<()> {
 
 		fn parse_time(t: &str) -> Option<NaiveDateTime> {
 			if let Ok(k) = NaiveDateTime::parse_from_str(t, "%Y-%m-%dT%H:%M:%S.f") {
-				return Some(k);
+				Some(k)
 			} else if let Ok(k) = NaiveDateTime::parse_from_str(t, "%Y-%m-%dT%H:%M:%S") {
-				return Some(k);
+				Some(k)
 			} else if let Ok(k) = NaiveDateTime::parse_from_str(t, "%Y-%m-%d %H:%M:%S.f") {
-				return Some(k);
+				Some(k)
 			} else if let Ok(k) = NaiveDateTime::parse_from_str(t, "%Y-%m-%d %H:%M:%S") {
-				return Some(k);
+				Some(k)
 			} else if let Ok(k) = NaiveDateTime::parse_from_str(t, "%Y-%m-%d %H:%M:%S.f") {
-				return Some(k);
+				Some(k)
 			} else if let Ok(k) = NaiveDate::parse_from_str(t, "%Y-%m-%d") {
-				return Some(k.and_hms(0, 0, 0));
+				Some(k.and_hms(0, 0, 0))
 			} else {
-				return None;
+				None
 			}
 		}
 
@@ -180,8 +186,59 @@ fn main() -> std::io::Result<()> {
 			formatted::PrintTimestamp::FormatString(timestamp_format)
 		};
 
+		macro_rules! filter_parallel {
+			($filter:expr) => {{
+				let filter = $filter;
+
+				use std::io::BufWriter;
+				use std::process::*;
+
+				struct CheckOnDrop(Child, BufWriter<ChildStdin>);
+				impl Drop for CheckOnDrop {
+					fn drop(&mut self) {
+						self.1.flush().unwrap();
+						let s = self.0.wait().unwrap();
+						if !s.success() {
+							panic!("parallel worker failed");
+						}
+					}
+				}
+
+				let subproc = || {
+					let mut child = Command::new("sh")
+						.arg("-c")
+						.arg(matches.value_of_os("parallel").unwrap())
+						.stdin(Stdio::piped())
+						.spawn()
+						.unwrap();
+					let stdout = BufWriter::new(child.stdin.take().unwrap());
+					(child, stdout)
+				};
+
+				filter
+					.into_par_iter()
+					.for_each_init(subproc, |(_, out), record| {
+						use byteorder::ByteOrder;
+						let ts = &record.value()[0..8];
+						let ts: u64 = byteorder::BigEndian::read_u64(ts);
+						if let Some(after_time) = after_time {
+							if ts < after_time {
+								return;
+							}
+						}
+						if let Some(before_time) = before_time {
+							if ts >= before_time {
+								return;
+							}
+						}
+						formatted::print_record(&record, out, print_timestamp, print_record_format)
+							.expect("failed to write to subprocess");
+						writeln!(out, "").expect("failed to write to subprocess");
+					});
+			}};
+		}
 		macro_rules! filter {
-			($filter:expr) => {
+			($filter:expr) => {{
 				for record in $filter {
 					use byteorder::ByteOrder;
 					let ts = &record.value()[0..8];
@@ -196,7 +253,6 @@ fn main() -> std::io::Result<()> {
 							continue;
 						}
 					}
-
 					formatted::print_record(
 						&record,
 						&mut stdout,
@@ -205,15 +261,31 @@ fn main() -> std::io::Result<()> {
 					)?;
 					writeln!(&mut stdout, "")?;
 				}
-			};
+			}};
 		}
 
-		match (after_key, before_key, filter) {
-			(Some(a), None, None) => filter!(db.get_range(a..)),
-			(None, Some(b), None) => filter!(db.get_range(..b)),
-			(Some(a), Some(b), None) => filter!(db.get_range(a..b)),
-			(None, None, Some(filter)) => filter!(db.get_filter(&Wildcard::new(filter))),
-			_ => unreachable!(),
+		if matches.is_present("parallel") {
+			match (after_key, before_key, filter) {
+				(Some(a), None, None) => filter_parallel!(db.get_range(a..)),
+				(None, Some(b), None) => filter_parallel!(db.get_range(..b)),
+				(Some(a), Some(b), None) => filter_parallel!(db.get_range(a..b)),
+				(None, None, Some(filter)) => {
+					let w = Wildcard::new(filter);
+					filter_parallel!(db.get_filter(&w));
+				}
+				_ => unreachable!(),
+			}
+		} else {
+			match (after_key, before_key, filter) {
+				(Some(a), None, None) => filter!(db.get_range(a..)),
+				(None, Some(b), None) => filter!(db.get_range(..b)),
+				(Some(a), Some(b), None) => filter!(db.get_range(a..b)),
+				(None, None, Some(filter)) => {
+					let w = Wildcard::new(filter);
+					filter!(db.get_filter(&w));
+				}
+				_ => unreachable!(),
+			}
 		}
 	} else {
 		eprintln!("A command must be specified (read, add, compact)");
@@ -280,7 +352,7 @@ fn compact(
 					timestamp_format,
 					formatted::PrintRecordFormat::Yes,
 				)?;
-				writeln!(&mut childinput, "")?;
+				writeln!(&mut childinput)?;
 			}
 			Ok(())
 		});

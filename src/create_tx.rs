@@ -150,11 +150,10 @@ impl CreateTx {
 
 fn get_umask() -> Option<libc::mode_t> {
 	let s = std::fs::read_to_string("/proc/self/status").ok()?;
-	for line in s.split("\n") {
-		if line.starts_with("Umask:") {
-			let line = &line["Umask:".len()..];
+	for line in s.split('\n') {
+		if let Some(line) = line.strip_prefix("Umask:") {
 			let line = line.trim();
-			return libc::mode_t::from_str_radix(&line, 8).ok();
+			return libc::mode_t::from_str_radix(line, 8).ok();
 		}
 	}
 	None

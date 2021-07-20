@@ -8,6 +8,7 @@ use crate::key_reader::*;
 use crate::merge::Merge;
 use crate::record::OwnedRecord;
 use crate::Wildcard;
+use std::ops::Bound;
 
 use byteorder::ByteOrder;
 
@@ -100,8 +101,13 @@ impl DatabaseReader {
 	///
 	/// Returns an object that will read all of the
 	/// records for only one key.
-	pub fn get<'rdr, 'k>(&'rdr self, key: &'k str) -> DatabaseKeyReader<'rdr, 'k> {
-		self.get_range(key..=key)
+	pub fn get<'rdr>(&'rdr self, key: &'rdr str) -> DatabaseKeyReader<'rdr> {
+		DatabaseKeyReader {
+			db: self,
+			matcher: None,
+			prefix: "",
+			range: crate::disassemble_range_bound(key..=key).into(),
+		}
 	}
 
 	/// Get a reader for a lexicographic range of keys
@@ -112,25 +118,15 @@ impl DatabaseReader {
 	///
 	/// Range queries are always efficient and readahead
 	/// may occur.
-	pub fn get_range<'d, 'k>(
+	pub fn get_range<'d>(
 		&'d self,
-		range: impl std::ops::RangeBounds<&'k str> + Clone + 'k,
-	) -> DatabaseKeyReader<'d, 'k> {
-		let mut readers = Vec::with_capacity(self.txes.len());
-
-		for tx in &self.txes {
-			readers.push(tx.1.get_range(range.clone()));
-		}
-		let merge = Merge::new(readers, |a, b| {
-			a.key().cmp(b.key()).then_with(|| {
-				byteorder::BigEndian::read_u64(a.value())
-					.cmp(&byteorder::BigEndian::read_u64(b.value()))
-			})
-		});
-
+		range: impl std::ops::RangeBounds<&'d str> + 'd + Clone,
+	) -> DatabaseKeyReader<'d> {
 		DatabaseKeyReader {
-			_db: self,
-			merge: Box::new(merge),
+			db: self,
+			matcher: None,
+			prefix: "",
+			range: crate::disassemble_range_bound(range).into(),
 		}
 	}
 
@@ -138,11 +134,143 @@ impl DatabaseReader {
 	///
 	/// A wildcard filter that has a fixed prefix, such as
 	/// `"chimp%"` is always efficient.
-	pub fn get_filter<'d, 'k>(&'d self, wildcard: &'k Wildcard) -> DatabaseKeyReader<'d, 'k> {
-		let mut readers = Vec::with_capacity(self.txes.len());
+	pub fn get_filter<'d>(&'d self, wildcard: &'d Wildcard) -> DatabaseKeyReader<'d> {
+		if wildcard.is_exact() {
+			DatabaseKeyReader {
+				db: self,
+				matcher: wildcard.as_regex(),
+				prefix: wildcard.prefix(),
+				range: crate::disassemble_range_bound(wildcard.prefix()..=wildcard.prefix()).into(),
+			}
+		} else {
+			DatabaseKeyReader {
+				db: self,
+				matcher: wildcard.as_regex(),
+				prefix: wildcard.prefix(),
+				range: crate::disassemble_range_bound(wildcard.prefix()..).into(),
+			}
+		}
+	}
+}
 
-		for tx in &self.txes {
-			readers.push(tx.1.get_filter(wildcard));
+pub struct DatabaseKeyReader<'d> {
+	db: &'d DatabaseReader,
+	matcher: Option<regex::Regex>,
+	prefix: &'d str,
+	range: crate::CowStringRange<'d>,
+}
+
+impl<'d> DatabaseKeyReader<'d> {
+	pub(crate) fn check(&self) {
+		match (self.range.start_bound(), self.range.end_bound()) {
+			(Bound::Unbounded, _) => {}
+			(_, Bound::Unbounded) => {}
+			(Bound::Included(a), Bound::Included(b)) => assert!(a <= b, "a={:?}, b={:?}", a, b),
+			(Bound::Excluded(a), Bound::Included(b)) => assert!(a < b, "a={:?}, b={:?}", a, b),
+			(Bound::Included(a), Bound::Excluded(b)) => assert!(a < b, "a={:?}, b={:?}", a, b),
+			(Bound::Excluded(a), Bound::Excluded(b)) => assert!(a < b, "a={:?}, b={:?}", a, b),
+		}
+	}
+
+	pub(crate) fn split(&self) -> Option<(DatabaseKeyReader<'d>, DatabaseKeyReader<'d>)> {
+		// look into the readers and see which Reader was biggest
+		let (biggest_reader, biggest_portion_size) = self
+			.db
+			.txes
+			.iter()
+			.map(|tx| {
+				let filter =
+					tx.1.get_filter_range(self.matcher.clone(), self.prefix, self.range.clone());
+				let b = filter.compressed_bytes();
+				(filter, b)
+			})
+			.max_by_key(|(_, rsize)| *rsize)
+			.unwrap();
+
+		// biggest_reader is a StringKeyRangeReader
+
+		let starting_offset = biggest_reader.segment.as_ref()?.segment_offset;
+
+		if biggest_portion_size < crate::write::SEGMENT_SIZE_GOAL * 32 {
+			return None;
+		}
+
+		let middle_offset =
+			starting_offset + biggest_portion_size / 2 - crate::write::SEGMENT_SIZE_GOAL;
+
+		let middle = biggest_reader.reader.segments.scan_from(middle_offset)?;
+
+		let middle_start_key = middle.first_key;
+		if Bound::Included(middle_start_key) == self.range.end_bound() {
+			return None;
+		}
+
+		// the first reader reads from the true beginning to
+		// the middle
+
+		assert_ne!(self.range.start_bound(), Bound::Included(middle_start_key));
+
+		let first_half = DatabaseKeyReader {
+			db: self.db,
+			matcher: self.matcher.clone(),
+			prefix: self.prefix,
+			range: (
+				crate::bound_deep_copy(self.range.start_bound()),
+				Bound::Included(middle_start_key.to_owned()),
+			)
+				.into(),
+		};
+		first_half.check();
+		if let Bound::Included(e) = self.range.start_bound() {
+			assert!(e < middle_start_key);
+		}
+
+		assert!(
+			middle.first_key.starts_with(self.prefix),
+			"{} {}",
+			middle.first_key,
+			self.prefix
+		);
+
+		// TODO sometimes we need to use included bounds and sometimes not
+
+		let second_half = DatabaseKeyReader {
+			db: self.db,
+			matcher: self.matcher.clone(),
+			prefix: self.prefix,
+			range: (
+				Bound::Excluded(middle_start_key.to_owned()),
+				crate::bound_deep_copy(self.range.end_bound()),
+			)
+				.into(),
+		};
+
+		if let Bound::Excluded(e) = self.range.end_bound() {
+			assert!(middle_start_key < e);
+		}
+
+		second_half.check();
+		assert_ne!(self.range.start_bound(), Bound::Excluded(middle_start_key));
+		assert_ne!(Bound::Included(middle_start_key), self.range.end_bound());
+
+		Some((first_half, second_half))
+	}
+}
+
+impl<'d> IntoIterator for DatabaseKeyReader<'d> {
+	type Item = OwnedRecord;
+	type IntoIter = DatabaseKeyIterator<'d>;
+	fn into_iter(self) -> Self::IntoIter {
+		self.check();
+
+		let mut readers = Vec::with_capacity(self.db.txes.len());
+
+		for tx in &self.db.txes {
+			readers.push(tx.1.get_filter_range(
+				self.matcher.clone(),
+				self.prefix,
+				self.range.clone(),
+			));
 		}
 		let merge = Merge::new(readers, |a, b| {
 			a.key().cmp(b.key()).then_with(|| {
@@ -151,8 +279,7 @@ impl DatabaseReader {
 			})
 		});
 
-		DatabaseKeyReader {
-			_db: self,
+		DatabaseKeyIterator {
 			merge: Box::new(merge),
 		}
 	}
@@ -162,12 +289,11 @@ impl DatabaseReader {
 ///
 /// Yields an [`OwnedRecord`](record/struct.OwnedRecord.html)
 /// for each row in the database, sorted by key and timestamp.
-pub struct DatabaseKeyReader<'d, 'k> {
-	_db: &'d DatabaseReader,
-	merge: Box<Merge<StringKeyRangeReader<'d, 'k>, OwnedRecord>>,
+pub struct DatabaseKeyIterator<'d> {
+	merge: Box<Merge<StringKeyRangeReader<'d, 'd>, OwnedRecord>>,
 }
 
-impl<'d, 'k> Iterator for DatabaseKeyReader<'d, 'k> {
+impl<'d, 'k> Iterator for DatabaseKeyIterator<'d> {
 	type Item = OwnedRecord;
 
 	fn next(&mut self) -> Option<Self::Item> {

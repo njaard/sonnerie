@@ -32,8 +32,8 @@ pub fn add_from_stream<R: std::io::BufRead>(
 		if tail.is_empty() {
 			continue;
 		}
-		let (key, tail) = split_one(&tail).unwrap();
-		let (timestamp, tail) = split_one(&tail).unwrap();
+		let (key, tail) = split_one(tail).unwrap();
+		let (timestamp, tail) = split_one(tail).unwrap();
 		let ts: Timestamp;
 		if let Some(f) = timestamp_format.as_ref() {
 			let n = chrono::NaiveDateTime::parse_from_str(&timestamp, f)
@@ -44,8 +44,8 @@ pub fn add_from_stream<R: std::io::BufRead>(
 		}
 
 		row_format
-			.to_stored_format(ts, &tail, &mut row_data)
-			.expect(&format!("parsing values \"{}\"", tail));
+			.to_stored_format(ts, tail, &mut row_data)
+			.unwrap_or_else(|_| panic!("parsing values \"{}\"", tail));
 
 		tx.add_record(&key, format, &row_data)?;
 		row_data.clear();
@@ -72,8 +72,8 @@ pub fn add_from_stream_with_fmt<R: std::io::BufRead>(
 		if tail.is_empty() {
 			continue;
 		}
-		let (key, tail) = split_one(&tail).unwrap();
-		let (timestamp, tail) = split_one(&tail).unwrap();
+		let (key, tail) = split_one(tail).unwrap();
+		let (timestamp, tail) = split_one(tail).unwrap();
 		let ts: Timestamp;
 		if let Some(f) = timestamp_format.as_ref() {
 			let n = chrono::NaiveDateTime::parse_from_str(&timestamp, f)
@@ -83,11 +83,11 @@ pub fn add_from_stream_with_fmt<R: std::io::BufRead>(
 			ts = timestamp.parse().expect("parsing timestamp");
 		}
 
-		let (format, values) = split_one(&tail).unwrap();
+		let (format, values) = split_one(tail).unwrap();
 		let row_format = parse_row_format(&format);
 
 		row_format
-			.to_stored_format(ts, &values, &mut row_data)
+			.to_stored_format(ts, values, &mut row_data)
 			.unwrap();
 
 		tx.add_record(&key, &format, &row_data)?;

@@ -1,6 +1,6 @@
 //! Stores a single row.
 
-use std::rc::Rc;
+use std::sync::Arc;
 
 pub(crate) const TIMESTAMP_SIZE: usize = 8;
 
@@ -15,20 +15,22 @@ pub struct OwnedRecord {
 	pub(crate) fmt_len: usize,
 	pub(crate) value_pos: usize,
 	pub(crate) value_len: usize,
-	pub(crate) data: Rc<Vec<u8>>,
+	pub(crate) data: Arc<Vec<u8>>,
 }
 
 impl OwnedRecord {
 	/// The key of this record.
 	pub fn key(&self) -> &str {
 		let d = &self.data[self.key_pos..self.key_pos + self.key_len];
-		unsafe { std::str::from_utf8_unchecked(&d) }
+		// this string was checked for utf-8 validity by key_reader
+		unsafe { std::str::from_utf8_unchecked(d) }
 	}
 
 	/// The format of this record (as the single-character codes)
 	pub fn format(&self) -> &str {
 		let d = &self.data[self.fmt_pos..self.fmt_pos + self.fmt_len];
-		unsafe { std::str::from_utf8_unchecked(&d) }
+		// this string was checked for utf-8 validity by key_reader
+		unsafe { std::str::from_utf8_unchecked(d) }
 	}
 
 	/// The encoded payload of this data. Use [`row_format`](../row_format/)

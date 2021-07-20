@@ -4,7 +4,7 @@ use parking_lot::{Condvar, Mutex};
 use std::io::Write;
 use std::sync::Arc;
 
-const SEGMENT_SIZE_GOAL: usize = 1024 * 1024;
+pub(crate) const SEGMENT_SIZE_GOAL: usize = 1024 * 1024;
 const SEGMENT_SIZE_EXTRA: usize = 1024 * 1024 + 1024 * 32;
 
 pub(crate) struct Writer<W: Write + Send + 'static> {
@@ -195,7 +195,7 @@ impl<W: Write + Send> Writer<W> {
 			let mut buf = unsigned_varint::encode::u32_buffer();
 			// subtract 8, for the timestamp
 			let o = unsigned_varint::encode::u32(data.len() as u32 - 8, &mut buf);
-			self.current_key_data.write_all(&o).unwrap();
+			self.current_key_data.write_all(o).unwrap();
 		}
 
 		self.current_key_data.write_all(data).unwrap();
@@ -303,7 +303,7 @@ fn worker_thread<W: Write + Send>(
 		fn wv(vec: &mut impl Write, data: u32) -> std::io::Result<()> {
 			let mut buf = unsigned_varint::encode::u32_buffer();
 			let o = unsigned_varint::encode::u32(data, &mut buf);
-			vec.write_all(&o)
+			vec.write_all(o)
 		}
 
 		let this_key_prev;
@@ -325,15 +325,9 @@ fn worker_thread<W: Write + Send>(
 
 			let ee = |e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e);
 
-			wv(
-				&mut bc,
-				header.first_key.len().try_into().map_err(|e| ee(e))?,
-			)?;
-			wv(
-				&mut bc,
-				header.last_key.len().try_into().map_err(|e| ee(e))?,
-			)?;
-			wv(&mut bc, compressed.len().try_into().map_err(|e| ee(e))?)?;
+			wv(&mut bc, header.first_key.len().try_into().map_err(ee)?)?;
+			wv(&mut bc, header.last_key.len().try_into().map_err(ee)?)?;
+			wv(&mut bc, compressed.len().try_into().map_err(ee)?)?;
 			wv(&mut bc, ps)?;
 			wv(&mut bc, this_key_prev)?;
 
@@ -341,10 +335,10 @@ fn worker_thread<W: Write + Send>(
 			bc.write_all(&header.last_key)?;
 
 			for segment in segmented {
-				bc.write_all(&segment)
+				bc.write_all(segment)
 					.expect("failed to write compressed data");
 			}
-			wrote_size = bc.count().try_into().map_err(|e| ee(e))?;
+			wrote_size = bc.count().try_into().map_err(ee)?;
 		}
 		if header.last_key == header.first_key {
 			wl.stored_size_last_key += wrote_size;

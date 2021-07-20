@@ -5,9 +5,79 @@ use crate::write::Writer;
 use crate::CreateTx;
 use crate::Reader;
 
+use rayon::iter::IntoParallelIterator;
+use rayon::iter::ParallelIterator;
 use std::io::BufWriter;
 
 use byteorder::*;
+
+#[cfg(test)]
+fn make_keynames() -> impl Iterator<Item = String> {
+	const MAX_KEYLEN: usize = 8;
+
+	struct MakeKeynames {
+		current: Vec<u8>,
+	}
+	impl Iterator for MakeKeynames {
+		type Item = String;
+		fn next(&mut self) -> Option<String> {
+			let mut popping = false;
+			while let Some(&back) = self.current.last() {
+				if back == b'z' {
+					self.current.pop();
+					popping = true;
+				} else {
+					break;
+				}
+			}
+
+			if !popping && self.current.len() < MAX_KEYLEN - 1 {
+				self.current.push(b'a');
+			} else if let Some(back) = self.current.last_mut() {
+				*back += 1;
+			}
+
+			Some(String::from_utf8(self.current.clone()).unwrap())
+		}
+	}
+
+	MakeKeynames {
+		current: Vec::with_capacity(MAX_KEYLEN),
+	}
+}
+
+#[cfg(test)]
+fn make_big_database(count: usize) -> (tempfile::TempDir, DatabaseReader) {
+	use rand::*;
+	let t = tempfile::TempDir::new().unwrap();
+
+	let mut tx = CreateTx::new(t.path()).unwrap();
+
+	let mut random_values = rand::rngs::SmallRng::seed_from_u64(2001);
+
+	let mut total = 0u64;
+
+	let mut last = String::new();
+	for name in make_keynames().take(count) {
+		let n_timestamps = random_values.next_u32() % 1000;
+
+		for timestamp in 0..n_timestamps {
+			let mut buf = [0; 12];
+			byteorder::BigEndian::write_u64(&mut buf[..], timestamp as u64);
+			random_values.fill_bytes(&mut buf[8..]);
+			tx.add_record(&name, "u", &buf[..]).unwrap();
+			total += 1;
+		}
+		last = name;
+	}
+
+	tx.commit_to(&t.path().join("main")).expect("committed");
+	eprintln!("wrote {} records (last={})", total, last);
+
+	let r = DatabaseReader::new(t.path()).unwrap();
+
+	(t, r)
+}
 
 #[test]
 fn basic1() {
@@ -339,7 +409,7 @@ fn write() {
 	let mut w = std::fs::File::open(t.path().join("w")).unwrap();
 	let o = SegmentReader::open(&mut w).unwrap();
 	o.print_info(&mut std::io::stderr()).unwrap();
-	let _ = o.find(b"a").unwrap();
+	let _ = o.find("a").unwrap();
 }
 
 #[test]
@@ -377,7 +447,7 @@ fn database_merge1() {
 
 	let r = DatabaseReader::new(t.path()).unwrap();
 	assert_eq!(r.transaction_paths().len(), 3);
-	let mut reader = r.get_range(..);
+	let mut reader = r.get_range(..).into_iter();
 	assert_eq!(reader.next().unwrap().key(), "a");
 	assert_eq!(reader.next().unwrap().key(), "a");
 	assert_eq!(reader.next().unwrap().key(), "b");
@@ -427,7 +497,7 @@ fn database_merge_last() {
 	}
 
 	let r = DatabaseReader::new(t.path()).unwrap();
-	let last = r.get_range(..).next().unwrap();
+	let last = r.get_range(..).into_iter().next().unwrap();
 	assert_eq!(last.value()[8], 2);
 }
 
@@ -562,4 +632,89 @@ fn keys_split() {
 	let o = Reader::new(w).unwrap();
 	let s = o.get("aa").count();
 	assert_eq!(s, 1050000);
+}
+
+#[test]
+fn parallel_split1() {
+	let (_t, db) = make_big_database(1000);
+
+	let s = db.get_range(..).into_par_iter().count();
+	assert_eq!(s, 491739);
+}
+
+#[test]
+fn parallel_split2() {
+	let (_t, db) = make_big_database(100000);
+
+	let s = db.get_range(..).into_par_iter().count();
+	assert_eq!(s, 49922574);
+}
+
+#[test]
+fn parallel_split3() {
+	let (_t, db) = make_big_database(100000);
+
+	{
+		let sp = db.get_range(.."aaaaa").into_par_iter().count();
+		let ss = db.get_range(.."aaaaa").count();
+		assert_eq!(ss, 1095);
+		assert_eq!(ss, sp);
+	}
+	{
+		let ss = db.get_range("aaaaa".."aaaaaa").into_par_iter().count();
+		let sp = db.get_range("aaaaa".."aaaaaa").count();
+		assert_eq!(ss, sp);
+		assert_eq!(ss, 257);
+	}
+	{
+		let ss = db.get_range("aaafaaa"..).into_par_iter().count();
+		let sp = db.get_range("aaafaaa"..).count();
+		assert_eq!(ss, sp);
+		assert_eq!(ss, 7655209);
+	}
+	{
+		let ss = db.get_range("aaafaaa"..).into_par_iter().count();
+		let sp = db.get_range("aaafaaa"..).count();
+		assert_eq!(ss, sp);
+		assert_eq!(ss, 7655209);
+	}
+	{
+		let ss = db.get_range("aaaf0aa"..).into_par_iter().count();
+		let sp = db.get_range("aaaf0aa"..).count();
+		assert_eq!(ss, 7656573);
+		assert_eq!(ss, sp);
+	}
+	{
+		let ss = db.get_range(.."aaaafek0").into_par_iter().count();
+		let sp = db.get_range(.."aaaafek0").count();
+		assert_eq!(ss, sp);
+		assert_eq!(ss, 1741776);
+	}
+	{
+		let ss = db.get_range(.."aaaaibw0").into_par_iter().count();
+		let sp = db.get_range(.."aaaaibw0").count();
+		assert_eq!(ss, sp);
+		assert_eq!(ss, 2699702);
+	}
+
+	{
+		let mut w = std::fs::File::open(_t.path().join("main")).unwrap();
+		let segs = SegmentReader::open(&mut w).unwrap();
+		let mut seg = segs.first();
+		while seg.is_some() {
+			let s = seg.as_ref().unwrap();
+			let n = format!("{}0", s.last_key);
+			db.get_range(..n.as_str()).into_par_iter().for_each(|_| {});
+
+			seg = segs.segment_after(s);
+		}
+	}
+}
+
+#[test]
+fn parallel_very_slow() {
+	let (_t, db) = make_big_database(1000000);
+
+	let s = db.get_range(..).into_par_iter().count();
+	assert_eq!(s, 499471998);
 }

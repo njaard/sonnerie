@@ -9,11 +9,12 @@ use std::io::Read;
 use std::ops::Bound;
 use std::ops::Bound::*;
 use std::ops::RangeBounds;
-use std::rc::Rc;
+//use std::rc::Rc;
+use std::sync::Arc as Rc;
 
 /// Read and filter keys from a single transaction file
 pub struct Reader {
-	segments: SegmentReader,
+	pub(crate) segments: SegmentReader,
 }
 
 impl Reader {
@@ -48,48 +49,7 @@ impl Reader {
 		&'rdr self,
 		range: impl RangeBounds<&'k str> + 'k + Clone,
 	) -> StringKeyRangeReader<'rdr, 'k> {
-		let mut data = vec![];
-		let segment;
-
-		match range.start_bound() {
-			Included(v) | Excluded(v) => segment = self.segments.find(v.as_bytes()),
-			Unbounded => segment = self.segments.first(),
-		}
-
-		if let Some(d) = segment.as_ref() {
-			{
-				// don't do posix_fadvise if we're looking up a single key
-				let do_advise;
-				match (range.start_bound(), range.end_bound()) {
-					(Included(v1), Included(v2)) => do_advise = v1 != v2,
-					_ => do_advise = true,
-				}
-				if do_advise {
-					self.segments.advise(d);
-				}
-			}
-
-			decode_into_with_unescaping(&mut data, d.payload);
-		}
-
-		let range = disassemble_range_bound(range);
-		StringKeyRangeReader {
-			reader: self,
-			range,
-			decoded: Rc::new(data),
-			pos: 0,
-			segment: segment,
-			current_key_text_len: 0,
-			current_key_text_pos: 0,
-			current_fmt_text_len: 0,
-			current_fmt_text_pos: 0,
-			current_key_data_end: 0,
-			current_record_len: 0,
-			current_key_record_len: None,
-			_phantom: std::marker::PhantomData,
-			prefix: "",
-			matcher: None,
-		}
+		self.get_filter_range(None, "", crate::disassemble_range_bound(range).into())
 	}
 
 	/// Get a reader that filters on SQL's "LIKE"-like syntax.
@@ -110,6 +70,54 @@ impl Reader {
 		}
 	}
 
+	pub(crate) fn get_filter_range<'rdr, 'k>(
+		&'rdr self,
+		matcher: Option<regex::Regex>,
+		prefix: &'k str,
+		range: crate::CowStringRange<'k>,
+	) -> StringKeyRangeReader<'rdr, 'k> {
+		let mut data = vec![];
+		let segment;
+
+		match range.start_bound() {
+			Included(v) | Excluded(v) => segment = self.segments.find(v),
+			Unbounded => segment = self.segments.first(),
+		}
+
+		if let Some(d) = segment.as_ref() {
+			{
+				// don't do posix_fadvise if we're looking up a single key
+				let do_advise;
+				match (range.start_bound(), range.end_bound()) {
+					(Included(v1), Included(v2)) => do_advise = v1 != v2,
+					_ => do_advise = true,
+				}
+				if do_advise {
+					self.segments.advise(d);
+				}
+			}
+
+			decode_into_with_unescaping(&mut data, d.payload);
+		}
+
+		StringKeyRangeReader {
+			reader: self,
+			range,
+			decoded: Rc::new(data),
+			pos: 0,
+			segment,
+			current_key_text_len: 0,
+			current_key_text_pos: 0,
+			current_fmt_text_len: 0,
+			current_fmt_text_pos: 0,
+			current_key_data_end: 0,
+			current_record_len: 0,
+			current_key_record_len: None,
+			_phantom: std::marker::PhantomData,
+			prefix,
+			matcher,
+		}
+	}
 	/// Print diagnostic information about this transaction file.
 	///
 	/// This function is for debugging only.
@@ -118,24 +126,9 @@ impl Reader {
 	}
 }
 
-fn disassemble_range_bound<'k, T: ?Sized>(
-	rb: impl RangeBounds<&'k T>,
-) -> (Bound<&'k T>, Bound<&'k T>) {
-	fn fix_bound<'a, T: Copy>(b: Bound<&'a T>) -> Bound<T> {
-		match b {
-			Bound::Included(a) => Bound::Included(*a),
-			Bound::Excluded(a) => Bound::Excluded(*a),
-			Bound::Unbounded => Bound::Unbounded,
-		}
-	}
-	let range = (fix_bound(rb.start_bound()), fix_bound(rb.end_bound()));
-
-	range
-}
-
 pub struct StringKeyRangeReader<'rdr, 'k> {
-	reader: &'rdr Reader,
-	range: (Bound<&'k str>, Bound<&'k str>),
+	pub(crate) reader: &'rdr Reader,
+	pub(crate) range: crate::CowStringRange<'k>,
 	decoded: Rc<Vec<u8>>,
 	pos: usize,
 	current_key_text_pos: usize,
@@ -147,13 +140,66 @@ pub struct StringKeyRangeReader<'rdr, 'k> {
 	/// the size of the current record for this key (decoded or from the format string)
 	current_record_len: usize,
 	current_key_data_end: usize, // where the next key begins
-	segment: Option<Segment<'rdr>>,
-	matcher: Option<regex::Regex>,
-	prefix: &'k str,
+	pub(crate) segment: Option<Segment<'rdr>>,
+	pub(crate) matcher: Option<regex::Regex>,
+	pub(crate) prefix: &'k str,
 	_phantom: std::marker::PhantomData<&'k str>,
 }
 
 impl<'rdr, 'k> StringKeyRangeReader<'rdr, 'k> {
+	/// make multiple readers of approximately equal size
+	/// by partitioning this range
+	///
+	/// `n` is the maximum number of partitions to make,
+	/// it's possible to return fewer of those
+	pub fn compressed_bytes(&self) -> usize {
+		if self.segment.is_none() {
+			return 0;
+		}
+
+		// find the page that's after the last I need
+		let segment_after_end;
+		match self.range.end_bound() {
+			Bound::Included(i) => {
+				let mut s = self.reader.segments.find_after(|o| o.cmp(i));
+				while let Some(seg) = &s {
+					if seg.last_key > i {
+						break;
+					}
+					s = self.reader.segments.segment_after(seg);
+				}
+				segment_after_end = s;
+			}
+			Bound::Excluded(i) => {
+				segment_after_end = self.reader.segments.find_after(|o| o.cmp(i));
+			}
+			Bound::Unbounded if self.prefix.is_empty() => {
+				segment_after_end = None;
+			}
+			Bound::Unbounded => {
+				let prefix = self.prefix;
+
+				segment_after_end = self.reader.segments.find_after(|o| {
+					let oo = &o[0..std::cmp::min(o.len(), prefix.len())];
+					let c = oo.cmp(prefix);
+					if c == std::cmp::Ordering::Equal && oo.len() >= prefix.len() {
+						return std::cmp::Ordering::Less;
+					}
+					c
+				});
+			}
+		}
+
+		let range_bytes;
+		if let Some(s) = segment_after_end {
+			range_bytes = s.segment_offset - self.segment.as_ref().unwrap().segment_offset;
+		} else {
+			range_bytes = self.reader.segments.number_of_bytes()
+				- self.segment.as_ref().unwrap().segment_offset;
+		}
+		range_bytes
+	}
+
 	fn next_segment(&mut self) {
 		self.pos = 0;
 
@@ -196,9 +242,9 @@ impl<'rdr, 'k> StringKeyRangeReader<'rdr, 'k> {
 				let pos = pos + 4;
 
 				let key = &data[pos..pos + klen];
-				let key = std::str::from_utf8(&key).expect("input data is not utf8");
+				let key = std::str::from_utf8(key).expect("input data is not utf8");
 				let fmt = &data[pos + klen..pos + klen + flen];
-				let fmt = std::str::from_utf8(&fmt).expect("input data is not utf8");
+				let fmt = std::str::from_utf8(fmt).expect("input data is not utf8");
 
 				self.current_key_text_pos = pos;
 				self.current_key_text_len = klen;
@@ -223,13 +269,13 @@ impl<'rdr, 'k> StringKeyRangeReader<'rdr, 'k> {
 				}
 
 				match self.range.start_bound() {
-					Bound::Included(&v) => {
+					Bound::Included(v) => {
 						if key < v {
 							self.pos = self.current_key_data_end;
 							continue;
 						}
 					}
-					Bound::Excluded(&v) => {
+					Bound::Excluded(v) => {
 						if key <= v {
 							self.pos = self.current_key_data_end;
 							continue;
@@ -239,14 +285,14 @@ impl<'rdr, 'k> StringKeyRangeReader<'rdr, 'k> {
 				}
 
 				match self.range.end_bound() {
-					Bound::Included(&v) => {
+					Bound::Included(v) => {
 						if key > v {
 							self.pos = data.len();
 							self.segment = None;
 							return false;
 						}
 					}
-					Bound::Excluded(&v) => {
+					Bound::Excluded(v) => {
 						if key >= v {
 							self.pos = data.len();
 							self.segment = None;
@@ -281,26 +327,25 @@ impl<'rdr, 'k> StringKeyRangeReader<'rdr, 'k> {
 impl<'rdr, 'k> Iterator for StringKeyRangeReader<'rdr, 'k> {
 	type Item = OwnedRecord;
 	fn next(&mut self) -> Option<Self::Item> {
-		while self.segment.is_some() {
-			if self.pos == self.current_key_data_end {
-				if !self.next_key() {
-					return None;
-				}
-			}
+		self.segment.as_ref()?;
 
-			let r = OwnedRecord {
-				key_pos: self.current_key_text_pos,
-				key_len: self.current_key_text_len,
-				fmt_pos: self.current_fmt_text_pos,
-				fmt_len: self.current_fmt_text_len,
-				value_pos: self.pos,
-				value_len: self.current_record_len + crate::record::TIMESTAMP_SIZE,
-				data: self.decoded.clone(),
-			};
-			self.pos += self.current_record_len + crate::record::TIMESTAMP_SIZE;
-			return Some(r);
+		if self.pos == self.current_key_data_end && !self.next_key() {
+			return None;
 		}
-		None
+
+		let data = self.decoded.clone();
+
+		let r = OwnedRecord {
+			key_pos: self.current_key_text_pos,
+			key_len: self.current_key_text_len,
+			fmt_pos: self.current_fmt_text_pos,
+			fmt_len: self.current_fmt_text_len,
+			value_pos: self.pos,
+			value_len: self.current_record_len + crate::record::TIMESTAMP_SIZE,
+			data,
+		};
+		self.pos += self.current_record_len + crate::record::TIMESTAMP_SIZE;
+		Some(r)
 	}
 }
 

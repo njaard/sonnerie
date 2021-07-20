@@ -97,9 +97,9 @@ struct Tsrv {
 
 impl Tsrv {
 	async fn run(self: Arc<Tsrv>, req: Request) -> Result<Response, String> {
-		match req.method() {
-			&hyper::Method::GET => self.get(req).await,
-			&hyper::Method::PUT => self.put(req).await,
+		match *req.method() {
+			hyper::Method::GET => self.get(req).await,
+			hyper::Method::PUT => self.put(req).await,
 			_ => Ok(hyper::Response::builder()
 				.status(hyper::StatusCode::BAD_REQUEST)
 				.body(Body::from("invalid request"))
@@ -144,14 +144,14 @@ impl Tsrv {
 				if tail.is_empty() {
 					continue;
 				}
-				let (key, tail) = split_one(&tail).ok_or_else(|| format!("reading key"))?;
+				let (key, tail) = split_one(tail).ok_or_else(|| "reading key".to_string())?;
 				let (timestamp, tail) =
-					split_one(&tail).ok_or_else(|| format!("reading timestamp"))?;
+					split_one(tail).ok_or_else(|| "reading timestamp".to_string())?;
 				let ts: Timestamp = timestamp
 					.parse()
 					.map_err(|e| format!("parsing timestamp {}", e))?;
 				let (format, tail) =
-					split_one(&tail).ok_or_else(|| format!("reading timestamp"))?;
+					split_one(tail).ok_or_else(|| "reading timestamp".to_string())?;
 
 				let rec = SortingRecord {
 					key: key.to_string(),
@@ -217,7 +217,7 @@ impl Tsrv {
 
 	async fn get(self: Arc<Self>, req: Request) -> Result<Response, String> {
 		let p = req.uri().path();
-		if !p.starts_with("/") {
+		if !p.starts_with('/') {
 			return Ok(hyper::Response::builder()
 				.status(hyper::StatusCode::BAD_REQUEST)
 				.body(Body::from("invalid path"))
@@ -232,7 +232,7 @@ impl Tsrv {
 			None => vec![],
 		};
 
-		let human_dates = query_string.iter().find(|k| k.0 == "human").is_some();
+		let human_dates = query_string.iter().any(|k| k.0 == "human");
 
 		let timestamp_fmt;
 		if human_dates {
@@ -244,7 +244,7 @@ impl Tsrv {
 		let filter = sonnerie::Wildcard::new(key);
 		let (mut send, recv) = futures::channel::mpsc::channel(16);
 
-		let srv = self.clone();
+		let srv = self;
 		std::thread::spawn(move || {
 			futures::executor::block_on(async {
 				let db;
@@ -280,9 +280,9 @@ impl Tsrv {
 				// trick sonnerie to not do an fadvise when you search for a single key
 				let searcher: Box<dyn Iterator<Item = sonnerie::record::OwnedRecord>>;
 				if filter.is_exact() {
-					searcher = Box::new(db.get(filter.prefix()));
+					searcher = Box::new(db.get(filter.prefix()).into_iter());
 				} else {
-					searcher = Box::new(db.get_filter(&filter));
+					searcher = Box::new(db.get_filter(&filter).into_iter());
 				}
 
 				for record in searcher {
