@@ -40,9 +40,9 @@ The payload stores all its keys as such:
 * the "actual data", repeated instances of for each timestamp:
   * If the format string is not of a fixed size (it contains strings),
   store a varint of the entire record length, not including timestamp.
-  * The value for each column as specified in the format.
-    * If a column is a string, store the string's length as a varint
-    * The timestamp is stored as an 8-byte integer.
+  * The timestamp stored as an 8-byte integer.
+  * The value for each column as specified in the format. If a column is
+  a string, store the string's length as a varint and then the string.
 
 
 # A segments-file
@@ -91,9 +91,13 @@ any disk accesses!
 Do a sorted-merge on a group of files, and then create a new file, after which
 time you can delete all of the members of that group of files.
 
-It's logically acceptable, but not optimial for performance, if the new file
+It's logically acceptable, but not optimal for performance, if the new file
 and the old file exist simultaneously, as they will, briefly.
 
 # Format String
 Is a string where each character is one of 'f', 'F', 'u', 'U', 'i', 'I'
 corresponding to 32 or 64-bit float, unsigned integer, signed integer, respectively.
+
+A character may also be 's', which means that the column stores a string
+of a non-fixed length. Storage of the actual data uses the "non-fixed length" storage
+which includes some varints for length.
