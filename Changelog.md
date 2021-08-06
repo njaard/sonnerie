@@ -7,8 +7,17 @@ replacing "unsafe-unchecked" mode.
 after modifying a database. Doing a major compaction (`compact -M`) will
 create a new 0.6-format database.
 * Support for string types had a number of subtle bugs that are now fixed.
-* The `--before` and `--after` options are renamed `--before-key` and
-`--after-key`.
+* Databases were slightly malformed in prior versions which may cause short
+range reads to return less data than expected; a major compaction will losslessly
+correct the data.
+* `DatabaseKeyReader` now implements Rayon's [ParallelIterator](https://docs.rs/rayon/latest/rayon/iter/trait.ParallelIterator.html).
+* The command line tool has these improvements to the `read` command:
+	* The `--parallel` option was added; it can be used for partitioning the database.
+	* The `--before` and `--after` options are renamed `--before-key` and
+	`--after-key`.
+	* There are now a `--before-time` and `--after-time` options
+	which can filter on timestamps.
+* Reading is now about 30% faster, independent of the new parallelism.
 
 # 0.5.9: 2020-08-27
 * Set the correct permissions on new transactions
