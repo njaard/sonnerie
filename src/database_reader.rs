@@ -39,6 +39,11 @@ impl DatabaseReader {
 		Self::new_opts(dir, false)
 	}
 
+	/// Open a database at the given path.
+	///
+	/// The `include_main_db` option, if set to false indicates that
+	/// the main database should not be opened. This is useful for
+	/// minor compaction.
 	fn new_opts(dir: &Path, include_main_db: bool) -> std::io::Result<DatabaseReader> {
 		let dir_reader = std::fs::read_dir(dir)?;
 
@@ -153,6 +158,13 @@ impl DatabaseReader {
 	}
 }
 
+/// Keeps a range associated with a query, implements `IntoIterator`
+///
+/// You can call [`into_par_iter`](https://docs.rs/rayon/1.1/rayon/iter/trait.IntoParallelIterator.html#tymethod.into_par_iter)
+/// on this object to get a Rayon parallel iterator.
+///
+/// Note that only one thread will get any specific key; keys are never
+/// divided between multiple workers.
 pub struct DatabaseKeyReader<'d> {
 	db: &'d DatabaseReader,
 	matcher: Option<regex::Regex>,

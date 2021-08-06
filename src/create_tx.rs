@@ -6,10 +6,10 @@ use std::path::{Path, PathBuf};
 
 /// Create a transaction file in the specified db directory.
 ///
-/// Add new records with [`new_record`]. They must be
+/// Add new records with [`CreateTx::add_record`]. They must be
 /// in sorted order.
 ///
-/// After adding records, call [`commit`] which ensures
+/// After adding records, call [`CreateTx::commit`] which ensures
 /// the transaction is on disk. Not calling commit will
 /// rollback the transaction.
 pub struct CreateTx {
@@ -48,7 +48,7 @@ impl CreateTx {
 	/// Each successive call to this function must have greater
 	/// or equal values for key and timestamp.
 	///
-	/// Encode the data with [`row_format`].
+	/// Encode the data with [`crate::RowFormat`].
 	pub fn add_record(
 		&mut self,
 		key: &str,
@@ -61,7 +61,7 @@ impl CreateTx {
 	/// Commit the transaction, but give it a specific name.
 	///
 	/// This function is necessary for compacting, normally
-	/// you would just call the basic [`commit`].
+	/// you would just call the basic [`CreateTx::commit`](.
 	pub fn commit_to(self, final_name: &Path) -> std::io::Result<()> {
 		let writer = self.writer;
 		let mut file = writer.finish()?;
