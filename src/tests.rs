@@ -739,10 +739,16 @@ fn high_level_reader() {
 		tx.commit_to(&t.path().join("main")).expect("committed");
 	}
 	let r = DatabaseReader::new(t.path()).unwrap();
-	let a: Vec<u64> = r.get("a").map(|m| m.value() ).collect();
-	assert_eq!(a, vec![42,84,66]);
-	let a: Vec<(f64,f64)> = r.get("b").map(|m| (m.get(0), m.get(1)) ).collect();
-	assert_eq!(format!("{:.4?}", a), "[(34.0000, 22.0000), (3.1415, 2.7182)]");
-	let a: Vec<(String,String)> = r.get("c").map(|m| (m.get(0), m.get(1)) ).collect();
-	assert_eq!(a, vec![("Hello World".to_string(), "Rustacean".to_string())]);
+	let a: Vec<u64> = r.get("a").map(|m| m.value()).collect();
+	assert_eq!(a, vec![42, 84, 66]);
+	let a: Vec<(f64, f64)> = r.get("b").map(|m| (m.get(0), m.get(1))).collect();
+	assert_eq!(
+		format!("{:.4?}", a),
+		"[(34.0000, 22.0000), (3.1415, 2.7182)]"
+	);
+	let a: Vec<(String, String)> = r.get("c").map(|m| (m.get(0), m.get(1))).collect();
+	assert_eq!(
+		a,
+		vec![("Hello World".to_string(), "Rustacean".to_string())]
+	);
 }

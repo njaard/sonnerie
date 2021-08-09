@@ -283,9 +283,9 @@ impl<'d> IntoIterator for DatabaseKeyReader<'d> {
 			));
 		}
 		let merge = Merge::new(readers, |a, b| {
-			a.key().cmp(b.key()).then_with(|| {
-				a.timestamp_nanos().cmp(&b.timestamp_nanos())
-			})
+			a.key()
+				.cmp(b.key())
+				.then_with(|| a.timestamp_nanos().cmp(&b.timestamp_nanos()))
 		});
 
 		DatabaseKeyIterator {

@@ -1,14 +1,14 @@
-pub mod create_tx;
+mod create_tx;
 pub(crate) mod database_reader;
 pub mod formatted;
-pub mod key_reader;
+mod key_reader;
 pub(crate) mod merge;
 pub(crate) mod rayon;
-pub mod record;
+mod record;
 pub mod row_format;
 pub(crate) mod segment;
 pub(crate) mod segment_reader;
-pub mod wildcard;
+mod wildcard;
 pub(crate) mod write;
 
 pub use write::WriteFailure;
@@ -16,14 +16,15 @@ pub use write::WriteFailure;
 pub use crate::rayon::*;
 pub use create_tx::*;
 pub use database_reader::*;
-pub use formatted::*;
 pub use key_reader::*;
-pub use row_format::*;
+pub use record::*;
 pub(crate) use segment::*;
 pub use wildcard::*;
 
 #[cfg(test)]
 mod tests;
+
+pub type Timestamp = u64;
 
 use std::ops::{Bound, RangeBounds};
 

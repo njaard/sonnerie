@@ -3,7 +3,7 @@
 use byteorder::{BigEndian, ByteOrder};
 use escape_string::split_one;
 
-pub type Timestamp = u64;
+use crate::Timestamp;
 
 /// Decodes a row by its format. Created with [`parse_row_format`](fn.parse_row_format.html).
 pub trait RowFormat {

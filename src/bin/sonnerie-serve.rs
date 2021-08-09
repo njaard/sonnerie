@@ -188,7 +188,7 @@ impl Tsrv {
 					format,
 					tail,
 				} = record.map_err(|e| format!("parsing temporary data: {}", e))?;
-				let row_format = parse_row_format(&format);
+				let row_format = sonnerie::row_format::parse_row_format(&format);
 				row_format
 					.to_stored_format(ts, &tail, &mut row_data)
 					.map_err(|e| format!("parsing data according to format: {}", e))?;
@@ -278,7 +278,7 @@ impl Tsrv {
 				}
 
 				// trick sonnerie to not do an fadvise when you search for a single key
-				let searcher: Box<dyn Iterator<Item = sonnerie::record::Record>>;
+				let searcher: Box<dyn Iterator<Item = sonnerie::Record>>;
 				if filter.is_exact() {
 					searcher = Box::new(db.get(filter.prefix()).into_iter());
 				} else {

@@ -1,6 +1,7 @@
 //! Read or write formatted data to a text stream.
 
 use crate::row_format::*;
+use crate::Timestamp;
 use byteorder::ByteOrder;
 use escape_string::split_one;
 

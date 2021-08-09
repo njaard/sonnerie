@@ -48,7 +48,7 @@ impl CreateTx {
 	/// Each successive call to this function must have greater
 	/// or equal values for key and timestamp.
 	///
-	/// Encode the data with [`crate::RowFormat`].
+	/// Encode the data with [`crate::row_format::RowFormat`].
 	pub fn add_record(
 		&mut self,
 		key: &str,
