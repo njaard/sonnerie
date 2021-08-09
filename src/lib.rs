@@ -24,6 +24,7 @@ pub use wildcard::*;
 #[cfg(test)]
 mod tests;
 
+/// Nanoseconds since the unix epoch
 pub type Timestamp = u64;
 
 use std::ops::{Bound, RangeBounds};

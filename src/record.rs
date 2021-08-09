@@ -120,6 +120,7 @@ impl Record {
 	}
 }
 
+/// Implements conversions from [`Record`] columns to Rust types
 pub trait FromRecord<'a>: Sized {
 	fn get(fmt_char: u8, bytes: &'a [u8]) -> std::io::Result<Self>;
 }

@@ -126,6 +126,9 @@ impl Reader {
 	}
 }
 
+/// An iterator over a range of keys
+///
+/// This struct implements `Iterator` and yields items of [`Record`].
 pub struct StringKeyRangeReader<'rdr, 'k> {
 	pub(crate) reader: &'rdr Reader,
 	pub(crate) range: crate::CowStringRange<'k>,
@@ -147,11 +150,8 @@ pub struct StringKeyRangeReader<'rdr, 'k> {
 }
 
 impl<'rdr, 'k> StringKeyRangeReader<'rdr, 'k> {
-	/// make multiple readers of approximately equal size
-	/// by partitioning this range
-	///
-	/// `n` is the maximum number of partitions to make,
-	/// it's possible to return fewer of those
+	/// Determines the on-disk size of this range of data,
+	/// which is useful for estimating progress and size.
 	pub fn compressed_bytes(&self) -> usize {
 		if self.segment.is_none() {
 			return 0;
