@@ -6,7 +6,7 @@ replacing "unsafe-unchecked" mode.
 0.6-format databases, therefor you will not be able to switch back to 0.5
 after modifying a database. Doing a major compaction (`compact -M`) will
 create a new 0.6-format database.
-* Support for string types had a number of subtle bugs that are now fixed.
+* A number of subtle bugs in String types are now fixed.
 * Databases were slightly malformed in prior versions which may cause short
 range reads to return less data than expected; a major compaction will losslessly
 correct the data.
@@ -20,6 +20,8 @@ the timestamp and values.
 	* There are now a `--before-time` and `--after-time` options
 	which can filter on timestamps.
 * Reading is now about 30% faster, independent of the new parallelism.
+* There are fewer submodules that are directly `pub`-exported. The remaining
+modules, `formatted` and `row_format` may be removed later.
 
 # 0.5.9: 2020-08-27
 * Set the correct permissions on new transactions
