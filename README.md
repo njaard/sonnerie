@@ -238,16 +238,16 @@ Sonnerie can be used as a Rust library so you can read and write databases direc
 but the API is incomplete and poorly documented, for now.
 
 # Sonnerie is used in production
-Sonnerie is used by e.ventures Management LLC with a >100GiB database and 10s
+Sonnerie is used by Headline with a >100GiB database and 10s
 of billions of rows.
 
 # Performance
-An approximate average lookup time for a random key is around 100ms on an SSD
-and much slower on a busy rotational media device. Sequential access (i.e., reading
-the whole database in lexicographical order) is somewhere around 2k keys/sec and
-1M records/sec, very much depending on the data itself.
+An approximate average lookup latency for a random key in a large database is
+around 15ms on an SSD and much slower on a busy rotational media device. Sequential
+access (i.e., reading the whole database in lexicographical order) is somewhere around
+2k keys/sec and 3M records/sec, very much depending on the data itself.
 
 # Copyright
 
 Sonnerie was implemented by Charles Samuels at
-[e.ventures Management LLC](http://eventures.vc).
+[Headline](https://headline.com).
