@@ -1,7 +1,7 @@
 # 0.6.0: Not released
 * Columns don't need to keep the same type between samples anymore,
 replacing "unsafe-unchecked" mode.
-* The new file format is slightly more compact.
+* There's a new file format
 * Sonnerie 0.6 can read databases created with version 0.5, but only writes
 0.6-format databases, therefor you will not be able to switch back to 0.5
 after modifying a database. Doing a major compaction (`compact -M`) will
@@ -10,6 +10,8 @@ create a new 0.6-format database.
 * Databases were slightly malformed in prior versions which may cause short
 range reads to return less data than expected; a major compaction will losslessly
 correct the data.
+* `OwnedRecord` is renamed `Record` and has high-level functions for reading
+the timestamp and values.
 * `DatabaseKeyReader` now implements Rayon's [ParallelIterator](https://docs.rs/rayon/latest/rayon/iter/trait.ParallelIterator.html).
 * The command line tool has these improvements to the `read` command:
 	* The `--parallel` option was added; it can be used for partitioning the database.

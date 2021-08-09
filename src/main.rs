@@ -218,9 +218,7 @@ fn main() -> std::io::Result<()> {
 				filter
 					.into_par_iter()
 					.for_each_init(subproc, |(_, out), record| {
-						use byteorder::ByteOrder;
-						let ts = &record.value()[0..8];
-						let ts: u64 = byteorder::BigEndian::read_u64(ts);
+						let ts = record.timestamp_nanos();
 						if let Some(after_time) = after_time {
 							if ts < after_time {
 								return;
@@ -240,9 +238,7 @@ fn main() -> std::io::Result<()> {
 		macro_rules! filter {
 			($filter:expr) => {{
 				for record in $filter {
-					use byteorder::ByteOrder;
-					let ts = &record.value()[0..8];
-					let ts: u64 = byteorder::BigEndian::read_u64(ts);
+					let ts = record.timestamp_nanos();
 					if let Some(after_time) = after_time {
 						if ts < after_time {
 							continue;
@@ -381,7 +377,7 @@ fn compact(
 		let reader = db.get_range(..);
 		let mut n = 0u64;
 		for record in reader {
-			compacted.add_record(record.key(), record.format(), record.value())?;
+			compacted.add_record(record.key(), record.format(), record.raw())?;
 			n += 1;
 		}
 		eprintln!("compacted {} records", n);

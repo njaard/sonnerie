@@ -106,19 +106,19 @@ fn basic1() {
 	let a = i.next().unwrap();
 	assert_eq!(a.key(), "ab");
 	assert_eq!(a.format(), "u");
-	assert_eq!(a.value(), b"\0\0\0\0\0\0\0\0\0\0\0\0");
+	assert_eq!(a.raw(), b"\0\0\0\0\0\0\0\0\0\0\0\0");
 	let a = i.next().unwrap();
 	assert_eq!(a.key(), "ab");
 	assert_eq!(a.format(), "u");
-	assert_eq!(a.value(), b"\0\0\0\0\0\0\0\x01\0\0\0\x01");
+	assert_eq!(a.raw(), b"\0\0\0\0\0\0\0\x01\0\0\0\x01");
 	let a = i.next().unwrap();
 	assert_eq!(a.key(), "ab");
 	assert_eq!(a.format(), "u");
-	assert_eq!(a.value(), b"\0\0\0\0\0\0\0\x02\0\0\0\x02");
+	assert_eq!(a.raw(), b"\0\0\0\0\0\0\0\x02\0\0\0\x02");
 	let a = i.next().unwrap();
 	assert_eq!(a.key(), "ab");
 	assert_eq!(a.format(), "u");
-	assert_eq!(a.value(), b"\0\0\0\0\0\0\0\x03\x03\0\0\x03");
+	assert_eq!(a.raw(), b"\0\0\0\0\0\0\0\x03\x03\0\0\x03");
 
 	assert!(i.next().is_none());
 }
@@ -149,20 +149,20 @@ fn basic3() {
 	let a = i.next().unwrap();
 	assert_eq!(a.key(), "a");
 	assert_eq!(a.format(), "u");
-	assert_eq!(a.value(), b"\0\0\0\0\0\0\0\0\0\0\0\0");
+	assert_eq!(a.raw(), b"\0\0\0\0\0\0\0\0\0\0\0\0");
 	let a = i.next().unwrap();
 	assert_eq!(a.key(), "a");
 	assert_eq!(a.format(), "u");
-	assert_eq!(a.value(), b"\0\0\0\0\0\0\0\x01\0\0\0\x01");
+	assert_eq!(a.raw(), b"\0\0\0\0\0\0\0\x01\0\0\0\x01");
 	dbg!("next");
 	let a = i.next().unwrap();
 	assert_eq!(a.key(), "b");
 	assert_eq!(a.format(), "u");
-	assert_eq!(a.value(), b"\0\0\0\0\0\0\0\x02\0\0\0\x02");
+	assert_eq!(a.raw(), b"\0\0\0\0\0\0\0\x02\0\0\0\x02");
 	let a = i.next().unwrap();
 	assert_eq!(a.key(), "b");
 	assert_eq!(a.format(), "u");
-	assert_eq!(a.value(), b"\0\0\0\0\0\0\0\x03\x03\0\0\x03");
+	assert_eq!(a.raw(), b"\0\0\0\0\0\0\0\x03\x03\0\0\x03");
 
 	assert!(i.next().is_none());
 }
@@ -498,7 +498,7 @@ fn database_merge_last() {
 
 	let r = DatabaseReader::new(t.path()).unwrap();
 	let last = r.get_range(..).into_iter().next().unwrap();
-	assert_eq!(last.value()[8], 2);
+	assert_eq!(last.raw()[8], 2);
 }
 
 #[test]
@@ -717,4 +717,32 @@ fn parallel_very_slow() {
 
 	let s = db.get_range(..).into_par_iter().count();
 	assert_eq!(s, 499471998);
+}
+
+#[test]
+fn high_level_reader() {
+	let t = tempfile::TempDir::new().unwrap();
+	let data = "\
+		a\t2010-01-01_00:00:01\tu\t42\n\
+		a\t2010-01-01_00:00:02\tu\t84\n\
+		a\t2010-01-01_00:00:03\tu\t66\n\
+		b\t2010-01-01_00:00:01\tFf\t34.0\t22.0\n\
+		b\t2010-01-01_00:00:02\tFf\t3.1415\t2.7182\n\
+		c\t2010-01-01_00:00:01\tss\tHello\\ World Rustacean\n\
+		";
+
+	{
+		let mut tx = CreateTx::new(t.path()).expect("creating tx");
+
+		add_from_stream_with_fmt(&mut tx, &mut std::io::Cursor::new(data), Some("%F_%T"))
+			.expect("writing");
+		tx.commit_to(&t.path().join("main")).expect("committed");
+	}
+	let r = DatabaseReader::new(t.path()).unwrap();
+	let a: Vec<u64> = r.get("a").map(|m| m.value() ).collect();
+	assert_eq!(a, vec![42,84,66]);
+	let a: Vec<(f64,f64)> = r.get("b").map(|m| (m.get(0), m.get(1)) ).collect();
+	assert_eq!(format!("{:.4?}", a), "[(34.0000, 22.0000), (3.1415, 2.7182)]");
+	let a: Vec<(String,String)> = r.get("c").map(|m| (m.get(0), m.get(1)) ).collect();
+	assert_eq!(a, vec![("Hello World".to_string(), "Rustacean".to_string())]);
 }

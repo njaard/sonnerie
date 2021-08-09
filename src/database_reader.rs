@@ -6,11 +6,9 @@ use std::path::{Path, PathBuf};
 
 use crate::key_reader::*;
 use crate::merge::Merge;
-use crate::record::OwnedRecord;
+use crate::record::Record;
 use crate::Wildcard;
 use std::ops::Bound;
-
-use byteorder::ByteOrder;
 
 /// Read a database in key-timestamp sorted format.
 ///
@@ -270,7 +268,7 @@ impl<'d> DatabaseKeyReader<'d> {
 }
 
 impl<'d> IntoIterator for DatabaseKeyReader<'d> {
-	type Item = OwnedRecord;
+	type Item = Record;
 	type IntoIter = DatabaseKeyIterator<'d>;
 	fn into_iter(self) -> Self::IntoIter {
 		self.check();
@@ -286,8 +284,7 @@ impl<'d> IntoIterator for DatabaseKeyReader<'d> {
 		}
 		let merge = Merge::new(readers, |a, b| {
 			a.key().cmp(b.key()).then_with(|| {
-				byteorder::BigEndian::read_u64(a.value())
-					.cmp(&byteorder::BigEndian::read_u64(b.value()))
+				a.timestamp_nanos().cmp(&b.timestamp_nanos())
 			})
 		});
 
@@ -299,14 +296,14 @@ impl<'d> IntoIterator for DatabaseKeyReader<'d> {
 
 /// An iterator over the filtered keys in a database.
 ///
-/// Yields an [`OwnedRecord`](record/struct.OwnedRecord.html)
+/// Yields an [`Record`](record/struct.Record.html)
 /// for each row in the database, sorted by key and timestamp.
 pub struct DatabaseKeyIterator<'d> {
-	merge: Box<Merge<StringKeyRangeReader<'d, 'd>, OwnedRecord>>,
+	merge: Box<Merge<StringKeyRangeReader<'d, 'd>, Record>>,
 }
 
 impl<'d, 'k> Iterator for DatabaseKeyIterator<'d> {
-	type Item = OwnedRecord;
+	type Item = Record;
 
 	fn next(&mut self) -> Option<Self::Item> {
 		self.merge.next()

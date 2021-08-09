@@ -278,7 +278,7 @@ impl Tsrv {
 				}
 
 				// trick sonnerie to not do an fadvise when you search for a single key
-				let searcher: Box<dyn Iterator<Item = sonnerie::record::OwnedRecord>>;
+				let searcher: Box<dyn Iterator<Item = sonnerie::record::Record>>;
 				if filter.is_exact() {
 					searcher = Box::new(db.get(filter.prefix()).into_iter());
 				} else {

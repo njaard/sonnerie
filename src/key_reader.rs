@@ -325,7 +325,7 @@ impl<'rdr, 'k> StringKeyRangeReader<'rdr, 'k> {
 }
 
 impl<'rdr, 'k> Iterator for StringKeyRangeReader<'rdr, 'k> {
-	type Item = OwnedRecord;
+	type Item = Record;
 	fn next(&mut self) -> Option<Self::Item> {
 		self.segment.as_ref()?;
 
@@ -335,7 +335,7 @@ impl<'rdr, 'k> Iterator for StringKeyRangeReader<'rdr, 'k> {
 
 		let data = self.decoded.clone();
 
-		let r = OwnedRecord {
+		let r = Record {
 			key_pos: self.current_key_text_pos,
 			key_len: self.current_key_text_len,
 			fmt_pos: self.current_fmt_text_pos,

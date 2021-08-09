@@ -140,7 +140,7 @@ impl std::default::Default for PrintTimestamp<'static> {
 /// on the options for the parameters `print_timestamp`
 /// or `print_record_format`.
 pub fn print_record<W: std::io::Write>(
-	record: &crate::record::OwnedRecord,
+	record: &crate::record::Record,
 	out: &mut W,
 	print_timestamp: PrintTimestamp<'_>,
 	print_record_format: PrintRecordFormat,
@@ -148,8 +148,8 @@ pub fn print_record<W: std::io::Write>(
 	let fmt_string = record.format();
 	let fmt = parse_row_format(fmt_string);
 	let key = record.key();
-	let ts = &record.value()[0..8];
-	let value = &record.value()[8..];
+	let ts = &record.raw()[0..8];
+	let value = &record.raw()[8..];
 	let ts: u64 = byteorder::BigEndian::read_u64(ts);
 
 	write!(out, "{}\t", escape_string::escape(key))?;
