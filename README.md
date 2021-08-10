@@ -2,20 +2,21 @@
 [![Crates.io](https://img.shields.io/crates/v/sonnerie.svg)](https://crates.io/crates/sonnerie)
 [![docs](https://img.shields.io/badge/docs-api-green)](https://docs.rs/sonnerie)
 
-NOTE: this master branch contains a new major version; use released (on crates.io)
+NOTE: this master branch and this README pertain to a new major version; use released (on crates.io)
 or tagged versions instead! The master branch has no guarantees of file-format
 stability.
 
 # Introduction
 
-Sonnerie is a time-series database. Map a timestamp to a floating-point value.
+Sonnerie is a time-series database. Map a string to a list of timestamps and value.
 Store multiple of these series in a single database. Insert tens of millions
 of samples in minutes, on rotational media or solid-state.
 
 Sonnerie is optimized for storing data that comes in as
-many values over many series, and for reading one series at a time.
-It is also very good at dumping lexicographically sequential series
-(which means: everything).
+many values over many series (insertion of millions of items takes minutes and
+doesn't block other readers or writers), and for reading one series at a time in
+10s of milliseconds. It is also very good at dumping lexicographically sequential
+series (which means: everything).
 
 Sonnerie can very efficiently do random insertions and updates, and works
 well for huge databases. Due to the compact disk format, sparse data such
@@ -27,10 +28,14 @@ as keys with only a few timestamps can be very efficiently stored.
 * No query language
 * Transactional: a transaction is completely committed or not at all.
 * Isolated: A transaction doesn't see updates from other transactions or expose its changes until it has been committed.
+Note the semantics of "last record wins" - if two transactions write two values with same key and timestamp, then the last completed
+transaction will eventually be the retained one.
 * Durable: committed data is resistant to loss from unexpected shutdown.
 * Nanosecond-resolution timestamps (64 bit), 1970-2554
 * No weird dependencies, no virtual machines, one single native binary for the command line tool
-* floating point, integer, and string values, multiple columns per sample
+* Floating point, integer, and string values, multiple columns per sample
+* Concurrent reading of ranges with Rayon - do a "map-reduce" style query from Rust
+in 30 seconds per billion records per core on modern hardware.
 
 Sonnerie runs on Unix-like systems and is developed on Linux.
 
@@ -193,7 +198,6 @@ you to modify an existing database which is useful for online maintenance on a d
 that gets concurrent updates.
 
 # sonnerie-serve
-
 A server is provided so that you can conveniently read and write to the database
 via HTTP.
 
