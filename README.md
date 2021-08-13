@@ -237,9 +237,12 @@ and the server doesn't need to do any of the decompressing. Avoid nfs
 because compactions will cause files to get deleted, and then the client will get an
 IO error, as NFS cannot track files that are closed on the server.
 
-# Sonnerie's API
-Sonnerie can be used as a Rust library so you can read and write databases directly,
-but the API is incomplete and poorly documented, for now.
+# Contributing
+Bug reports and pull requests are always welcome no matter how big or small.
+Development of Sonnerie is people-first and we comply with Rust's 
+[Code of Conduct](https://www.rust-lang.org/policies/code-of-conduct).
+
+If you use Sonnerie, please provide feedback!
 
 # Sonnerie is used in production
 Sonnerie is used by Headline with a >100GiB database and 10s
