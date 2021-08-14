@@ -2,6 +2,8 @@
 [![Crates.io](https://img.shields.io/crates/v/sonnerie.svg)](https://crates.io/crates/sonnerie)
 [![docs](https://img.shields.io/badge/docs-api-green)](https://docs.rs/sonnerie)
 
+HWÆT! A NEW RELEASE IS NIGH! ATTEND! THE FINAL DAYS ARE AT HAND!
+
 NOTE: this master branch and this README pertain to a new major version; use released (on crates.io)
 or tagged versions instead! The master branch has no guarantees of file-format
 stability.
@@ -208,13 +210,20 @@ make `PUT` and `GET` requests:
 
 	`curl http://localhost:5555/fibonacci`
 
+(The response is the entire series in a format similar to `sonnerie read`)
+
 * Read series by wildcard:
 
 	`curl http://localhost:5555/fib%`
 
+(The response is each series, in alphabetical order, in a format similar to
+`sonnerie read`)
+
 * Output human-readable timestamps:
 
 	`curl http://localhost:5555/fib%?human`
+
+(The timestamps are in ISO-8601 instead of nanoseconds)
 
 * Add more data:
 
