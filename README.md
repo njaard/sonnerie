@@ -26,8 +26,8 @@ as keys with only a few timestamps can be very efficiently stored.
 * No query language
 * Transactional: a transaction is completely committed or not at all.
 * Isolated: A transaction doesn't see updates from other transactions or expose its changes until it has been committed.
-Note the semantics of "last record wins" - if two transactions write two values with same key and timestamp, then the last completed
-transaction will eventually be the retained one.
+Note the semantics of "last record wins" - if two transactions write two values with same key and timestamp, then the record from
+the last completed transaction will be the retained one.
 * Durable: committed data is resistant to loss from unexpected shutdown.
 * Nanosecond-resolution timestamps (64 bit), 1970-2554
 * No weird dependencies, no virtual machines, one single native binary for the command line tool
@@ -77,7 +77,7 @@ key and then chronologically. This requirement does not exist in
 
 	sonnerie -d database/ read %
 
-(The `%` is a wildcard as is used in "`LIKE`" in SQL and filters
+The `%` is a wildcard as is used in "`LIKE`" in SQL and filters
 on the key. Searching based on a prefix is very efficient:
 
 	sonnerie -d database/ read fib%
