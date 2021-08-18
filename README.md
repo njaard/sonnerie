@@ -2,11 +2,7 @@
 [![Crates.io](https://img.shields.io/crates/v/sonnerie.svg)](https://crates.io/crates/sonnerie)
 [![docs](https://img.shields.io/badge/docs-api-green)](https://docs.rs/sonnerie)
 
-HWÆT! A NEW RELEASE IS NIGH! ATTEND! THE FINAL DAYS ARE AT HAND!
-
-NOTE: this master branch and this README pertain to a new major version; use released (on crates.io)
-or tagged versions instead! The master branch has no guarantees of file-format
-stability.
+2021-08-18: A new major release of version 0.6.0. Refer to the [Changelog](Changelog.md).
 
 # Introduction
 

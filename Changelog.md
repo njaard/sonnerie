@@ -1,4 +1,4 @@
-# 0.6.0: Not released
+# 0.6.0: 2021-08-18
 * Columns don't need to keep the same type between samples anymore,
 replacing "unsafe-unchecked" mode.
 * There's a new file format
@@ -21,7 +21,7 @@ the timestamp and values.
 	which can filter on timestamps.
 * Reading is now about 30% faster, independent of the new parallelism.
 * There are fewer submodules that are directly `pub`-exported. The remaining
-modules, `formatted` and `row_format` may be removed later.
+modules, `formatted` and `row_format` may be removed in a later version.
 
 # 0.5.9: 2020-08-27
 * Set the correct permissions on new transactions
