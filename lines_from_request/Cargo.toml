@@ -1,6 +1,6 @@
 [package]
 name = "lines_from_request"
-version = "0.3.0"
+version = "0.3.1"
 authors = ["Charles Samuels <kalle@eventures.vc>"]
 edition = "2018"
 license = "BSD-2-Clause"

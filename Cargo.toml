@@ -1,6 +1,6 @@
 [package]
 name = "sonnerie"
-version = "0.5.9"
+version = "0.6.0"
 authors = ["Charles Samuels <kalle@eventures.vc>", "e.ventures Management LLC"]
 edition = "2018"
 description = "An easy timeseries database"
@@ -46,7 +46,7 @@ smallvec="1"
 rayon="1.1"
 
 [dev-dependencies]
-rand={version="*", features=["small_rng"]}
+rand={version="0.8", features=["small_rng"]}
 
 [[bin]]
 name="sonnerie"
