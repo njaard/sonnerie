@@ -1,3 +1,8 @@
+# 0.6.1: 2021-09-09
+* The command line tool's `--parallel` option now runs its command
+inside of the shell specified by the environment variable `$SHELL`, instead of `sh`.
+`sh` is still used as a fallback if `$SHELL` is not present.
+
 # 0.6.0: 2021-08-18
 * Columns don't need to keep the same type between samples anymore,
 replacing "unsafe-unchecked" mode.
