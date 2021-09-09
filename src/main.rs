@@ -193,6 +193,8 @@ fn main() -> std::io::Result<()> {
 				use std::io::BufWriter;
 				use std::process::*;
 
+				let ref shell = std::env::var_os("SHELL").unwrap_or("sh".into());
+
 				struct CheckOnDrop(Child, BufWriter<ChildStdin>);
 				impl Drop for CheckOnDrop {
 					fn drop(&mut self) {
@@ -205,7 +207,7 @@ fn main() -> std::io::Result<()> {
 				}
 
 				let subproc = || {
-					let mut child = Command::new("sh")
+					let mut child = Command::new(shell)
 						.arg("-c")
 						.arg(matches.value_of_os("parallel").unwrap())
 						.stdin(Stdio::piped())
