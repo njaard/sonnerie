@@ -1,3 +1,11 @@
+# 0.6.2: 2021-11-25
+* Fix writing certain malformed files in very rare cases, when a large
+key is written near the size limit of a segment. Files written as such
+cannot be read, but there's no data loss. Please file a ticket if you
+need help ccorrecting your files. It's unlikely that this bug is affecting
+you, if it is, it shows as a panic such as `thread '<unnamed>' panicked at 'range
+end index 1048643 out of range for slice of length 1048631', src/record.rs:119:10`.
+
 # 0.6.1: 2021-09-09
 * The command line tool's `--parallel` option now runs its command
 inside of the shell specified by the environment variable `$SHELL`, instead of `sh`.
