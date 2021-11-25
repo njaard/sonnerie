@@ -60,7 +60,7 @@ impl From<std::io::Error> for WriteFailure {
 }
 
 impl<W: Write + Send> Writer<W> {
-	pub fn new(writer: W) -> Writer<W> {
+	fn new_internal(writer: W, disable_compression: bool) -> Writer<W> {
 		let num_worker_threads = 4usize;
 
 		let writer_state = WriterState {
@@ -81,8 +81,9 @@ impl<W: Write + Send> Writer<W> {
 			let writer_state = writer_state.clone();
 			let writer_notifier = writer_notifier.clone();
 			let recv = recv.clone();
-			let h =
-				std::thread::spawn(move || worker_thread(recv, &writer_state, &writer_notifier));
+			let h = std::thread::spawn(move || {
+				worker_thread(recv, &writer_state, &writer_notifier, disable_compression)
+			});
 			thread_handles.push(h);
 		}
 
@@ -100,6 +101,9 @@ impl<W: Write + Send> Writer<W> {
 			thread_ordering: 0,
 			current_record_size: None,
 		}
+	}
+	pub fn new(writer: W) -> Writer<W> {
+		Self::new_internal(writer, false)
 	}
 
 	fn new_key_begin(&mut self, key: &str, format: &str) {
@@ -142,6 +146,7 @@ impl<W: Write + Send> Writer<W> {
 	) -> std::result::Result<(), WriteFailure> {
 		// this is the first key ever seen
 		if self.current_key_data.is_empty() {
+			dbg!();
 			self.new_key_begin(key, format);
 			self.first_segment_key.replace_range(.., key);
 			if let Some(sz) = self.current_record_size {
@@ -177,12 +182,6 @@ impl<W: Write + Send> Writer<W> {
 			}
 
 			if self.current_segment_data.len() + self.current_key_data.len() >= SEGMENT_SIZE_GOAL {
-				// only have a key span segments if it's REALLY necessary
-				if self.current_key_data.len() > 128 {
-					self.flush_current_key();
-					self.new_key_begin(key, format);
-				}
-
 				// the segment is full, flush it
 				self.store_current_segment()?;
 				self.first_segment_key.replace_range(.., key);
@@ -203,7 +202,7 @@ impl<W: Write + Send> Writer<W> {
 	}
 
 	/// send the current segment to a worker thread to get written
-	pub(crate) fn store_current_segment(&mut self) -> std::io::Result<()> {
+	pub fn store_current_segment(&mut self) -> std::io::Result<()> {
 		let header = Header {
 			first_key: self.first_segment_key.as_bytes().to_owned(),
 			last_key: self.last_segment_key.as_bytes().to_owned(),
@@ -271,6 +270,7 @@ fn worker_thread<W: Write + Send>(
 	recv: channel::Receiver<WorkerMessage>,
 	writer_state: &Mutex<WriterState<W>>,
 	writer_notifier: &Condvar,
+	disable_compression: bool,
 ) -> std::io::Result<()> {
 	for message in recv {
 		let WorkerMessage {
@@ -279,10 +279,17 @@ fn worker_thread<W: Write + Send>(
 			payload,
 		} = message;
 
-		let mut encoder = lz4::EncoderBuilder::new().level(9).build(vec![]).unwrap();
-		encoder.write_all(&payload)?;
-		let (compressed, e) = encoder.finish();
-		e?;
+		let compressed;
+
+		if disable_compression {
+			compressed = payload;
+		} else {
+			let mut encoder = lz4::EncoderBuilder::new().level(9).build(vec![]).unwrap();
+			encoder.write_all(&payload)?;
+			let (c, e) = encoder.finish();
+			e?;
+			compressed = c;
+		}
 
 		let mut segmented: smallvec::SmallVec<[_; 4]> = smallvec::smallvec![];
 		{
@@ -376,4 +383,23 @@ impl<W: Write> Write for WriteCounter<W> {
 	fn flush(&mut self) -> std::io::Result<()> {
 		self.inner.flush()
 	}
+}
+
+#[test]
+fn near_boundary() {
+	// when a segment is about to overflow, no portion of the overflowing key should appear in it
+	// (all of it should go in the successive segment)
+	let q = "qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq";
+	let mut w = Writer::new_internal(vec![], true);
+	w.current_key_data = vec![0x42u8; SEGMENT_SIZE_GOAL - 40];
+	w.first_segment_key = "a".to_string();
+	w.last_segment_key = "a".to_string();
+	w.add_record(q, "f", b"012345671234").unwrap();
+	w.add_record("r", "f", b"012345671234").unwrap();
+	let v = w.finish().unwrap();
+	{
+		let mut f = std::fs::File::create("temp.bin").unwrap();
+		f.write_all(&v).unwrap();
+	}
+	assert_eq!(memchr::memmem::find_iter(&v, q).count(), 2);
 }
