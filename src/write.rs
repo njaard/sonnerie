@@ -146,7 +146,6 @@ impl<W: Write + Send> Writer<W> {
 	) -> std::result::Result<(), WriteFailure> {
 		// this is the first key ever seen
 		if self.current_key_data.is_empty() {
-			dbg!();
 			self.new_key_begin(key, format);
 			self.first_segment_key.replace_range(.., key);
 			if let Some(sz) = self.current_record_size {
