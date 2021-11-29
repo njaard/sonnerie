@@ -1,3 +1,6 @@
+# 0.6.3: 2021-11-20
+* Remove `dbg!()` statement that worked its way into the code
+
 # 0.6.2: 2021-11-25
 * Fix writing certain malformed files in very rare cases, when a large
 key is written near the size limit of a segment. Files written as such
