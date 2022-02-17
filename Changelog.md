@@ -1,9 +1,9 @@
-# 0.6.4: Unreleased
+# 0.6.4: 2022-02-17
 * Fix bug in which sometimes the latest version of a record did not take
 precedence.
 * Increase version of the depencency `parking_lot`
-* Add exponential backoff when trying to creating more than 1 transaction
-per second. This is workaround for how transaction filenames are based on
+* Add exponential backoff when trying to create more than 1 transaction
+per second. This is a workaround for how transaction filenames are based on
 seconds and not a smaller unit.
 
 # 0.6.3: 2021-11-29

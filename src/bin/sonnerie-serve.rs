@@ -20,7 +20,7 @@ use futures::stream::StreamExt;
 fn main() {
 	use clap::Arg;
 	let matches = clap::App::new("sonnerie-serve")
-		.version("0.5.9")
+		.version("0.6.4")
 		.author("Charles Samuels <kalle@eventures.vc>")
 		.about("A network server for sonnerie")
 		.arg(

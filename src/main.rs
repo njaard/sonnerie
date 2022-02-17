@@ -10,7 +10,7 @@ fn main() -> std::io::Result<()> {
 	use clap::{Arg, SubCommand};
 	let matches
 		= clap::App::new("sonnerie")
-			.version("0.5.9")
+			.version("0.6.4")
 			.author("Charles Samuels <kalle@eventures.vc>")
 			.about("A compressed timeseries database")
 			.arg(Arg::with_name("dir")
