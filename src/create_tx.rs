@@ -138,7 +138,7 @@ impl CreateTx {
 					if attempt == 1000 {
 						return Err(e);
 					}
-					std::thread::sleep(std::time::Duration::from_millis(100));
+					std::thread::sleep(std::time::Duration::from_millis(100 * attempt));
 					continue;
 				}
 				Err(e) => return Err(e),
