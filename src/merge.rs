@@ -54,6 +54,7 @@ where
 impl<Source, Record> Merge<Source, Record>
 where
 	Source: Iterator<Item = Record>,
+	Record: std::fmt::Debug,
 {
 	pub fn new<CompareRecord>(orig_sources: Vec<Source>, compare_record: CompareRecord) -> Self
 	where
@@ -135,6 +136,11 @@ where
 						&current,
 						next.current_record.as_ref().unwrap(),
 					) {
+						Ordering::Equal
+							if most_recent.source_index.cmp(&next.source_index).is_lt() =>
+						{
+							// Not the latest version of this record
+						}
 						Ordering::Less => {
 							// short circuit completed
 							self.most_recent = Some(most_recent);
@@ -205,6 +211,18 @@ mod tests {
 		assert_eq!(merged.next().unwrap(), "a");
 		assert_eq!(merged.next().unwrap(), "b");
 		assert_eq!(merged.next().unwrap(), "c");
+		assert_eq!(merged.next(), None);
+	}
+	#[test]
+	fn merge_last_reader() {
+		let a = [("b", 1), ("c", 1), ("d", 1), ("e", 1)].iter().cloned();
+		let b = [("c", 2)].iter().cloned();
+		let mut merged = crate::merge::Merge::new(vec![a, b], |a, b| a.0.cmp(&b.0));
+		//assert_eq!(merged.next().unwrap(), ("a",2));
+		assert_eq!(merged.next().unwrap(), ("b", 1));
+		assert_eq!(merged.next().unwrap(), ("c", 2));
+		assert_eq!(merged.next().unwrap(), ("d", 1));
+		assert_eq!(merged.next().unwrap(), ("e", 1));
 		assert_eq!(merged.next(), None);
 	}
 	#[test]

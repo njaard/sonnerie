@@ -21,7 +21,7 @@ pub struct Record {
 
 impl std::fmt::Debug for Record {
 	fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-		write!(f, "Record {{ key={} }}", self.key())
+		write!(f, "Record {{ key={}, data={:?} }}", self.key(), self.raw())
 	}
 }
 
