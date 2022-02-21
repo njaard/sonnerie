@@ -26,7 +26,7 @@ pub fn add_from_stream<R: std::io::BufRead>(
 	let row_format = parse_row_format(format);
 
 	let mut line = String::new();
-	let mut row_data = vec![];
+	let mut row_data = vec![]; // this is single allocation only
 
 	while 0 != input.read_line(&mut line).unwrap() {
 		let tail = line.trim_end();
@@ -44,6 +44,9 @@ pub fn add_from_stream<R: std::io::BufRead>(
 			ts = timestamp.parse().expect("parsing timestamp");
 		}
 
+        dbg!(&timestamp);
+        dbg!(&tail);
+
 		row_format
 			.to_stored_format(ts, tail, &mut row_data)
 			.unwrap_or_else(|_| panic!("parsing values \"{}\"", tail));
@@ -54,6 +57,59 @@ pub fn add_from_stream<R: std::io::BufRead>(
 	}
 
 	Ok(())
+}
+
+pub fn delete(
+	tx: &mut crate::CreateTx,
+    first_key: &str,
+    last_key: &str,
+    before_time: u64,
+    after_time: u64,
+    filter: &str,
+) -> Result<(), crate::WriteFailure> {
+    use crate::row_format::{
+        Element as _,
+    };
+    use byteorder::BigEndian;
+
+    // write row format
+    let key = first_key;
+    let format = "\u{00f7}";
+
+    let mut row_data = Vec::with_capacity(4);
+    /*
+        unimplemented!() // last timestamp length
+        + unimplemented!() // key wildcard length
+        + unimplemented!() // last key length
+    );
+    */
+    let cap = row_data.capacity();
+
+    // bypass RowFormat entirely, we're going to be building row_data here so
+    // we don't get to pass str values
+
+    // write first key
+    ElementString.to_stored_format(&first_key, &mut row_data);
+    dbg!(row_data.len());
+    
+    // write first timestamp
+    BigEndian::write_u64(&mut row_data, before_time);
+    dbg!(row_data.len());
+    
+    // write last timestamp
+    BigEndian::write_u64(&mut row_data, after_time);
+    dbg!(row_data.len());
+    
+    // write key wildcard
+    ElementString.to_stored_format(&filter, &mut row_data);
+    dbg!(row_data.len());
+    
+    // write last key
+    ElementString.to_stored_format(&last_key, &mut row_data);
+
+    assert!(cap == row_data.capacity());
+
+    tx.add_record(&key, &format, &row_data)
 }
 
 /// Reads from text, each record reports its own format.
@@ -87,6 +143,9 @@ pub fn add_from_stream_with_fmt<R: std::io::BufRead>(
 		let (format, values) = split_one(tail).unwrap();
 		let row_format = parse_row_format(&format);
 
+        dbg!(&tail);
+        dbg!(ts);
+        dbg!(&values);
 		row_format
 			.to_stored_format(ts, values, &mut row_data)
 			.unwrap();
