@@ -59,59 +59,6 @@ pub fn add_from_stream<R: std::io::BufRead>(
 	Ok(())
 }
 
-pub fn delete(
-	tx: &mut crate::CreateTx,
-    first_key: &str,
-    last_key: &str,
-    before_time: u64,
-    after_time: u64,
-    filter: &str,
-) -> Result<(), crate::WriteFailure> {
-    use crate::row_format::{
-        Element as _,
-    };
-    use byteorder::BigEndian;
-
-    // write row format
-    let key = first_key;
-    let format = "\u{00f7}";
-
-    let mut row_data = Vec::with_capacity(4);
-    /*
-        unimplemented!() // last timestamp length
-        + unimplemented!() // key wildcard length
-        + unimplemented!() // last key length
-    );
-    */
-    let cap = row_data.capacity();
-
-    // bypass RowFormat entirely, we're going to be building row_data here so
-    // we don't get to pass str values
-
-    // write first key
-    ElementString.to_stored_format(&first_key, &mut row_data);
-    dbg!(row_data.len());
-    
-    // write first timestamp
-    BigEndian::write_u64(&mut row_data, before_time);
-    dbg!(row_data.len());
-    
-    // write last timestamp
-    BigEndian::write_u64(&mut row_data, after_time);
-    dbg!(row_data.len());
-    
-    // write key wildcard
-    ElementString.to_stored_format(&filter, &mut row_data);
-    dbg!(row_data.len());
-    
-    // write last key
-    ElementString.to_stored_format(&last_key, &mut row_data);
-
-    assert!(cap == row_data.capacity());
-
-    tx.add_record(&key, &format, &row_data)
-}
-
 /// Reads from text, each record reports its own format.
 ///
 /// Like [`add_from_stream`] except the format string

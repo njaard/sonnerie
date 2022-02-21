@@ -374,8 +374,7 @@ fn delete(
         .map(|at| ts_converter(at, ts_format))
         .unwrap_or(0);
 
-    formatted::delete(
-        &mut tx,
+    tx.delete(
         first_key.unwrap_or(""),
         last_key.unwrap_or(""),
         before_time,
