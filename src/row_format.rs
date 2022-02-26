@@ -122,15 +122,6 @@ pub fn parse_row_format(human: &str) -> Box<dyn RowFormat> {
 				has_size = false;
 				elements.push(Box::new(ElementString));
 			}
-            /*
-            b'\x7f' => {
-                // issue 12: there should be only the DELETE command in a single
-                // transaction
-                has_size = false;
-                elements.push(Box::new(DeleteElement));
-                break;
-            }
-            */
 			a => {
 				panic!("invalid format character '{}'", a);
 			}
@@ -348,24 +339,6 @@ impl Element for ElementF64 {
 		Ok(&from[8..])
 	}
 }
-
-/*
-struct DeleteElement;
-impl Element for DeleteElement {
-    fn to_stored_format<'s>(
-        &self,
-        from: &'str,
-        dest: &mut Vec<u8>
-    ) -> Result<&'s str, String> {
-        // DO NOT USE THIS
-        // this will be refactored away
-        // see formatted::delete for the actual implementation, which does not
-        // make use of `from: &'str`
-        // ~ F5XS
-        unimplemented!()
-    }
-}
-*/
 
 pub (crate) struct ElementString;
 impl Element for ElementString {

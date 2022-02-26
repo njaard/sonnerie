@@ -44,6 +44,7 @@ serde_derive = { version="1", optional=true }
 shardio = { version="0.8", optional=true }
 smallvec="1"
 rayon="1.1"
+either="1.6"
 
 [dev-dependencies]
 rand={version="0.8", features=["small_rng"]}

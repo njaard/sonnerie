@@ -11,6 +11,7 @@ use std::ops::Bound::*;
 use std::ops::RangeBounds;
 //use std::rc::Rc;
 use std::sync::Arc as Rc;
+use either::Either;
 
 /// Read and filter keys from a single transaction file
 pub struct Reader {
@@ -23,7 +24,7 @@ impl Reader {
 	/// If instead you want to read from an entire database,
 	/// use [`DatabaseReader`](struct.DatabaseReader.html)
 	/// which provides a similar API.
-	pub fn new(mut r: std::fs::File) -> std::io::Result<Reader> {
+	pub fn new(mut r: std::fs::File) -> std::io::Result<Either<Reader, DeleteMarker>> {
 		Ok(Reader {
 			segments: SegmentReader::open(&mut r)?,
 		})
@@ -97,7 +98,7 @@ impl Reader {
 				}
 			}
 
-			decode_into_with_unescaping(&mut data, d.payload);
+			crate::segment_reader::decode_into_with_unescaping(&mut data, d.payload);
 		}
 
 		StringKeyRangeReader {
@@ -218,7 +219,7 @@ impl<'rdr, 'k> StringKeyRangeReader<'rdr, 'k> {
 				old_vec = vec![];
 			}
 			old_vec.clear();
-			decode_into_with_unescaping(&mut old_vec, s.payload);
+			crate::segment_reader::decode_into_with_unescaping(&mut old_vec, s.payload);
 			self.decoded = Rc::new(old_vec);
 		}
 	}
@@ -347,30 +348,4 @@ impl<'rdr, 'k> Iterator for StringKeyRangeReader<'rdr, 'k> {
 		self.pos += self.current_record_len + crate::record::TIMESTAMP_SIZE;
 		Some(r)
 	}
-}
-
-fn decode_into_with_unescaping(into: &mut Vec<u8>, from: &[u8]) {
-	let mut segmented: smallvec::SmallVec<[_; 4]> = smallvec::smallvec![];
-	{
-		let mut start = 0;
-		while let Some(pos) = crate::segment::find_escape_segment_invocation(&from[start..]) {
-			segmented.push(&from[start..pos + start]);
-			segmented.push(crate::segment::SEGMENT_INVOCATION);
-			start = start + pos + crate::segment::ESCAPE_SEGMENT_INVOCATION.len();
-		}
-		segmented.push(&from[start..]);
-	}
-
-	let mut reader: Option<Box<dyn Read>> = None;
-
-	for segment in segmented {
-		if let Some(head) = reader {
-			reader = Some(Box::new(head.chain(std::io::Cursor::new(segment))) as Box<_>);
-		} else {
-			reader = Some(Box::new(std::io::Cursor::new(segment)) as Box<_>);
-		}
-	}
-
-	let mut decoder = lz4::Decoder::new(reader.expect("empty segment")).expect("lz4 decoding");
-	decoder.read_to_end(into).expect("lz4 decoding 2");
 }

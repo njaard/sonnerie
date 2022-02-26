@@ -4,6 +4,7 @@ use std::fs::File;
 use std::io::Seek;
 use std::path::{Path, PathBuf};
 
+use crate::segment_reader::DeleteMarker;
 use crate::key_reader::*;
 use crate::merge::Merge;
 use crate::record::Record;
@@ -16,7 +17,8 @@ use std::ops::Bound;
 /// [`get_filter`](#method.get_filter) or [`get_range`](#method.get_range) to select which keys to read.
 pub struct DatabaseReader {
 	_dir: PathBuf,
-	txes: Vec<(PathBuf, Reader)>,
+	txes: Vec<(usize, PathBuf, Reader)>,
+    filter_out: Vec<(usize, DeleteMarker)>,
 }
 
 impl DatabaseReader {
@@ -43,6 +45,8 @@ impl DatabaseReader {
 	/// the main database should not be opened. This is useful for
 	/// minor compaction.
 	fn new_opts(dir: &Path, include_main_db: bool) -> std::io::Result<DatabaseReader> {
+        use either::Either::{*, self};
+
 		let dir_reader = std::fs::read_dir(dir)?;
 
 		let mut paths = vec![];
@@ -57,7 +61,9 @@ impl DatabaseReader {
 		}
 
 		paths.sort();
-		let mut txes = Vec::with_capacity(paths.len());
+		let mut txes
+            : Vec<(usize, PathBuf, Reader)>
+            = Vec::with_capacity(paths.len());
 
 		if include_main_db {
 			let main_db_name = dir.join("main");
@@ -66,12 +72,23 @@ impl DatabaseReader {
 			if len == 0 {
 				eprintln!("disregarding main database, it is zero length");
 			} else {
-				let main_db = Reader::new(f)?;
-				txes.push((main_db_name, main_db));
+                match Reader::new(f)? {
+                    Left(main_db) => txes.push((0, main_db_name, main_db)),
+                    // the main database cannot be a delete marker
+                    Right(x) => unreachable!(),
+                }
 			}
 		}
 
-		for p in paths {
+        let filter_out = vec![];
+
+        let iter = paths
+            .into_iter()
+            .enumerate()
+            // we add 1 because we'd reserve the 0 for the main database,
+            // regardless of whether `include_main_db` or not
+            .map(|(txid, p)| (txid + 1, p));
+		for (txid, p) in iter {
 			let mut f = File::open(&p)?;
 			let len = f.seek(std::io::SeekFrom::End(0))? as usize;
 			if len == 0 {
@@ -79,11 +96,23 @@ impl DatabaseReader {
 				continue;
 			}
 			let r = Reader::new(f)?;
-			txes.push((p, r));
+
+            /*
+            let _: () = txid;
+            let _: () = p;
+            let _: () = r;
+            */
+
+            // match the reader if it is indeed a reader or a delete marker
+            match r {
+                Left(r) => txes.push((txid, p, r)),
+                Right(d) => filter_out.push((txid, d)),
+            }
 		}
 
 		Ok(DatabaseReader {
 			txes,
+            filter_out,
 			_dir: dir.to_owned(),
 		})
 	}
@@ -97,7 +126,7 @@ impl DatabaseReader {
 	/// This function also returns the path for `main`,
 	/// which is overwritten. Don't delete that.
 	pub fn transaction_paths(&self) -> Vec<PathBuf> {
-		self.txes.iter().map(|e| e.0.clone()).collect()
+		self.txes.iter().map(|(_, e, _)| e.clone()).collect()
 	}
 
 	/// Get a reader for only a single key
@@ -189,8 +218,13 @@ impl<'d> DatabaseKeyReader<'d> {
 			.txes
 			.iter()
 			.map(|tx| {
-				let filter =
-					tx.1.get_filter_range(self.matcher.clone(), self.prefix, self.range.clone());
+				let filter = tx
+                    .2
+                    .get_filter_range(
+                        self.matcher.clone(),
+                        self.prefix,
+                        self.range.clone()
+                    );
 				let b = filter.compressed_bytes();
 				(filter, b)
 			})
@@ -270,13 +304,14 @@ impl<'d> DatabaseKeyReader<'d> {
 impl<'d> IntoIterator for DatabaseKeyReader<'d> {
 	type Item = Record;
 	type IntoIter = DatabaseKeyIterator<'d>;
+
 	fn into_iter(self) -> Self::IntoIter {
 		self.check();
 
 		let mut readers = Vec::with_capacity(self.db.txes.len());
 
 		for tx in &self.db.txes {
-			readers.push(tx.1.get_filter_range(
+			readers.push(tx.2.get_filter_range(
 				self.matcher.clone(),
 				self.prefix,
 				self.range.clone(),
@@ -289,6 +324,7 @@ impl<'d> IntoIterator for DatabaseKeyReader<'d> {
 		});
 
 		DatabaseKeyIterator {
+            filter_out: &*self.db.filter_out,
 			merge: Box::new(merge),
 		}
 	}
@@ -299,6 +335,7 @@ impl<'d> IntoIterator for DatabaseKeyReader<'d> {
 /// Yields an [`Record`](record/struct.Record.html)
 /// for each row in the database, sorted by key and timestamp.
 pub struct DatabaseKeyIterator<'d> {
+    filter_out: &'d [(usize, DeleteMarker)],
 	merge: Box<Merge<StringKeyRangeReader<'d, 'd>, Record>>,
 }
 
@@ -306,6 +343,63 @@ impl<'d, 'k> Iterator for DatabaseKeyIterator<'d> {
 	type Item = Record;
 
 	fn next(&mut self) -> Option<Self::Item> {
-		self.merge.next()
+        use std::ops::Not as _;
+
+        let record_filter = |(txid, r): &(usize, Record)| {
+            // this returns a Some when this doesn't match any of our filters
+            // and a None when it matches any
+            let cur_ts = r.time();
+
+            self.filter_out
+                .iter()
+
+                // select only transactions that are indexed lower than the
+                // delete transaction
+                .filter(|(del_txid, _)| *txid < *del_txid)
+
+                // check if the record's timestamp is within filtering out
+                // this assumes that the filter_out is sorted ascending by 
+                // first timestamp (which should have been done in
+                // DatabaseReader::new())
+                .filter(|(_, filter)| r.time() < filter.first_timestamp)
+                .filter(|(_, filter)| r.time() <= filter.last_timestamp)
+
+                // if any of the filters went here (i.e. any() returns a true),
+                // then that means that filter found one filter that filters out
+                // the current record. that should be discarded
+                .any(|(_, filter)| {
+                    let key = r.key();
+
+                    // NOTE: these boolean operators are lazy, i.e. the next
+                    // operand after the boolean operator aren't evaluated
+                    // if it's proven that the earlier is false
+                    &*filter.first_key <= key
+                    && key <= &*filter.last_key
+                    && {
+                        match Wildcard::new(&filter.wildcard).as_regex() {
+                            Some(re) => re.is_match(key),
+                            None => {
+                                let starts_with = filter
+                                    .wildcard
+                                    .split("%")
+                                    .next()
+                                    .unwrap();
+
+                                key.starts_with(starts_with)
+                            }
+                        }
+                    }
+                })
+
+                // ofc, we invert the boolean
+                .not()
+        };
+
+        // we take a mutable reference on the iterator so we don't consume it
+        // then find the next record that pass through all the filters
+		self.merge
+            .as_mut()
+            .filter(record_filter)
+            .next()
 	}
 }

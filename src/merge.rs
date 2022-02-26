@@ -4,15 +4,15 @@ use std::sync::Arc;
 
 struct NextRecord<Source, Record>
 where
-	Source: Iterator<Item = Record>,
+	Source: Iterator<Item = (usize, Record)>,
 {
 	source: Source,
 	source_index: usize,
-	current_record: Option<Record>,
+	current_record: Option<(usize, Record)>,
 	compare_record: Arc<Box<dyn Fn(&Record, &Record) -> Ordering + Send + Sync>>,
 }
 
-impl<Source: Iterator<Item = Record>, Record> Ord for NextRecord<Source, Record> {
+impl<Source: Iterator<Item = (usize, Record)>, Record> Ord for NextRecord<Source, Record> {
 	fn cmp(&self, other: &Self) -> Ordering {
 		(self.compare_record)(
 			self.current_record.as_ref().unwrap(),
@@ -23,13 +23,13 @@ impl<Source: Iterator<Item = Record>, Record> Ord for NextRecord<Source, Record>
 	}
 }
 
-impl<Source: Iterator<Item = Record>, Record> PartialOrd for NextRecord<Source, Record> {
+impl<Source: Iterator<Item = (usize, Record)>, Record> PartialOrd for NextRecord<Source, Record> {
 	fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
 		Some(self.cmp(other))
 	}
 }
 
-impl<Source: Iterator<Item = Record>, Record> PartialEq for NextRecord<Source, Record> {
+impl<Source: Iterator<Item = (usize, Record)>, Record> PartialEq for NextRecord<Source, Record> {
 	fn eq(&self, other: &Self) -> bool {
 		(self.compare_record)(
 			self.current_record.as_ref().unwrap(),
@@ -39,21 +39,21 @@ impl<Source: Iterator<Item = Record>, Record> PartialEq for NextRecord<Source, R
 	}
 }
 
-impl<Source: Iterator<Item = Record>, Record> Eq for NextRecord<Source, Record> {}
+impl<Source: Iterator<Item = (usize, Record)>, Record> Eq for NextRecord<Source, Record> {}
 
 /// merge various iterators into the lowest value,
 /// choosing the last item as a tie-breaker
 pub struct Merge<Source, Record>
 where
-	Source: Iterator<Item = Record>,
+	Source: Iterator<Item = (usize, Record)>,
 {
-	sorter: BinaryHeap<NextRecord<Source, Record>>,
-	most_recent: Option<NextRecord<Source, Record>>,
+	sorter: BinaryHeap<(usize, NextRecord<Source, Record>)>,
+	most_recent: Option<(usize, NextRecord<Source, Record>)>,
 }
 
 impl<Source, Record> Merge<Source, Record>
 where
-	Source: Iterator<Item = Record>,
+	Source: Iterator<Item = (usize, Record)>,
 	Record: std::fmt::Debug,
 {
 	pub fn new<CompareRecord>(orig_sources: Vec<Source>, compare_record: CompareRecord) -> Self
@@ -66,7 +66,7 @@ where
 
 		let mut sorter = BinaryHeap::with_capacity(orig_sources.len());
 
-		for (idx, mut src) in orig_sources.into_iter().enumerate() {
+		for (idx, (tx_id, mut src)) in orig_sources.into_iter().enumerate() {
 			if let Some(rec) = src.next() {
 				sorter.push(NextRecord {
 					source: src,
@@ -120,14 +120,14 @@ where
 
 impl<Source, Record> Iterator for Merge<Source, Record>
 where
-	Source: Iterator<Item = Record>,
+	Source: Iterator<Item = (usize, Record)>,
 	Record: std::fmt::Debug,
 {
-	type Item = Record;
+	type Item = (usize, Record);
 
 	fn next(&mut self) -> Option<Self::Item> {
 		// refill the most recent one
-		if let Some(mut most_recent) = self.most_recent.take() {
+		if let Some((tx_idx, mut most_recent)) = self.most_recent.take() {
 			if let Some(current) = most_recent.source.next() {
 				// we short-circuit putting `current` on the heap again by testing the current top of the heap
 
@@ -160,15 +160,15 @@ where
 			}
 		}
 
-		let mut best = self.sorter.pop()?;
+		let (tx_id, mut best) = self.sorter.pop()?;
 
 		let item = best.current_record.take().expect("current record is null");
 
 		self.discard_repetitions(&item);
 
-		self.most_recent = Some(best);
+		self.most_recent = Some((tx_id, best));
 
-		Some(item)
+		Some((tx_id, item))
 	}
 }
 
