@@ -8,7 +8,7 @@ struct RecordProducer<'k> {
 }
 
 impl<'k> ParallelIterator for DatabaseKeyReader<'k> {
-	type Item = (usize, Record);
+	type Item = Record;
 
 	fn drive_unindexed<C>(self, consumer: C) -> C::Result
 	where
@@ -19,7 +19,7 @@ impl<'k> ParallelIterator for DatabaseKeyReader<'k> {
 }
 
 impl<'k> UnindexedProducer for RecordProducer<'k> {
-	type Item = (usize, Record);
+	type Item = Record;
 
 	fn split(self) -> (RecordProducer<'k>, Option<RecordProducer<'k>>) {
 		if let Some((first, second)) = self.reader.split() {

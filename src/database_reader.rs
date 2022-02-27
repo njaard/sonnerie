@@ -80,7 +80,7 @@ impl DatabaseReader {
 			}
 		}
 
-        let filter_out = vec![];
+        let mut filter_out = vec![];
 
         let iter = paths
             .into_iter()
@@ -302,7 +302,7 @@ impl<'d> DatabaseKeyReader<'d> {
 }
 
 impl<'d> IntoIterator for DatabaseKeyReader<'d> {
-	type Item = (usize, Record);
+	type Item = Record;
 	type IntoIter = DatabaseKeyIterator<'d>;
 
 	fn into_iter(self) -> Self::IntoIter {
@@ -342,39 +342,37 @@ pub struct DatabaseKeyIterator<'d> {
 }
 
 impl<'d, 'k> Iterator for DatabaseKeyIterator<'d> {
-	type Item = (usize, Record);
+	type Item = Record;
 
 	fn next(&mut self) -> Option<Self::Item> {
-        use std::ops::Not as _;
+        while let Some((txid, record)) = self.merge.next() {
+            let cur_ts = record.time();
 
-        let record_filter = |(txid, r): &(usize, Record)| {
-            // this returns a Some when this doesn't match any of our filters
-            // and a None when it matches any
-            let cur_ts = r.time();
-
-            self.filter_out
+            let is_filtered_out = self
+                .filter_out
                 .iter()
 
                 // select only transactions that are indexed lower than the
                 // delete transaction
-                .filter(|(del_txid, _)| *txid < *del_txid)
+                .filter(|(del_txid, _)| txid < *del_txid)
 
                 // check if the record's timestamp is within filtering out
                 // this assumes that the filter_out is sorted ascending by 
                 // first timestamp (which should have been done in
                 // DatabaseReader::new())
-                .filter(|(_, filter)| r.time() < filter.first_timestamp)
-                .filter(|(_, filter)| r.time() <= filter.last_timestamp)
+                .filter(|(_, filter)| record.time() < filter.first_timestamp)
+                .filter(|(_, filter)| record.time() <= filter.last_timestamp)
 
                 // if any of the filters went here (i.e. any() returns a true),
                 // then that means that filter found one filter that filters out
                 // the current record. that should be discarded
                 .any(|(_, filter)| {
-                    let key = r.key();
+                    let key = record.key();
 
                     // NOTE: these boolean operators are lazy, i.e. the next
                     // operand after the boolean operator aren't evaluated
-                    // if it's proven that the earlier is false
+                    // if it's proven that the earlier is false. this is great
+                    // because each of the operands are expensive
                     &*filter.first_key <= key
                     && key <= &*filter.last_key
                     && {
@@ -391,17 +389,13 @@ impl<'d, 'k> Iterator for DatabaseKeyIterator<'d> {
                             }
                         }
                     }
-                })
+                });
 
-                // ofc, we invert the boolean
-                .not()
-        };
+            if !is_filtered_out {
+                return Some(record)
+            }
+        }
 
-        // we take a mutable reference on the iterator so we don't consume it
-        // then find the next record that pass through all the filters
-		self.merge
-            .as_mut()
-            .filter(record_filter)
-            .next()
+        None
 	}
 }

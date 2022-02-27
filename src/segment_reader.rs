@@ -19,14 +19,14 @@ impl SegmentReader {
 
 		let len = file.seek(std::io::SeekFrom::End(0))? as usize;
 		let map = unsafe { memmap::Mmap::map(file)? };
-		let mut reader = SegmentReader {
+		let reader = SegmentReader {
             map,
             len
         };
 
         if let Some(segment) = reader.first() {
             // read the payload of the segment and check its first few bytes
-            let buffer = vec![];
+            let mut buffer = vec![];
             decode_into_with_unescaping(&mut buffer, segment.payload);
 
             if &buffer[0 .. 2] == "\u{007f}".as_bytes() {
@@ -293,7 +293,7 @@ pub (crate) fn decode_into_with_unescaping(into: &mut Vec<u8>, from: &[u8]) {
 	decoder.read_to_end(into).expect("lz4 decoding 2");
 }
 
-pub (crate) struct DeleteMarker {
+pub struct DeleteMarker {
     pub first_key: String,
     pub last_key: String,
     pub first_timestamp: NaiveDateTime,
