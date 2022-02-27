@@ -4,15 +4,16 @@ use std::sync::Arc;
 
 struct NextRecord<Source, Record>
 where
-	Source: Iterator<Item = (usize, Record)>,
+	Source: Iterator<Item = Record>,
 {
 	source: Source,
 	source_index: usize,
-	current_record: Option<(usize, Record)>,
+    tx_id: usize,
+	current_record: Option<Record>,
 	compare_record: Arc<Box<dyn Fn(&Record, &Record) -> Ordering + Send + Sync>>,
 }
 
-impl<Source: Iterator<Item = (usize, Record)>, Record> Ord for NextRecord<Source, Record> {
+impl<Source: Iterator<Item = Record>, Record> Ord for NextRecord<Source, Record> {
 	fn cmp(&self, other: &Self) -> Ordering {
 		(self.compare_record)(
 			self.current_record.as_ref().unwrap(),
@@ -23,13 +24,13 @@ impl<Source: Iterator<Item = (usize, Record)>, Record> Ord for NextRecord<Source
 	}
 }
 
-impl<Source: Iterator<Item = (usize, Record)>, Record> PartialOrd for NextRecord<Source, Record> {
+impl<Source: Iterator<Item = Record>, Record> PartialOrd for NextRecord<Source, Record> {
 	fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
 		Some(self.cmp(other))
 	}
 }
 
-impl<Source: Iterator<Item = (usize, Record)>, Record> PartialEq for NextRecord<Source, Record> {
+impl<Source: Iterator<Item = Record>, Record> PartialEq for NextRecord<Source, Record> {
 	fn eq(&self, other: &Self) -> bool {
 		(self.compare_record)(
 			self.current_record.as_ref().unwrap(),
@@ -39,24 +40,24 @@ impl<Source: Iterator<Item = (usize, Record)>, Record> PartialEq for NextRecord<
 	}
 }
 
-impl<Source: Iterator<Item = (usize, Record)>, Record> Eq for NextRecord<Source, Record> {}
+impl<Source: Iterator<Item = Record>, Record> Eq for NextRecord<Source, Record> {}
 
 /// merge various iterators into the lowest value,
 /// choosing the last item as a tie-breaker
 pub struct Merge<Source, Record>
 where
-	Source: Iterator<Item = (usize, Record)>,
+	Source: Iterator<Item = Record>,
 {
-	sorter: BinaryHeap<(usize, NextRecord<Source, Record>)>,
-	most_recent: Option<(usize, NextRecord<Source, Record>)>,
+	sorter: BinaryHeap<NextRecord<Source, Record>>,
+	most_recent: Option<NextRecord<Source, Record>>,
 }
 
 impl<Source, Record> Merge<Source, Record>
 where
-	Source: Iterator<Item = (usize, Record)>,
+	Source: Iterator<Item = Record>,
 	Record: std::fmt::Debug,
 {
-	pub fn new<CompareRecord>(orig_sources: Vec<Source>, compare_record: CompareRecord) -> Self
+	pub fn new<CompareRecord>(orig_sources: Vec<(usize, Source)>, compare_record: CompareRecord) -> Self
 	where
 		CompareRecord: Fn(&Record, &Record) -> Ordering + 'static + Send + Sync,
 	{
@@ -71,6 +72,7 @@ where
 				sorter.push(NextRecord {
 					source: src,
 					source_index: idx,
+                    tx_id,
 					current_record: Some(rec),
 					compare_record: compare_record.clone(),
 				});
@@ -120,14 +122,15 @@ where
 
 impl<Source, Record> Iterator for Merge<Source, Record>
 where
-	Source: Iterator<Item = (usize, Record)>,
+	Source: Iterator<Item = Record>,
 	Record: std::fmt::Debug,
 {
 	type Item = (usize, Record);
 
 	fn next(&mut self) -> Option<Self::Item> {
 		// refill the most recent one
-		if let Some((tx_idx, mut most_recent)) = self.most_recent.take() {
+		if let Some(mut most_recent) = self.most_recent.take() {
+            let tx_id = most_recent.tx_id;
 			if let Some(current) = most_recent.source.next() {
 				// we short-circuit putting `current` on the heap again by testing the current top of the heap
 
@@ -144,7 +147,7 @@ where
 						Ordering::Less => {
 							// short circuit completed
 							self.most_recent = Some(most_recent);
-							return Some(current);
+							return Some((tx_id, current));
 						} // done
 						Ordering::Greater => {}
 						Ordering::Equal => self.discard_repetitions(&current),
@@ -152,7 +155,7 @@ where
 				} else {
 					// short circuit completed
 					self.most_recent = Some(most_recent);
-					return Some(current);
+					return Some((tx_id, current));
 				}
 
 				most_recent.current_record = Some(current);
@@ -160,13 +163,14 @@ where
 			}
 		}
 
-		let (tx_id, mut best) = self.sorter.pop()?;
+		let mut best = self.sorter.pop()?;
+        let tx_id = best.tx_id;
 
 		let item = best.current_record.take().expect("current record is null");
 
 		self.discard_repetitions(&item);
 
-		self.most_recent = Some((tx_id, best));
+		self.most_recent = Some(best);
 
 		Some((tx_id, item))
 	}

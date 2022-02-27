@@ -25,9 +25,12 @@ impl Reader {
 	/// use [`DatabaseReader`](struct.DatabaseReader.html)
 	/// which provides a similar API.
 	pub fn new(mut r: std::fs::File) -> std::io::Result<Either<Reader, DeleteMarker>> {
-		Ok(Reader {
-			segments: SegmentReader::open(&mut r)?,
-		})
+        use Either::*;
+
+        match SegmentReader::open(&mut r)? {
+            Left(segments) => Ok( Left( Reader { segments } ) ),
+            Right(delete) => Ok(Right(delete)),
+        }
 	}
 
 	/// Get a reader for only a single key

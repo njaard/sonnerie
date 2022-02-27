@@ -302,7 +302,7 @@ impl<'d> DatabaseKeyReader<'d> {
 }
 
 impl<'d> IntoIterator for DatabaseKeyReader<'d> {
-	type Item = Record;
+	type Item = (usize, Record);
 	type IntoIter = DatabaseKeyIterator<'d>;
 
 	fn into_iter(self) -> Self::IntoIter {
@@ -310,12 +310,14 @@ impl<'d> IntoIterator for DatabaseKeyReader<'d> {
 
 		let mut readers = Vec::with_capacity(self.db.txes.len());
 
-		for tx in &self.db.txes {
-			readers.push(tx.2.get_filter_range(
+		for (txid, _path, reader) in self.db.txes.iter() {
+			let iter = reader.get_filter_range(
 				self.matcher.clone(),
 				self.prefix,
 				self.range.clone(),
-			));
+			);
+
+            readers.push((*txid, iter));
 		}
 		let merge = Merge::new(readers, |a, b| {
 			a.key()
@@ -340,7 +342,7 @@ pub struct DatabaseKeyIterator<'d> {
 }
 
 impl<'d, 'k> Iterator for DatabaseKeyIterator<'d> {
-	type Item = Record;
+	type Item = (usize, Record);
 
 	fn next(&mut self) -> Option<Self::Item> {
         use std::ops::Not as _;
