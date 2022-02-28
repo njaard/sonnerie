@@ -339,6 +339,15 @@ fn main() -> std::io::Result<()> {
 	Ok(())
 }
 
+// this prepares the database reader and creates a CreateTx, which then passes
+// its information to add_from_stream
+//
+// add_from_stream parses the timestamp and the key then uses
+// row_format::to_stored_format to obtain a bytewise interpretation of the 
+// payload, which is then passed into CreateTx::add_record
+//
+// delete's approach is to copy what add_from_stream does and call
+// CreateTx::add_record with a prepared bare payload
 fn add(dir: &Path, fmt: &str, ts_format: Option<&str>) {
 	let _db = DatabaseReader::new(dir).expect("opening db");
 	let mut tx = CreateTx::new(dir).expect("creating tx");
@@ -350,6 +359,11 @@ fn add(dir: &Path, fmt: &str, ts_format: Option<&str>) {
 	tx.commit().expect("failed to commit transaction");
 }
 
+// delete prepares a payload, as detailed by the specification
+// then delete passes the payload into CreateTx::add_record which requires a
+// key and format. CreateTx records the key which is set into the first_key and
+// last_key of the segment header. the format is for the format of the row in
+// the compressed payload. the payload is the payload
 fn delete(
     dir: &Path,
     first_key: Option<&str>,

@@ -44,9 +44,6 @@ pub fn add_from_stream<R: std::io::BufRead>(
 			ts = timestamp.parse().expect("parsing timestamp");
 		}
 
-        dbg!(&timestamp);
-        dbg!(&tail);
-
 		row_format
 			.to_stored_format(ts, tail, &mut row_data)
 			.unwrap_or_else(|_| panic!("parsing values \"{}\"", tail));

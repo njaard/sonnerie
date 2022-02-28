@@ -135,26 +135,19 @@ pub fn parse_row_format(human: &str) -> Box<dyn RowFormat> {
 }
 
 pub fn row_format_size(human: &str) -> Option<usize> {
-	let human = human.as_bytes();
-
-	let mut size = 0usize;
-
-	for t in human {
-		match t {
-			b'i' => size += 4,
-			b'u' => size += 4,
-			b'I' => size += 8,
-			b'U' => size += 8,
-			b'f' => size += 4,
-			b'F' => size += 8,
-			b's' => return None,
-			a => {
-				panic!("invalid format character '{}'", a);
-			}
-		}
-	}
-
-	Some(size)
+    match human {
+        "i" => return Some(4),
+        "u" => return Some(4),
+        "I" => return Some(8),
+        "U" => return Some(8),
+        "f" => return Some(4),
+        "F" => return Some(8),
+        "s" => return None,
+        "\u{007f}" => return None,
+        a => {
+            panic!("invalid format character '{}'", a);
+        }
+    }
 }
 
 pub (crate) trait Element {
