@@ -29,12 +29,27 @@ impl SegmentReader {
             let mut buffer = vec![];
             decode_into_with_unescaping(&mut buffer, segment.payload);
 
-            if &buffer[0 .. 2] == "\u{007f}".as_bytes() {
+            // bytes 0 .. 4 are the key length
+            // bytes 4 .. 8 are the format string length
+            // bytes 8 .. 12 are the payload length
+            // next comes the key string
+            // next comes the format string
+            // we need to read from bytes 12 + key_length to
+            // 12 + key_length + fmt_length to get the format string
+            
+            let key_length = BigEndian::read_u32(&buffer[0 .. 4]);
+            let format_length = BigEndian::read_u32(&buffer[4 .. 8]);
+
+            let fmt_from = (12 + key_length) as usize;
+            let fmt_to = (12 + key_length + format_length) as usize;
+
+            if &buffer[fmt_from .. fmt_to] == "\u{007f}".as_bytes() {
+                let start_idx = fmt_to + 2;
                 // we've found the format. now we have to write the marker by
                 // parsing all fields from it
                 
                 // first 8 bytes being the first timestamp
-                let ts_slice = &buffer[2 .. 10];
+                let ts_slice = &buffer[start_idx .. start_idx + 8];
                 let ts_u64 = BigEndian::read_u64(ts_slice);
                 let start_ts = NaiveDateTime::from_timestamp(
                     (ts_u64 / 1_000_000_000) as i64,
@@ -42,7 +57,7 @@ impl SegmentReader {
                 );
 
                 // next 8 bytes being the last timestamp
-                let ts_slice = &buffer[10 .. 18];
+                let ts_slice = &buffer[start_idx + 8 .. start_idx + 16];
                 let ts_u64 = BigEndian::read_u64(ts_slice);
                 let end_ts = NaiveDateTime::from_timestamp(
                     (ts_u64 / 1_000_000_000) as i64,
@@ -52,7 +67,7 @@ impl SegmentReader {
                 // next set of bytes is a varint containing the length of the
                 // wildcard
                 let (wc_len, next_slice) = unsigned_varint::decode::usize(
-                        &buffer[18 ..]
+                        &buffer[start_idx + 16 ..]
                     ).expect("Failed to read varint: not enough bytes");
 
                 // read, from the next slice, the slice for the filter string
@@ -293,6 +308,7 @@ pub (crate) fn decode_into_with_unescaping(into: &mut Vec<u8>, from: &[u8]) {
 	decoder.read_to_end(into).expect("lz4 decoding 2");
 }
 
+#[derive(Debug, Clone)]
 pub struct DeleteMarker {
     pub first_key: String,
     pub last_key: String,

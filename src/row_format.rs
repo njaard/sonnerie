@@ -85,14 +85,12 @@ impl RowFormat for RowFormatImpl {
 /// to indicate "typical size"). The typical size is useful
 /// for knowing how big to make the blocks
 pub fn parse_row_format(human: &str) -> Box<dyn RowFormat> {
-	let human = human.as_bytes();
-
 	let mut size = 0usize;
 	let mut has_size = true;
 	let mut elements: Vec<Box<dyn Element>> = vec![];
 	elements.reserve(human.len());
 
-	for t in human {
+	for t in human.bytes() {
 		match t {
 			b'i' => {
 				size += 4;

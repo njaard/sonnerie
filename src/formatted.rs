@@ -87,9 +87,6 @@ pub fn add_from_stream_with_fmt<R: std::io::BufRead>(
 		let (format, values) = split_one(tail).unwrap();
 		let row_format = parse_row_format(&format);
 
-        dbg!(&tail);
-        dbg!(ts);
-        dbg!(&values);
 		row_format
 			.to_stored_format(ts, values, &mut row_data)
 			.unwrap();

@@ -165,16 +165,16 @@ fn main() -> std::io::Result<()> {
         let filter = matches.value_of("filter");
         let before_key = matches.value_of("before-key");
         let after_key = matches.value_of("after-key");
-        let before_time = matches.value_of("before_time");
-        let after_time = matches.value_of("before_time");
-		let ts_format = matches.value_of("timestamp-format").unwrap_or("%FT%T");
+        let before_time = matches.value_of("before-time");
+        let after_time = matches.value_of("after-time");
+		let ts_format = matches.value_of("timestamp-format").unwrap_or("%F %T");
 
         delete(
             dir,
             after_key,
             before_key,
-            before_time,
             after_time,
+            before_time,
             filter,
             ts_format,
         );
@@ -391,8 +391,8 @@ fn delete(
     tx.delete(
         first_key.unwrap_or(""),
         last_key.unwrap_or(""),
-        before_time,
         after_time,
+        before_time,
         filter.unwrap_or("%"),
     ).expect("deleting rows");
     tx.commit().expect("failed to commit transaction");

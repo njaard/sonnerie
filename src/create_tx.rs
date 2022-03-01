@@ -62,8 +62,8 @@ impl CreateTx {
         &mut self,
         first_key: &str,
         last_key: &str,
-        before_time: u64,
         after_time: u64,
+        before_time: u64,
         filter: &str,
     ) -> std::result::Result<(), crate::write::WriteFailure> {
         use core::ops::IndexMut as _;
@@ -84,34 +84,39 @@ impl CreateTx {
                 + last_key.as_bytes().len()
                 + 16 // length of two u64's
                 + 27 // practical maximum length of three varints
+                + 1 // the format
         );
-        
+
         // bypass RowFormat entirely, we're going to be building row_data here
         // so we don't get to pass str values
 
         // write first key
-        ElementString.to_stored_format(&first_key, &mut row_data);
-        dbg!(row_data.len());
+        ElementString.to_stored_format(
+            &first_key,
+            &mut row_data,
+        );
         
         // write first timestamp
         row_data.extend_from_slice(&[0; 8]);
-        BigEndian::write_u64(row_data.index_mut(row_data.len() - 8 .. row_data.len()), before_time);
-        dbg!(row_data.len());
+        BigEndian::write_u64(
+            row_data.index_mut(row_data.len() - 8 .. row_data.len()),
+            before_time,
+        );
         
         // write last timestamp
         row_data.extend_from_slice(&[0; 8]);
-        BigEndian::write_u64(row_data.index_mut(row_data.len() - 8 .. row_data.len()), after_time);
-        dbg!(row_data.len());
+        BigEndian::write_u64(
+            row_data.index_mut(row_data.len() - 8 .. row_data.len()),
+            after_time
+        );
         
         // write key wildcard
         ElementString.to_stored_format(&filter, &mut row_data);
-        dbg!(row_data.len());
         
         // write last key
         ElementString.to_stored_format(&last_key, &mut row_data);
-        dbg!(row_data.len());
 
-        self.add_record(&key, dbg!(&format), &row_data)
+        self.add_record(&key, &format, &row_data)
     }
 
 	/// Commit the transaction, but give it a specific name.

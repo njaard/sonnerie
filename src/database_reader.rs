@@ -97,12 +97,6 @@ impl DatabaseReader {
 			}
 			let r = Reader::new(f)?;
 
-            /*
-            let _: () = txid;
-            let _: () = p;
-            let _: () = r;
-            */
-
             // match the reader if it is indeed a reader or a delete marker
             match r {
                 Left(r) => txes.push((txid, p, r)),
@@ -360,7 +354,11 @@ impl<'d, 'k> Iterator for DatabaseKeyIterator<'d> {
                 // this assumes that the filter_out is sorted ascending by 
                 // first timestamp (which should have been done in
                 // DatabaseReader::new())
-                .filter(|(_, filter)| record.time() < filter.first_timestamp)
+                .filter(|(_, filter)| {
+                    let record_time = record.time();
+                    filter.first_timestamp <= record_time &&
+                        record_time <= filter.last_timestamp
+                })
                 .filter(|(_, filter)| record.time() <= filter.last_timestamp)
 
                 // if any of the filters went here (i.e. any() returns a true),
@@ -369,24 +367,26 @@ impl<'d, 'k> Iterator for DatabaseKeyIterator<'d> {
                 .any(|(_, filter)| {
                     let key = record.key();
 
-                    // NOTE: these boolean operators are lazy, i.e. the next
-                    // operand after the boolean operator aren't evaluated
-                    // if it's proven that the earlier is false. this is great
-                    // because each of the operands are expensive
-                    &*filter.first_key <= key
-                    && key <= &*filter.last_key
-                    && {
-                        match Wildcard::new(&filter.wildcard).as_regex() {
-                            Some(re) => re.is_match(key),
-                            None => {
-                                let starts_with = filter
-                                    .wildcard
-                                    .split("%")
-                                    .next()
-                                    .unwrap();
+                    if !(&*filter.first_key <= key) {
+                        return false
+                    }
 
-                                key.starts_with(starts_with)
-                            }
+                    if &*filter.last_key != "" {
+                        if !(key <= &*filter.last_key) {
+                            return false;
+                        }
+                    }
+
+                    match Wildcard::new(&filter.wildcard).as_regex() {
+                        Some(re) => re.is_match(key),
+                        None => {
+                            let starts_with = filter
+                                .wildcard
+                                .split("%")
+                                .next()
+                                .unwrap();
+
+                            key.starts_with(starts_with)
                         }
                     }
                 });
