@@ -100,14 +100,14 @@ impl CreateTx {
         row_data.extend_from_slice(&[0; 8]);
         BigEndian::write_u64(
             row_data.index_mut(row_data.len() - 8 .. row_data.len()),
-            before_time,
+            after_time,
         );
         
         // write last timestamp
         row_data.extend_from_slice(&[0; 8]);
         BigEndian::write_u64(
             row_data.index_mut(row_data.len() - 8 .. row_data.len()),
-            after_time
+            before_time,
         );
         
         // write key wildcard

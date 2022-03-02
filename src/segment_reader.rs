@@ -28,6 +28,7 @@ impl SegmentReader {
             // read the payload of the segment and check its first few bytes
             let mut buffer = vec![];
             decode_into_with_unescaping(&mut buffer, segment.payload);
+            dbg!(&buffer);
 
             // bytes 0 .. 4 are the key length
             // bytes 4 .. 8 are the format string length
@@ -67,7 +68,7 @@ impl SegmentReader {
                 // next set of bytes is a varint containing the length of the
                 // wildcard
                 let (wc_len, next_slice) = unsigned_varint::decode::usize(
-                        &buffer[start_idx + 16 ..]
+                        dbg!(&buffer[start_idx + 16 ..])
                     ).expect("Failed to read varint: not enough bytes");
 
                 // read, from the next slice, the slice for the filter string

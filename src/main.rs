@@ -41,7 +41,7 @@ fn main() -> std::io::Result<()> {
 					.arg(Arg::with_name("filter")
 						.help("select the keys to print out, \"%\" is the wildcard")
 						.takes_value(true)
-						.required_unless_one(&["before-key", "after-key"])
+						.required_unless_one(&["before-key", "after-key", "before-time", "after-time"])
 					)
 					.arg(Arg::with_name("before-key")
 						.long("before-key")
@@ -63,6 +63,11 @@ fn main() -> std::io::Result<()> {
 						.help("delete values after (and including) this time, as --before-time")
 						.takes_value(true)
 					)
+					.arg(Arg::with_name("timestamp-format")
+						.long("timestamp-format")
+						.help("instead of \"%F %T\", output in this strftime format")
+						.takes_value(true)
+                    )
             )
 			.subcommand(
 				SubCommand::with_name("compact")
@@ -368,8 +373,8 @@ fn delete(
     dir: &Path,
     first_key: Option<&str>,
     last_key: Option<&str>,
-    before_time: Option<&str>,
     after_time: Option<&str>,
+    before_time: Option<&str>,
     filter: Option<&str>,
     ts_format: &str,
 ) {
@@ -381,12 +386,12 @@ fn delete(
             .timestamp_nanos() as Timestamp
     };
 
-    let before_time = before_time
-        .map(|bt| ts_converter(bt, ts_format))
-        .unwrap_or(u64::MAX);
     let after_time = after_time
         .map(|at| ts_converter(at, ts_format))
         .unwrap_or(0);
+    let before_time = before_time
+        .map(|bt| ts_converter(bt, ts_format))
+        .unwrap_or(u64::MAX);
 
     tx.delete(
         first_key.unwrap_or(""),
