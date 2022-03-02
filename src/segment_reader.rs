@@ -28,7 +28,6 @@ impl SegmentReader {
             // read the payload of the segment and check its first few bytes
             let mut buffer = vec![];
             decode_into_with_unescaping(&mut buffer, segment.payload);
-            dbg!(&buffer);
 
             // bytes 0 .. 4 are the key length
             // bytes 4 .. 8 are the format string length
@@ -45,12 +44,25 @@ impl SegmentReader {
             let fmt_to = (12 + key_length + format_length) as usize;
 
             if &buffer[fmt_from .. fmt_to] == "\u{007f}".as_bytes() {
-                let start_idx = fmt_to + 2;
-                // we've found the format. now we have to write the marker by
-                // parsing all fields from it
-                
+                // first varint will be the size of payload minus 8 bytes
+                // it will be disregarded
+                let (_payload_len, next_slice) = unsigned_varint::decode::usize(
+                        &buffer[fmt_to .. ]
+                    ).expect("Failed to read varint: not enough bytes");
+
+                // second varint will be the size of first key
+                let (fkey_len, next_slice) = unsigned_varint::decode::usize(
+                        next_slice
+                    ).expect("Failed to read varint; not enough bytes");
+                // if second varint is nonzero, the next set of bytes is the
+                // first key
+                let first_key_slice = &next_slice[0 .. fkey_len];
+                let first_key = String::from_utf8(first_key_slice.to_owned())
+                    .expect("Failed to read string: not a valid utf-8 string");
+                assert_eq!(first_key, segment.first_key);
+
                 // first 8 bytes being the first timestamp
-                let ts_slice = &buffer[start_idx .. start_idx + 8];
+                let ts_slice = &next_slice[fkey_len .. ];
                 let ts_u64 = BigEndian::read_u64(ts_slice);
                 let start_ts = NaiveDateTime::from_timestamp(
                     (ts_u64 / 1_000_000_000) as i64,
@@ -58,7 +70,7 @@ impl SegmentReader {
                 );
 
                 // next 8 bytes being the last timestamp
-                let ts_slice = &buffer[start_idx + 8 .. start_idx + 16];
+                let ts_slice = &next_slice[fkey_len + 8 .. fkey_len + 16];
                 let ts_u64 = BigEndian::read_u64(ts_slice);
                 let end_ts = NaiveDateTime::from_timestamp(
                     (ts_u64 / 1_000_000_000) as i64,
@@ -68,7 +80,7 @@ impl SegmentReader {
                 // next set of bytes is a varint containing the length of the
                 // wildcard
                 let (wc_len, next_slice) = unsigned_varint::decode::usize(
-                        dbg!(&buffer[start_idx + 16 ..])
+                        &next_slice[fkey_len + 16 ..]
                     ).expect("Failed to read varint: not enough bytes");
 
                 // read, from the next slice, the slice for the filter string
@@ -78,17 +90,22 @@ impl SegmentReader {
 
                 // next set of bytes is also another varint containing the
                 // length of the last key
-                let (wc_len, next_slice) = unsigned_varint::decode::usize(
+                let (lkey_len, next_slice) = unsigned_varint::decode::usize(
                         &next_slice[wc_len ..],
                     ).expect("Failed to read varint: not enough bytes");
 
                 // read from the next slice, the slice for the last key
-                let last_key_slice = &next_slice[0 .. wc_len];
-                let last_key = String::from_utf8(last_key_slice.to_owned());
+                let last_key_slice = &next_slice[0 .. lkey_len];
+                let last_key = String::from_utf8(last_key_slice.to_owned())
+                    .expect("Failed to read string: not a valid utf-8 string");
+                // unlike here, we cannot test whether segment's last key equals
+                // this last key because the interface that sets the first key
+                // up in the segment header bases on the first key in a
+                // different interface
 
                 let marker = DeleteMarker {
-                    first_key: segment.first_key.to_owned(),
-                    last_key: segment.last_key.to_owned(),
+                    first_key: first_key,
+                    last_key: last_key,
                     first_timestamp: start_ts,
                     last_timestamp: end_ts,
                     wildcard,
