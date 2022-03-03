@@ -100,7 +100,7 @@ fn basic1() {
 	}
 
 	let w = std::fs::File::open(t.path().join("w")).unwrap();
-	let o = Reader::new(w).unwrap();
+	let o = Reader::new(w).unwrap().left().unwrap();
 	let s = o.get("ab");
 	let mut i = s.into_iter();
 	let a = i.next().unwrap();
@@ -143,7 +143,7 @@ fn basic3() {
 	}
 
 	let w = std::fs::File::open(t.path().join("w")).unwrap();
-	let o = Reader::new(w).unwrap();
+	let o = Reader::new(w).unwrap().left().unwrap();
 	let s = o.get_range(..);
 	let mut i = s.into_iter();
 	let a = i.next().unwrap();
@@ -204,7 +204,7 @@ fn basic2() {
 	}
 
 	let w = std::fs::File::open(t.path().join("w")).unwrap();
-	let o = Reader::new(w).unwrap();
+	let o = Reader::new(w).unwrap().left().unwrap();
 	o.print_info(&mut std::io::stderr()).unwrap();
 	let s = o.get("aa");
 	let i = s.into_iter();
@@ -244,7 +244,7 @@ fn basic_huge() {
 	}
 
 	let w = std::fs::File::open(t.path().join("w")).unwrap();
-	let o = Reader::new(w).unwrap();
+	let o = Reader::new(w).unwrap().left().unwrap();
 	let s = o.get("abc");
 	let i = s.into_iter();
 	assert_eq!(i.count(), 901000);
@@ -269,7 +269,7 @@ fn range_before() {
 	}
 
 	let w = std::fs::File::open(t.path().join("main")).unwrap();
-	let o = Reader::new(w).unwrap();
+	let o = Reader::new(w).unwrap().left().unwrap();
 	let s = o.get_range(..="bb");
 	assert_eq!(s.into_iter().count(), 2);
 	let s = o.get_range(.."bb");
@@ -296,7 +296,7 @@ fn multicolumn() {
 	}
 
 	let w = std::fs::File::open(t.path().join("main")).unwrap();
-	let o = Reader::new(w).unwrap();
+	let o = Reader::new(w).unwrap().left().unwrap();
 	let s = o.get_range("a".."z");
 	let mut i = s.into_iter();
 
@@ -360,7 +360,7 @@ fn multicolumn_string() {
 	}
 
 	let w = std::fs::File::open(t.path().join("main")).unwrap();
-	let o = Reader::new(w).unwrap();
+	let o = Reader::new(w).unwrap().left().unwrap();
 	let s = o.get_range("a".."z");
 	let mut i = s.into_iter();
 
@@ -407,7 +407,7 @@ fn write() {
 	}
 
 	let mut w = std::fs::File::open(t.path().join("w")).unwrap();
-	let o = SegmentReader::open(&mut w).unwrap();
+	let o = SegmentReader::open(&mut w).unwrap().left().unwrap();
 	o.print_info(&mut std::io::stderr()).unwrap();
 	let _ = o.find("a").unwrap();
 }
@@ -517,7 +517,7 @@ fn store_string1() {
 	}
 
 	let w = std::fs::File::open(t.path().join("main")).unwrap();
-	let o = Reader::new(w).unwrap();
+	let o = Reader::new(w).unwrap().left().unwrap();
 	let s = o.get_range("a".."z");
 	let mut i = s.into_iter();
 
@@ -578,7 +578,7 @@ fn homogenic_types() {
 	}
 
 	let w = std::fs::File::open(t.path().join("main")).unwrap();
-	let o = Reader::new(w).unwrap();
+	let o = Reader::new(w).unwrap().left().unwrap();
 	let s = o.get_range("a".."z");
 	let mut i = s.into_iter();
 
@@ -622,14 +622,14 @@ fn keys_split() {
 		w.finish().unwrap();
 	}
 	let mut f = std::fs::File::open(&t.path().join("w")).unwrap();
-	let o = SegmentReader::open(&mut f).unwrap();
+	let o = SegmentReader::open(&mut f).unwrap().left().unwrap();
 	{
 		let f = o.first().unwrap();
 		assert!(o.segment_after(&f).is_some());
 	}
 
 	let w = std::fs::File::open(t.path().join("w")).unwrap();
-	let o = Reader::new(w).unwrap();
+	let o = Reader::new(w).unwrap().left().unwrap();
 	let s = o.get("aa").count();
 	assert_eq!(s, 1050000);
 }
@@ -699,7 +699,7 @@ fn parallel_split3() {
 
 	{
 		let mut w = std::fs::File::open(_t.path().join("main")).unwrap();
-		let segs = SegmentReader::open(&mut w).unwrap();
+		let segs = SegmentReader::open(&mut w).unwrap().left().unwrap();
 		let mut seg = segs.first();
 		while seg.is_some() {
 			let s = seg.as_ref().unwrap();

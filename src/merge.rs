@@ -183,8 +183,8 @@ mod tests {
 	fn merge1() {
 		let a = [1u32, 2, 3, 4, 5].iter().cloned();
 		let b = [1, 3, 5, 8, 10].iter().cloned();
-		let merged = crate::merge::Merge::new(vec![a, b], |a, b| a.cmp(b));
-		let merged: Vec<_> = merged.collect();
+		let merged = crate::merge::Merge::new(vec![(0, a), (1, b)], |a, b| a.cmp(b));
+		let merged: Vec<_> = merged.map(|(_, x)| x).collect();
 		assert_eq!(merged, vec![1u32, 2, 3, 4, 5, 8, 10]);
 	}
 
@@ -192,8 +192,8 @@ mod tests {
 	fn merge_with_key() {
 		let a = [1u32, 2, 3, 4, 5].iter().rev().cloned();
 		let b = [1, 3, 5, 8, 10].iter().rev().cloned();
-		let merged = crate::merge::Merge::new(vec![a, b], |a, b| a.cmp(b).reverse());
-		let mut merged: Vec<_> = merged.collect();
+		let merged = crate::merge::Merge::new(vec![(0, a), (1, b)], |a, b| a.cmp(b).reverse());
+		let mut merged: Vec<_> = merged.map(|(_, x)| x).collect();
 		merged.reverse();
 		assert_eq!(merged, vec![1u32, 2, 3, 4, 5, 8, 10]);
 	}
@@ -203,15 +203,16 @@ mod tests {
 	fn merge_check_sorting() {
 		let a = [1u32, 2, 3, 4, 5].iter().cloned();
 		let b = [1, 3, 5, 8, 10].iter().cloned();
-		let merged = crate::merge::Merge::new(vec![a, b], |a, b| a.cmp(b).reverse());
-		let _: Vec<_> = merged.collect();
+		let merged = crate::merge::Merge::new(vec![(0, a), (1, b)], |a, b| a.cmp(b).reverse());
+		let _: Vec<_> = merged.map(|(_, x)| x).collect();
 	}
 
 	#[test]
 	fn merge_str() {
 		let a = ["a", "b"].iter().cloned();
 		let b = ["a", "c"].iter().cloned();
-		let mut merged = crate::merge::Merge::new(vec![a, b], |a, b| a.cmp(b));
+		let mut merged = crate::merge::Merge::new(vec![(0, a), (1, b)], |a, b| a.cmp(b))
+            .map(|(_, x)| x);
 		assert_eq!(merged.next().unwrap(), "a");
 		assert_eq!(merged.next().unwrap(), "b");
 		assert_eq!(merged.next().unwrap(), "c");
@@ -221,7 +222,8 @@ mod tests {
 	fn merge_last_reader() {
 		let a = [("b", 1), ("c", 1), ("d", 1), ("e", 1)].iter().cloned();
 		let b = [("c", 2)].iter().cloned();
-		let mut merged = crate::merge::Merge::new(vec![a, b], |a, b| a.0.cmp(&b.0));
+		let mut merged = crate::merge::Merge::new(vec![(0, a), (1, b)], |a, b| a.0.cmp(&b.0))
+            .map(|(_, x)| x);
 		//assert_eq!(merged.next().unwrap(), ("a",2));
 		assert_eq!(merged.next().unwrap(), ("b", 1));
 		assert_eq!(merged.next().unwrap(), ("c", 2));
@@ -233,7 +235,8 @@ mod tests {
 	fn merge_count_owns() {
 		let first = Rc::new(0);
 		let a = vec![first.clone(), Rc::new(1)];
-		let mut merged = crate::merge::Merge::new(vec![a.into_iter()], |a, b| a.cmp(b));
+		let mut merged = crate::merge::Merge::new(vec![(0, a.into_iter())], |a, b| a.cmp(b))
+            .map(|(_, x)| x);
 		assert_eq!(Rc::strong_count(&first), 2);
 		let m = merged.next().unwrap();
 		assert_eq!(Rc::strong_count(&m), 2);
