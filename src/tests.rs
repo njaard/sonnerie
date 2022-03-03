@@ -752,3 +752,28 @@ fn high_level_reader() {
 		vec![("Hello World".to_string(), "Rustacean".to_string())]
 	);
 }
+
+#[test]
+fn string_records() {
+	let t = tempfile::TempDir::new().unwrap();
+	let data = "\
+		ab\t2010-01-01_00:00:01\ts\tHello1\n\
+		ab\t2010-01-01_00:00:02\ts\tHello\\ World\n\
+		ab\t2010-01-01_00:00:03\ts\tHello\\ Planet\n\
+		ab\t2010-01-01_00:00:04\ts\tHello\\ Universe\n\
+		";
+
+	{
+		let mut tx = CreateTx::new(t.path()).expect("creating tx");
+
+		add_from_stream_with_fmt(&mut tx, &mut std::io::Cursor::new(data), Some("%F_%T"))
+			.expect("writing");
+		tx.commit_to(&t.path().join("main")).expect("committed");
+	}
+	let r = DatabaseReader::new(t.path()).unwrap();
+	let a: Vec<String> = r.get("ab").map(|m| m.value()).collect();
+	assert_eq!(
+		&format!("{a:?}"),
+		"[\"Hello1\", \"Hello World\", \"Hello Planet\", \"Hello Universe\"]"
+	);
+}

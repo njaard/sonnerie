@@ -115,7 +115,7 @@ impl Reader {
 			current_fmt_text_len: 0,
 			current_fmt_text_pos: 0,
 			current_key_data_end: 0,
-			current_record_len: 0,
+			current_record_len: None,
 			current_key_record_len: None,
 			_phantom: std::marker::PhantomData,
 			prefix,
@@ -145,7 +145,7 @@ pub struct StringKeyRangeReader<'rdr, 'k> {
 	/// the size of the current record for this key (from the format string)
 	current_key_record_len: Option<usize>,
 	/// the size of the current record for this key (decoded or from the format string)
-	current_record_len: usize,
+	current_record_len: Option<usize>,
 	current_key_data_end: usize, // where the next key begins
 	pub(crate) segment: Option<Segment<'rdr>>,
 	pub(crate) matcher: Option<regex::Regex>,
@@ -257,20 +257,16 @@ impl<'rdr, 'k> StringKeyRangeReader<'rdr, 'k> {
 				let pos = pos + klen + flen;
 
 				if let Some(len) = crate::row_format::row_format_size(fmt) {
-					self.current_record_len = len;
+					self.current_record_len = Some(len);
 					self.pos = pos;
-					self.current_key_data_end = pos + dlen;
 					self.current_key_record_len = Some(len);
 				} else {
-					let data = &data[pos..pos + dlen];
-					let (len, tail) = unsigned_varint::decode::u64(data).unwrap();
-					let varint_len = data.len() - tail.len();
-
-					self.current_record_len = len as usize;
-					self.pos = pos + varint_len;
-					self.current_key_data_end = pos + dlen;
+					self.current_record_len = None;
 					self.current_key_record_len = None;
 				}
+
+				self.pos = pos;
+				self.current_key_data_end = pos + dlen;
 
 				match self.range.start_bound() {
 					Bound::Included(v) => {
@@ -339,16 +335,28 @@ impl<'rdr, 'k> Iterator for StringKeyRangeReader<'rdr, 'k> {
 
 		let data = self.decoded.clone();
 
+		let current_record_len;
+		if let Some(len) = self.current_record_len {
+			current_record_len = len;
+		} else {
+			let data = &data[self.pos..];
+			let (len, tail) = unsigned_varint::decode::u64(data).unwrap();
+			let varint_len = data.len() - tail.len();
+			self.pos += varint_len;
+			current_record_len = len as usize;
+		}
+
 		let r = Record {
 			key_pos: self.current_key_text_pos,
 			key_len: self.current_key_text_len,
 			fmt_pos: self.current_fmt_text_pos,
 			fmt_len: self.current_fmt_text_len,
 			value_pos: self.pos,
-			value_len: self.current_record_len + crate::record::TIMESTAMP_SIZE,
+			value_len: current_record_len + crate::record::TIMESTAMP_SIZE,
 			data,
 		};
-		self.pos += self.current_record_len + crate::record::TIMESTAMP_SIZE;
+
+		self.pos += current_record_len + crate::record::TIMESTAMP_SIZE;
 		Some(r)
 	}
 }

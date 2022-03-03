@@ -1,3 +1,6 @@
+# 0.6.5: Unreleased
+* Fix a critical bug in string fields, when multiple appear consecutively.
+
 # 0.6.4: 2022-02-17
 * Fix bug in which sometimes the latest version of a record did not take
 precedence.
