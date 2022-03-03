@@ -503,5 +503,13 @@ fn compact(
 		}
 	}
 
+    if major {
+        for txfile in db.delete_txes_paths() {
+            if let Err(e) = std::fs::remove_file(&txfile) {
+                eprintln!("warning: failed to remove {:?}: {}", txfile, e);
+            }
+        }
+    }
+
 	Ok(())
 }

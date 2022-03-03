@@ -18,7 +18,7 @@ use std::ops::Bound;
 pub struct DatabaseReader {
 	_dir: PathBuf,
 	txes: Vec<(usize, PathBuf, Reader)>,
-    filter_out: Vec<(usize, DeleteMarker)>,
+    filter_out: Vec<(usize, PathBuf, DeleteMarker)>,
 }
 
 impl DatabaseReader {
@@ -100,7 +100,7 @@ impl DatabaseReader {
             // match the reader if it is indeed a reader or a delete marker
             match r {
                 Left(r) => txes.push((txid, p, r)),
-                Right(d) => filter_out.push((txid, d)),
+                Right(d) => filter_out.push((txid, p, d)),
             }
 		}
 
@@ -122,6 +122,13 @@ impl DatabaseReader {
 	pub fn transaction_paths(&self) -> Vec<PathBuf> {
 		self.txes.iter().map(|(_, e, _)| e.clone()).collect()
 	}
+
+    /// Get the filenames of the transactions that have a delete marker in them.
+    pub fn delete_txes_paths<'a>(&'a self) -> impl Iterator<Item = &Path> {
+        self.filter_out
+            .iter()
+            .map(|(_, path, _)| &**path)
+    }
 
 	/// Get a reader for only a single key
 	///
@@ -331,7 +338,7 @@ impl<'d> IntoIterator for DatabaseKeyReader<'d> {
 /// Yields an [`Record`](record/struct.Record.html)
 /// for each row in the database, sorted by key and timestamp.
 pub struct DatabaseKeyIterator<'d> {
-    filter_out: &'d [(usize, DeleteMarker)],
+    filter_out: &'d [(usize, PathBuf, DeleteMarker)],
 	merge: Box<Merge<StringKeyRangeReader<'d, 'd>, Record>>,
 }
 
@@ -348,23 +355,23 @@ impl<'d, 'k> Iterator for DatabaseKeyIterator<'d> {
 
                 // select only transactions that are indexed lower than the
                 // delete transaction
-                .filter(|(del_txid, _)| txid < *del_txid)
+                .filter(|(del_txid, _, _)| txid < *del_txid)
 
                 // check if the record's timestamp is within filtering out
                 // this assumes that the filter_out is sorted ascending by 
                 // first timestamp (which should have been done in
                 // DatabaseReader::new())
-                .filter(|(_, filter)| {
+                .filter(|(_, _, filter)| {
                     let record_time = record.time();
                     filter.first_timestamp <= record_time &&
                         record_time <= filter.last_timestamp
                 })
-                .filter(|(_, filter)| record.time() <= filter.last_timestamp)
+                .filter(|(_, _, filter)| record.time() <= filter.last_timestamp)
 
                 // if any of the filters went here (i.e. any() returns a true),
                 // then that means that filter found one filter that filters out
                 // the current record. that should be discarded
-                .any(|(_, filter)| {
+                .any(|(_, _, filter)| {
                     let key = record.key();
 
                     if !(&*filter.first_key <= key) {
