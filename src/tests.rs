@@ -802,9 +802,7 @@ fn configurable_delete_test(
     with_time_end: bool,
     with_key_start: bool,
     with_key_end: bool,
-    wildcard: &str,
-    merge: bool,
-    major_if_merge: bool,
+    wildcard_str: &str,
 ) {
     use chrono::naive::NaiveDateTime;
     use either::Either::*;
@@ -829,8 +827,6 @@ fn configurable_delete_test(
         .into_iter()
         .collect::<Vec<_>>();
 
-    dbg!(&times);
-
     let begin_time = with_time_start
         .then(|| times[times.len() / 3]);
     let end_time = with_time_end
@@ -847,120 +843,92 @@ fn configurable_delete_test(
     {
         let mut tx = CreateTx::new(t.path()).unwrap();
         tx.delete(
-            begin_key.as_deref().unwrap_or(""),
-            end_key.as_deref().unwrap_or(""),
+            dbg!(begin_key.as_deref().unwrap_or("")),
+            dbg!(end_key.as_deref().unwrap_or("")),
             dbg!(begin_time.map(|t| t.timestamp_nanos() as u64).unwrap_or(0)),
             dbg!(end_time.map(|t| t.timestamp_nanos() as u64).unwrap_or(u64::MAX)),
-            wildcard,
+            dbg!(wildcard_str),
         );
         tx.commit();
-
-        if merge {
-            if major_if_merge {
-                crate::compact(t.path(), true, None, "%FT%T");
-            }
-
-            else {
-                crate::compact(t.path(), false, None, "%FT%T");
-            }
-        }
     }
 
     // perform read
     let db = DatabaseReader::new(t.path()).unwrap();
-    let wildcard = match crate::wildcard::Wildcard::new(wildcard).as_regex() {
+    let wildcard = match crate::wildcard::Wildcard::new(wildcard_str).as_regex()
+    {
         Some(re) => Left(re),
-        None => Right(wildcard.split("%").next().unwrap()),
+        None => Right(wildcard_str.split("%").next().unwrap()),
     };
 
+    let mut len = 0;
     for record in db.get_range(..).into_iter() {
+        len += 1;
+
         let time = record.time();
-        match (begin_time.as_ref(), end_time.as_ref()) {
-            (Some(b), Some(e)) => {
-                assert!(dbg!(time) < dbg!(*b) || dbg!(*e) < time);
-                assert!(!(*b <= time && time <= *e));
-            },
-
-            (Some(b), _) => {
-                assert!(time < *b);
-                assert!(!(*b <= time));
-            },
-
-            (_, Some(e)) => {
-                assert!(*e < time);
-                assert!(!(time <= *e));
-            },
-
-            // unreachable in a sense that there should be no record
-            _ => unreachable!(),
-        }
-
         let key = record.key();
-        match (begin_key.as_deref(), end_key.as_deref()) {
-            (Some(b), Some(e)) => {
-                assert!(key < b || e < key);
-                assert!(!(b <= key && key <= e));
-            },
 
-            (Some(b), _) => {
-                assert!(key < b);
-                assert!(!(b <= key));
-            },
+        let unerased_by_time = match (begin_time.as_ref(), end_time.as_ref()) {
+            (Some(b), Some(e)) => time < *b || *e < time,
+            (Some(b), _) => time < *b,
+            (_, Some(e)) => *e < time,
+            _ => false,
+        };
 
-            (_, Some(e)) => {
-                assert!(e < key);
-                assert!(!(key <= e));
-            },
+        let unerased_by_key = match (begin_key.as_deref(), end_key.as_deref()) {
+            (Some(b), Some(e)) => key < b || e < key,
+            (Some(b), _) => key < b,
+            (_, Some(e)) => e < key,
+            _ => false,
+        };
 
-            _ => {},
-        }
+        let unerased_by_wildcard = match &wildcard {
+            Left(re) => !re.is_match(key),
+            Right(start) => !key.starts_with(start),
+        };
 
-        match &wildcard {
-            Left(re) => assert!(re.is_match(key)),
-            Right(start) => assert!(key.starts_with(start)),
-        }
+        let unerased = unerased_by_time
+            || unerased_by_key
+            || unerased_by_wildcard;
+
+        assert!(unerased);
     };
+
+    if !with_time_start && !with_time_end && !with_key_start && !with_key_end
+        && wildcard_str == "%" {
+        assert_eq!(len, 0);
+    }
 }
 
 // TODO: if this test can be split into individual tests using a macro, be my
 // guest
 #[test]
 fn generalized_delete() {
+    use std::thread::spawn;
+
+    let mut threads = vec![];
+
     for with_time_start in vec![false, true] {
         for with_time_end in vec![false, true] {
             for with_key_start in vec![false, true] {
                 for with_key_end in vec![false, true] {
                     for wildcard in vec!["%", "a%", "%a", "a%a", "%a%"] {
-                        for merge in [false, true] {
-                            if merge {
-                                for major_if_merge in [false, true] {
-                                    configurable_delete_test(
-                                        with_time_start,
-                                        with_time_end,
-                                        with_key_start,
-                                        with_key_end,
-                                        wildcard,
-                                        merge,
-                                        major_if_merge,
-                                    );
-                                }
-                            }
-
-                            else {
-                                configurable_delete_test(
-                                    with_time_start,
-                                    with_time_end,
-                                    with_key_start,
-                                    with_key_end,
-                                    wildcard,
-                                    merge,
-                                    false
-                                );
-                            }
-                        }
+                        let handle = spawn(move ||
+                            configurable_delete_test(
+                                with_time_start,
+                                with_time_end,
+                                with_key_start,
+                                with_key_end,
+                                wildcard,
+                            )
+                        );
+                        threads.push(handle);
                     }
                 }
             }
         }
+    }
+
+    for thread in threads {
+        thread.join();
     }
 }
