@@ -4,10 +4,10 @@ use std::fs::File;
 use std::io::Seek;
 use std::path::{Path, PathBuf};
 
-use crate::segment_reader::DeleteMarker;
 use crate::key_reader::*;
 use crate::merge::Merge;
 use crate::record::Record;
+use crate::segment_reader::DeleteMarker;
 use crate::Wildcard;
 use std::ops::Bound;
 
@@ -18,7 +18,7 @@ use std::ops::Bound;
 pub struct DatabaseReader {
 	_dir: PathBuf,
 	txes: Vec<(usize, PathBuf, Reader)>,
-    filter_out: Vec<(usize, PathBuf, DeleteMarker)>,
+	filter_out: Vec<(usize, PathBuf, DeleteMarker)>,
 }
 
 impl DatabaseReader {
@@ -45,7 +45,7 @@ impl DatabaseReader {
 	/// the main database should not be opened. This is useful for
 	/// minor compaction.
 	fn new_opts(dir: &Path, include_main_db: bool) -> std::io::Result<DatabaseReader> {
-        use either::Either::{*, self};
+		use either::Either::{self, *};
 
 		let dir_reader = std::fs::read_dir(dir)?;
 
@@ -61,9 +61,7 @@ impl DatabaseReader {
 		}
 
 		paths.sort();
-		let mut txes
-            : Vec<(usize, PathBuf, Reader)>
-            = Vec::with_capacity(paths.len());
+		let mut txes: Vec<(usize, PathBuf, Reader)> = Vec::with_capacity(paths.len());
 
 		if include_main_db {
 			let main_db_name = dir.join("main");
@@ -72,22 +70,22 @@ impl DatabaseReader {
 			if len == 0 {
 				eprintln!("disregarding main database, it is zero length");
 			} else {
-                match Reader::new(f)? {
-                    Left(main_db) => txes.push((0, main_db_name, main_db)),
-                    // the main database cannot be a delete marker
-                    Right(x) => unreachable!(),
-                }
+				match Reader::new(f)? {
+					Left(main_db) => txes.push((0, main_db_name, main_db)),
+					// the main database cannot be a delete marker
+					Right(_) => unreachable!(),
+				}
 			}
 		}
 
-        let mut filter_out = vec![];
+		let mut filter_out = vec![];
 
-        let iter = paths
-            .into_iter()
-            .enumerate()
-            // we add 1 because we'd reserve the 0 for the main database,
-            // regardless of whether `include_main_db` or not
-            .map(|(txid, p)| (txid + 1, p));
+		let iter = paths
+			.into_iter()
+			.enumerate()
+			// we add 1 because we'd reserve the 0 for the main database,
+			// regardless of whether `include_main_db` or not
+			.map(|(txid, p)| (txid + 1, p));
 		for (txid, p) in iter {
 			let mut f = File::open(&p)?;
 			let len = f.seek(std::io::SeekFrom::End(0))? as usize;
@@ -97,16 +95,16 @@ impl DatabaseReader {
 			}
 			let r = Reader::new(f)?;
 
-            // match the reader if it is indeed a reader or a delete marker
-            match r {
-                Left(r) => txes.push((txid, p, r)),
-                Right(d) => filter_out.push((txid, p, d)),
-            }
+			// match the reader if it is indeed a reader or a delete marker
+			match r {
+				Left(r) => txes.push((txid, p, r)),
+				Right(d) => filter_out.push((txid, p, d)),
+			}
 		}
 
 		Ok(DatabaseReader {
 			txes,
-            filter_out,
+			filter_out,
 			_dir: dir.to_owned(),
 		})
 	}
@@ -123,12 +121,10 @@ impl DatabaseReader {
 		self.txes.iter().map(|(_, e, _)| e.clone()).collect()
 	}
 
-    /// Get the filenames of the transactions that have a delete marker in them.
-    pub fn delete_txes_paths<'a>(&'a self) -> impl Iterator<Item = &Path> {
-        self.filter_out
-            .iter()
-            .map(|(_, path, _)| &**path)
-    }
+	/// Get the filenames of the transactions that have a delete marker in them.
+	pub fn delete_txes_paths<'a>(&'a self) -> impl Iterator<Item = &Path> {
+		self.filter_out.iter().map(|(_, path, _)| &**path)
+	}
 
 	/// Get a reader for only a single key
 	///
@@ -219,13 +215,8 @@ impl<'d> DatabaseKeyReader<'d> {
 			.txes
 			.iter()
 			.map(|tx| {
-				let filter = tx
-                    .2
-                    .get_filter_range(
-                        self.matcher.clone(),
-                        self.prefix,
-                        self.range.clone()
-                    );
+				let filter =
+					tx.2.get_filter_range(self.matcher.clone(), self.prefix, self.range.clone());
 				let b = filter.compressed_bytes();
 				(filter, b)
 			})
@@ -312,13 +303,10 @@ impl<'d> IntoIterator for DatabaseKeyReader<'d> {
 		let mut readers = Vec::with_capacity(self.db.txes.len());
 
 		for (txid, _path, reader) in self.db.txes.iter() {
-			let iter = reader.get_filter_range(
-				self.matcher.clone(),
-				self.prefix,
-				self.range.clone(),
-			);
+			let iter =
+				reader.get_filter_range(self.matcher.clone(), self.prefix, self.range.clone());
 
-            readers.push((*txid, iter));
+			readers.push((*txid, iter));
 		}
 		let merge = Merge::new(readers, |a, b| {
 			a.key()
@@ -327,7 +315,7 @@ impl<'d> IntoIterator for DatabaseKeyReader<'d> {
 		});
 
 		DatabaseKeyIterator {
-            filter_out: &*self.db.filter_out,
+			filter_out: &*self.db.filter_out,
 			merge: Box::new(merge),
 		}
 	}
@@ -338,7 +326,7 @@ impl<'d> IntoIterator for DatabaseKeyReader<'d> {
 /// Yields an [`Record`](record/struct.Record.html)
 /// for each row in the database, sorted by key and timestamp.
 pub struct DatabaseKeyIterator<'d> {
-    filter_out: &'d [(usize, PathBuf, DeleteMarker)],
+	filter_out: &'d [(usize, PathBuf, DeleteMarker)],
 	merge: Box<Merge<StringKeyRangeReader<'d, 'd>, Record>>,
 }
 
@@ -346,63 +334,53 @@ impl<'d, 'k> Iterator for DatabaseKeyIterator<'d> {
 	type Item = Record;
 
 	fn next(&mut self) -> Option<Self::Item> {
-        while let Some((txid, record)) = self.merge.next() {
-            let cur_ts = record.time();
+		while let Some((txid, record)) = self.merge.next() {
+			let is_filtered_out = self
+				.filter_out
+				.iter()
+				// select only transactions that are indexed lower than the
+				// delete transaction
+				.filter(|(del_txid, _, _)| txid < *del_txid)
+				// check if the record's timestamp is within filtering out
+				// this assumes that the filter_out is sorted ascending by
+				// first timestamp (which should have been done in
+				// DatabaseReader::new())
+				.filter(|(_, _, filter)| {
+					let record_time = record.time();
+					filter.first_timestamp <= record_time && record_time <= filter.last_timestamp
+				})
+				.filter(|(_, _, filter)| record.time() <= filter.last_timestamp)
+				// if any of the filters went here (i.e. any() returns a true),
+				// then that means that filter found one filter that filters out
+				// the current record. that should be discarded
+				.any(|(_, _, filter)| {
+					let key = record.key();
 
-            let is_filtered_out = self
-                .filter_out
-                .iter()
+					if !(&*filter.first_key <= key) {
+						return false;
+					}
 
-                // select only transactions that are indexed lower than the
-                // delete transaction
-                .filter(|(del_txid, _, _)| txid < *del_txid)
+					if &*filter.last_key != "" {
+						if !(key <= &*filter.last_key) {
+							return false;
+						}
+					}
 
-                // check if the record's timestamp is within filtering out
-                // this assumes that the filter_out is sorted ascending by 
-                // first timestamp (which should have been done in
-                // DatabaseReader::new())
-                .filter(|(_, _, filter)| {
-                    let record_time = record.time();
-                    filter.first_timestamp <= record_time &&
-                        record_time <= filter.last_timestamp
-                })
-                .filter(|(_, _, filter)| record.time() <= filter.last_timestamp)
+					match Wildcard::new(&filter.wildcard).as_regex() {
+						Some(re) => re.is_match(key),
+						None => {
+							let starts_with = filter.wildcard.split("%").next().unwrap();
 
-                // if any of the filters went here (i.e. any() returns a true),
-                // then that means that filter found one filter that filters out
-                // the current record. that should be discarded
-                .any(|(_, _, filter)| {
-                    let key = record.key();
+							key.starts_with(starts_with)
+						}
+					}
+				});
 
-                    if !(&*filter.first_key <= key) {
-                        return false
-                    }
+			if !is_filtered_out {
+				return Some(record);
+			}
+		}
 
-                    if &*filter.last_key != "" {
-                        if !(key <= &*filter.last_key) {
-                            return false;
-                        }
-                    }
-
-                    match Wildcard::new(&filter.wildcard).as_regex() {
-                        Some(re) => re.is_match(key),
-                        None => {
-                            let starts_with = filter
-                                .wildcard
-                                .split("%")
-                                .next()
-                                .unwrap();
-
-                            key.starts_with(starts_with)
-                        }
-                    }
-                });
-
-            if !is_filtered_out {
-                return Some(record)
-            }
-        }
-
-        None
+		None
 	}
 }

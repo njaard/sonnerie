@@ -58,66 +58,66 @@ impl CreateTx {
 		self.writer.add_record(key, format, data)
 	}
 
-    pub fn delete(
-        &mut self,
-        first_key: &str,
-        last_key: &str,
-        after_time: u64,
-        before_time: u64,
-        filter: &str,
-    ) -> std::result::Result<(), crate::write::WriteFailure> {
-        use core::ops::IndexMut as _;
+	pub fn delete(
+		&mut self,
+		first_key: &str,
+		last_key: &str,
+		after_time: u64,
+		before_time: u64,
+		filter: &str,
+	) -> std::result::Result<(), crate::write::WriteFailure> {
+		use core::ops::IndexMut as _;
 
-        use crate::row_format::{
-            Element as _,
-            ElementString,
-        };
-        use byteorder::{BigEndian, ByteOrder as _};
+		use crate::row_format::{Element as _, ElementString};
+		use byteorder::{BigEndian, ByteOrder as _};
 
-        // write row format
-        let key = first_key;
-        let format = "\u{007f}";
+		// write row format
+		let key = first_key;
+		let format = "\u{007f}";
 
-        let mut row_data = Vec::with_capacity(
-            first_key.as_bytes().len()
+		let mut row_data = Vec::with_capacity(
+			first_key.as_bytes().len()
                 + filter.as_bytes().len()
                 + last_key.as_bytes().len()
                 + 16 // length of two u64's
                 + 27 // practical maximum length of three varints
-                + 1 // the format
-        );
+                + 1, // the format
+		);
 
-        // bypass RowFormat entirely, we're going to be building row_data here
-        // so we don't get to pass str values
+		// bypass RowFormat entirely, we're going to be building row_data here
+		// so we don't get to pass str values
 
-        // write first key
-        ElementString.to_stored_format(
-            &first_key,
-            &mut row_data,
-        );
-        
-        // write first timestamp
-        row_data.extend_from_slice(&[0; 8]);
-        BigEndian::write_u64(
-            row_data.index_mut(row_data.len() - 8 .. row_data.len()),
-            after_time,
-        );
-        
-        // write last timestamp
-        row_data.extend_from_slice(&[0; 8]);
-        BigEndian::write_u64(
-            row_data.index_mut(row_data.len() - 8 .. row_data.len()),
-            before_time,
-        );
-        
-        // write key wildcard
-        ElementString.to_stored_format(&filter, &mut row_data);
-        
-        // write last key
-        ElementString.to_stored_format(&last_key, &mut row_data);
+		// write first key
+		ElementString
+			.to_stored_format(&first_key, &mut row_data)
+			.unwrap();
 
-        self.add_record(&key, &format, &row_data)
-    }
+		// write first timestamp
+		row_data.extend_from_slice(&[0; 8]);
+		BigEndian::write_u64(
+			row_data.index_mut(row_data.len() - 8..row_data.len()),
+			after_time,
+		);
+
+		// write last timestamp
+		row_data.extend_from_slice(&[0; 8]);
+		BigEndian::write_u64(
+			row_data.index_mut(row_data.len() - 8..row_data.len()),
+			before_time,
+		);
+
+		// write key wildcard
+		ElementString
+			.to_stored_format(&filter, &mut row_data)
+			.unwrap();
+
+		// write last key
+		ElementString
+			.to_stored_format(&last_key, &mut row_data)
+			.unwrap();
+
+		self.add_record(&key, &format, &row_data)
+	}
 
 	/// Commit the transaction, but give it a specific name.
 	///

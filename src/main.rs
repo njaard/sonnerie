@@ -167,23 +167,23 @@ fn main() -> std::io::Result<()> {
 
 		compact(dir, matches.is_present("major"), gegnum, ts_format).expect("compacting");
 	} else if let Some(matches) = matches.subcommand_matches("delete") {
-        let filter = matches.value_of("filter");
-        let before_key = matches.value_of("before-key");
-        let after_key = matches.value_of("after-key");
-        let before_time = matches.value_of("before-time");
-        let after_time = matches.value_of("after-time");
+		let filter = matches.value_of("filter");
+		let before_key = matches.value_of("before-key");
+		let after_key = matches.value_of("after-key");
+		let before_time = matches.value_of("before-time");
+		let after_time = matches.value_of("after-time");
 		let ts_format = matches.value_of("timestamp-format").unwrap_or("%F %T");
 
-        delete(
-            dir,
-            after_key,
-            before_key,
-            after_time,
-            before_time,
-            filter,
-            ts_format,
-        );
-    } else if let Some(matches) = matches.subcommand_matches("read") {
+		delete(
+			dir,
+			after_key,
+			before_key,
+			after_time,
+			before_time,
+			filter,
+			ts_format,
+		);
+	} else if let Some(matches) = matches.subcommand_matches("read") {
 		let print_format = matches.is_present("print-format");
 		let timestamp_format = matches.value_of("timestamp-format").unwrap_or("%F %T");
 		let timestamp_nanos = matches.is_present("timestamp-nanos");
@@ -348,7 +348,7 @@ fn main() -> std::io::Result<()> {
 // its information to add_from_stream
 //
 // add_from_stream parses the timestamp and the key then uses
-// row_format::to_stored_format to obtain a bytewise interpretation of the 
+// row_format::to_stored_format to obtain a bytewise interpretation of the
 // payload, which is then passed into CreateTx::add_record
 //
 // delete's approach is to copy what add_from_stream does and call
@@ -370,37 +370,38 @@ fn add(dir: &Path, fmt: &str, ts_format: Option<&str>) {
 // last_key of the segment header. the format is for the format of the row in
 // the compressed payload. the payload is the payload
 fn delete(
-    dir: &Path,
-    first_key: Option<&str>,
-    last_key: Option<&str>,
-    after_time: Option<&str>,
-    before_time: Option<&str>,
-    filter: Option<&str>,
-    ts_format: &str,
+	dir: &Path,
+	first_key: Option<&str>,
+	last_key: Option<&str>,
+	after_time: Option<&str>,
+	before_time: Option<&str>,
+	filter: Option<&str>,
+	ts_format: &str,
 ) {
-    let mut tx = CreateTx::new(dir).expect("creating tx");
+	let mut tx = CreateTx::new(dir).expect("creating tx");
 
-    let ts_converter = |time: &str, ts_format: &str| {
-        chrono::NaiveDateTime::parse_from_str(time, ts_format)
-            .expect("parsing timestamp according to format")
-            .timestamp_nanos() as Timestamp
-    };
+	let ts_converter = |time: &str, ts_format: &str| {
+		chrono::NaiveDateTime::parse_from_str(time, ts_format)
+			.expect("parsing timestamp according to format")
+			.timestamp_nanos() as Timestamp
+	};
 
-    let after_time = after_time
-        .map(|at| ts_converter(at, ts_format))
-        .unwrap_or(0);
-    let before_time = before_time
-        .map(|bt| ts_converter(bt, ts_format))
-        .unwrap_or(u64::MAX);
+	let after_time = after_time
+		.map(|at| ts_converter(at, ts_format))
+		.unwrap_or(0);
+	let before_time = before_time
+		.map(|bt| ts_converter(bt, ts_format))
+		.unwrap_or(u64::MAX);
 
-    tx.delete(
-        first_key.unwrap_or(""),
-        last_key.unwrap_or(""),
-        after_time,
-        before_time,
-        filter.unwrap_or("%"),
-    ).expect("deleting rows");
-    tx.commit().expect("failed to commit transaction");
+	tx.delete(
+		first_key.unwrap_or(""),
+		last_key.unwrap_or(""),
+		after_time,
+		before_time,
+		filter.unwrap_or("%"),
+	)
+	.expect("deleting rows");
+	tx.commit().expect("failed to commit transaction");
 }
 
 fn compact(
@@ -503,13 +504,13 @@ fn compact(
 		}
 	}
 
-    if major {
-        for txfile in db.delete_txes_paths() {
-            if let Err(e) = std::fs::remove_file(&txfile) {
-                eprintln!("warning: failed to remove {:?}: {}", txfile, e);
-            }
-        }
-    }
+	if major {
+		for txfile in db.delete_txes_paths() {
+			if let Err(e) = std::fs::remove_file(&txfile) {
+				eprintln!("warning: failed to remove {:?}: {}", txfile, e);
+			}
+		}
+	}
 
 	Ok(())
 }

@@ -8,7 +8,7 @@ where
 {
 	source: Source,
 	source_index: usize,
-    tx_id: usize,
+	tx_id: usize,
 	current_record: Option<Record>,
 	compare_record: Arc<Box<dyn Fn(&Record, &Record) -> Ordering + Send + Sync>>,
 }
@@ -57,7 +57,10 @@ where
 	Source: Iterator<Item = Record>,
 	Record: std::fmt::Debug,
 {
-	pub fn new<CompareRecord>(orig_sources: Vec<(usize, Source)>, compare_record: CompareRecord) -> Self
+	pub fn new<CompareRecord>(
+		orig_sources: Vec<(usize, Source)>,
+		compare_record: CompareRecord,
+	) -> Self
 	where
 		CompareRecord: Fn(&Record, &Record) -> Ordering + 'static + Send + Sync,
 	{
@@ -72,7 +75,7 @@ where
 				sorter.push(NextRecord {
 					source: src,
 					source_index: idx,
-                    tx_id,
+					tx_id,
 					current_record: Some(rec),
 					compare_record: compare_record.clone(),
 				});
@@ -130,7 +133,7 @@ where
 	fn next(&mut self) -> Option<Self::Item> {
 		// refill the most recent one
 		if let Some(mut most_recent) = self.most_recent.take() {
-            let tx_id = most_recent.tx_id;
+			let tx_id = most_recent.tx_id;
 			if let Some(current) = most_recent.source.next() {
 				// we short-circuit putting `current` on the heap again by testing the current top of the heap
 
@@ -164,7 +167,7 @@ where
 		}
 
 		let mut best = self.sorter.pop()?;
-        let tx_id = best.tx_id;
+		let tx_id = best.tx_id;
 
 		let item = best.current_record.take().expect("current record is null");
 
@@ -211,8 +214,8 @@ mod tests {
 	fn merge_str() {
 		let a = ["a", "b"].iter().cloned();
 		let b = ["a", "c"].iter().cloned();
-		let mut merged = crate::merge::Merge::new(vec![(0, a), (1, b)], |a, b| a.cmp(b))
-            .map(|(_, x)| x);
+		let mut merged =
+			crate::merge::Merge::new(vec![(0, a), (1, b)], |a, b| a.cmp(b)).map(|(_, x)| x);
 		assert_eq!(merged.next().unwrap(), "a");
 		assert_eq!(merged.next().unwrap(), "b");
 		assert_eq!(merged.next().unwrap(), "c");
@@ -222,8 +225,8 @@ mod tests {
 	fn merge_last_reader() {
 		let a = [("b", 1), ("c", 1), ("d", 1), ("e", 1)].iter().cloned();
 		let b = [("c", 2)].iter().cloned();
-		let mut merged = crate::merge::Merge::new(vec![(0, a), (1, b)], |a, b| a.0.cmp(&b.0))
-            .map(|(_, x)| x);
+		let mut merged =
+			crate::merge::Merge::new(vec![(0, a), (1, b)], |a, b| a.0.cmp(&b.0)).map(|(_, x)| x);
 		//assert_eq!(merged.next().unwrap(), ("a",2));
 		assert_eq!(merged.next().unwrap(), ("b", 1));
 		assert_eq!(merged.next().unwrap(), ("c", 2));
@@ -235,8 +238,8 @@ mod tests {
 	fn merge_count_owns() {
 		let first = Rc::new(0);
 		let a = vec![first.clone(), Rc::new(1)];
-		let mut merged = crate::merge::Merge::new(vec![(0, a.into_iter())], |a, b| a.cmp(b))
-            .map(|(_, x)| x);
+		let mut merged =
+			crate::merge::Merge::new(vec![(0, a.into_iter())], |a, b| a.cmp(b)).map(|(_, x)| x);
 		assert_eq!(Rc::strong_count(&first), 2);
 		let m = merged.next().unwrap();
 		assert_eq!(Rc::strong_count(&m), 2);

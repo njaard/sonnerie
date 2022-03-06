@@ -10,8 +10,8 @@ use std::ops::Bound;
 use std::ops::Bound::*;
 use std::ops::RangeBounds;
 //use std::rc::Rc;
-use std::sync::Arc as Rc;
 use either::Either;
+use std::sync::Arc as Rc;
 
 /// Read and filter keys from a single transaction file
 pub struct Reader {
@@ -25,12 +25,12 @@ impl Reader {
 	/// use [`DatabaseReader`](struct.DatabaseReader.html)
 	/// which provides a similar API.
 	pub fn new(mut r: std::fs::File) -> std::io::Result<Either<Reader, DeleteMarker>> {
-        use Either::*;
+		use Either::*;
 
-        match SegmentReader::open(&mut r)? {
-            Left(segments) => Ok( Left( Reader { segments } ) ),
-            Right(delete) => Ok(Right(delete)),
-        }
+		match SegmentReader::open(&mut r)? {
+			Left(segments) => Ok(Left(Reader { segments })),
+			Right(delete) => Ok(Right(delete)),
+		}
 	}
 
 	/// Get a reader for only a single key

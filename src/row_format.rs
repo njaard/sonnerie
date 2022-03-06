@@ -146,7 +146,7 @@ pub fn row_format_size(human: &str) -> Option<usize> {
 			b'f' => size += 4,
 			b'F' => size += 8,
 			b's' => return None,
-            b'\x7f' => return None,
+			b'\x7f' => return None,
 			a => {
 				panic!("invalid format character '{}'", a);
 			}
@@ -156,7 +156,7 @@ pub fn row_format_size(human: &str) -> Option<usize> {
 	Some(size)
 }
 
-pub (crate) trait Element {
+pub(crate) trait Element {
 	fn to_stored_format<'s>(&self, from: &'s str, dest: &mut Vec<u8>) -> Result<&'s str, String>;
 	fn to_protocol_format<'a>(
 		&self,
@@ -339,7 +339,7 @@ impl Element for ElementF64 {
 	}
 }
 
-pub (crate) struct ElementString;
+pub(crate) struct ElementString;
 impl Element for ElementString {
 	fn to_stored_format<'s>(&self, from: &'s str, dest: &mut Vec<u8>) -> Result<&'s str, String> {
 		let (head, tail) = escape_string::split_one(from)
