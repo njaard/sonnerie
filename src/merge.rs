@@ -8,7 +8,6 @@ where
 {
 	source: Source,
 	source_index: usize,
-	tx_id: usize,
 	current_record: Option<Record>,
 	compare_record: Arc<Box<dyn Fn(&Record, &Record) -> Ordering + Send + Sync>>,
 }
@@ -70,12 +69,11 @@ where
 
 		let mut sorter = BinaryHeap::with_capacity(orig_sources.len());
 
-		for (idx, (tx_id, mut src)) in orig_sources.into_iter().enumerate() {
+		for (tx_id, mut src) in orig_sources.into_iter() {
 			if let Some(rec) = src.next() {
 				sorter.push(NextRecord {
 					source: src,
-					source_index: idx,
-					tx_id,
+					source_index: tx_id,
 					current_record: Some(rec),
 					compare_record: compare_record.clone(),
 				});
@@ -133,9 +131,11 @@ where
 	fn next(&mut self) -> Option<Self::Item> {
 		// refill the most recent one
 		if let Some(mut most_recent) = self.most_recent.take() {
-			let tx_id = most_recent.tx_id;
+			let source_index = most_recent.source_index;
+
 			if let Some(current) = most_recent.source.next() {
-				// we short-circuit putting `current` on the heap again by testing the current top of the heap
+				// we short-circuit putting `current` on the heap again by
+				// testing the current top of the heap
 
 				if let Some(next) = self.sorter.peek() {
 					match (most_recent.compare_record)(
@@ -150,7 +150,7 @@ where
 						Ordering::Less => {
 							// short circuit completed
 							self.most_recent = Some(most_recent);
-							return Some((tx_id, current));
+							return Some((source_index, current));
 						} // done
 						Ordering::Greater => {}
 						Ordering::Equal => self.discard_repetitions(&current),
@@ -158,7 +158,7 @@ where
 				} else {
 					// short circuit completed
 					self.most_recent = Some(most_recent);
-					return Some((tx_id, current));
+					return Some((source_index, current));
 				}
 
 				most_recent.current_record = Some(current);
@@ -167,7 +167,7 @@ where
 		}
 
 		let mut best = self.sorter.pop()?;
-		let tx_id = best.tx_id;
+		let tx_id = best.source_index;
 
 		let item = best.current_record.take().expect("current record is null");
 
