@@ -5,7 +5,6 @@ use crate::segment::*;
 use crate::segment_reader::*;
 use crate::Wildcard;
 use byteorder::{BigEndian, ByteOrder};
-use std::io::Read;
 use std::ops::Bound;
 use std::ops::Bound::*;
 use std::ops::RangeBounds;

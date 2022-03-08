@@ -11,6 +11,10 @@ use crate::segment_reader::DeleteMarker;
 use crate::Wildcard;
 use std::ops::Bound;
 
+use chrono::NaiveDateTime;
+use either::Either;
+use regex::Regex;
+
 /// Read a database in key-timestamp sorted format.
 ///
 /// Open a database with [`new`](#method.new) and then [`get`](#method.get),
@@ -45,7 +49,7 @@ impl DatabaseReader {
 	/// the main database should not be opened. This is useful for
 	/// minor compaction.
 	fn new_opts(dir: &Path, include_main_db: bool) -> std::io::Result<DatabaseReader> {
-		use either::Either::{self, *};
+		use Either::*;
 
 		let dir_reader = std::fs::read_dir(dir)?;
 
@@ -314,8 +318,20 @@ impl<'d> IntoIterator for DatabaseKeyReader<'d> {
 				.then_with(|| a.timestamp_nanos().cmp(&b.timestamp_nanos()))
 		});
 
+		let filter_out = self
+			.db
+			.filter_out
+			.iter()
+			.map(|(txid, _path, dm)| {
+				(
+					txid.clone(),
+					DeleteMarkerPrecomputed::from_delete_marker(&dm),
+				)
+			})
+			.collect::<Vec<_>>();
+
 		DatabaseKeyIterator {
-			filter_out: &*self.db.filter_out,
+			filter_out: filter_out,
 			merge: Box::new(merge),
 		}
 	}
@@ -326,8 +342,47 @@ impl<'d> IntoIterator for DatabaseKeyReader<'d> {
 /// Yields an [`Record`](record/struct.Record.html)
 /// for each row in the database, sorted by key and timestamp.
 pub struct DatabaseKeyIterator<'d> {
-	filter_out: &'d [(usize, PathBuf, DeleteMarker)],
+	filter_out: Vec<(usize, DeleteMarkerPrecomputed<'d>)>,
 	merge: Box<Merge<StringKeyRangeReader<'d, 'd>, Record>>,
+}
+
+struct DeleteMarkerPrecomputed<'a> {
+	pub first_key: &'a str,
+	pub last_key: &'a str,
+	pub first_timestamp: NaiveDateTime,
+	pub last_timestamp: NaiveDateTime,
+	pub wildcard: Either<Regex, &'a str>,
+}
+
+impl<'a> DeleteMarkerPrecomputed<'a> {
+	fn from_delete_marker(marker: &'a DeleteMarker) -> DeleteMarkerPrecomputed<'a> {
+		use Either::*;
+
+		let wildcard = match Wildcard::new(&*marker.wildcard).as_regex() {
+			Some(re) => Left(re),
+			None => {
+				let starts_with = marker.wildcard.split("%").next().unwrap();
+				Right(starts_with)
+			}
+		};
+
+		DeleteMarkerPrecomputed {
+			first_key: &*marker.first_key,
+			last_key: &*marker.last_key,
+			first_timestamp: marker.first_timestamp,
+			last_timestamp: marker.last_timestamp,
+			wildcard,
+		}
+	}
+
+	fn wildcard_matches(&self, key: &str) -> bool {
+		use Either::*;
+
+		match &self.wildcard {
+			Left(re) => re.is_match(key),
+			Right(start) => key.starts_with(start),
+		}
+	}
 }
 
 impl<'d, 'k> Iterator for DatabaseKeyIterator<'d> {
@@ -340,20 +395,20 @@ impl<'d, 'k> Iterator for DatabaseKeyIterator<'d> {
 				.iter()
 				// select only transactions that are indexed lower than the
 				// delete transaction
-				.filter(|(del_txid, _, _)| txid < *del_txid)
+				.filter(|(del_txid, _)| txid < *del_txid)
 				// check if the record's timestamp is within filtering out
 				// this assumes that the filter_out is sorted ascending by
 				// first timestamp (which should have been done in
 				// DatabaseReader::new())
-				.filter(|(_, _, filter)| {
+				.filter(|(_, filter)| {
 					let record_time = record.time();
 					filter.first_timestamp <= record_time && record_time <= filter.last_timestamp
 				})
-				.filter(|(_, _, filter)| record.time() <= filter.last_timestamp)
+				.filter(|(_, filter)| record.time() <= filter.last_timestamp)
 				// if any of the filters went here (i.e. any() returns a true),
 				// then that means that filter found one filter that filters out
 				// the current record. that should be discarded
-				.any(|(_, _, filter)| {
+				.any(|(_, filter)| {
 					let key = record.key();
 
 					if !(&*filter.first_key <= key) {
@@ -366,14 +421,7 @@ impl<'d, 'k> Iterator for DatabaseKeyIterator<'d> {
 						}
 					}
 
-					match Wildcard::new(&filter.wildcard).as_regex() {
-						Some(re) => re.is_match(key),
-						None => {
-							let starts_with = filter.wildcard.split("%").next().unwrap();
-
-							key.starts_with(starts_with)
-						}
-					}
+					filter.wildcard_matches(key)
 				});
 
 			if !is_filtered_out {
