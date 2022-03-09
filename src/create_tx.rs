@@ -112,11 +112,15 @@ impl CreateTx {
 			}
 		}
 
+		use std::convert::TryInto;
+
 		for attempt in 0.. {
-			let timestamp = std::time::SystemTime::now()
+			let timestamp: i64 = std::time::SystemTime::now()
 				.duration_since(std::time::SystemTime::UNIX_EPOCH)
 				.expect("duration_since epoch")
-				.as_secs();
+				.as_nanos()
+				.try_into()
+				.map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
 
 			let n = format!("tx.{:016x}", timestamp);
 			let final_name = self.dir.join(n);
