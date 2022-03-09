@@ -63,11 +63,6 @@ fn main() -> std::io::Result<()> {
 						.help("delete values after (and including) this time, as --before-time")
 						.takes_value(true)
 					)
-					.arg(Arg::with_name("timestamp-format")
-						.long("timestamp-format")
-						.help("instead of \"%F %T\", output in this strftime format")
-						.takes_value(true)
-                    )
             )
 			.subcommand(
 				SubCommand::with_name("compact")
@@ -172,7 +167,6 @@ fn main() -> std::io::Result<()> {
 		let after_key = matches.value_of("after-key");
 		let before_time = matches.value_of("before-time");
 		let after_time = matches.value_of("after-time");
-		let ts_format = matches.value_of("timestamp-format").unwrap_or("%F %T");
 
 		delete(
 			dir,
@@ -181,7 +175,6 @@ fn main() -> std::io::Result<()> {
 			after_time,
 			before_time,
 			filter,
-			ts_format,
 		);
 	} else if let Some(matches) = matches.subcommand_matches("read") {
 		let print_format = matches.is_present("print-format");
@@ -191,24 +184,6 @@ fn main() -> std::io::Result<()> {
 
 		let after_key = matches.value_of("after-key");
 		let before_key = matches.value_of("before-key");
-
-		fn parse_time(t: &str) -> Option<NaiveDateTime> {
-			if let Ok(k) = NaiveDateTime::parse_from_str(t, "%Y-%m-%dT%H:%M:%S.f") {
-				Some(k)
-			} else if let Ok(k) = NaiveDateTime::parse_from_str(t, "%Y-%m-%dT%H:%M:%S") {
-				Some(k)
-			} else if let Ok(k) = NaiveDateTime::parse_from_str(t, "%Y-%m-%d %H:%M:%S.f") {
-				Some(k)
-			} else if let Ok(k) = NaiveDateTime::parse_from_str(t, "%Y-%m-%d %H:%M:%S") {
-				Some(k)
-			} else if let Ok(k) = NaiveDateTime::parse_from_str(t, "%Y-%m-%d %H:%M:%S.f") {
-				Some(k)
-			} else if let Ok(k) = NaiveDate::parse_from_str(t, "%Y-%m-%d") {
-				Some(k.and_hms(0, 0, 0))
-			} else {
-				None
-			}
-		}
 
 		let after_time = matches
 			.value_of("after-time")
@@ -376,22 +351,19 @@ fn delete(
 	after_time: Option<&str>,
 	before_time: Option<&str>,
 	filter: Option<&str>,
-	ts_format: &str,
 ) {
 	let mut tx = CreateTx::new(dir).expect("creating tx");
 
-	let ts_converter = |time: &str, ts_format: &str| {
-		chrono::NaiveDateTime::parse_from_str(time, ts_format)
-			.expect("parsing timestamp according to format")
-			.timestamp_nanos() as Timestamp
-	};
-
 	let after_time = after_time
-		.map(|at| ts_converter(at, ts_format))
-		.unwrap_or(0);
+		.map(|at| parse_time(at)
+             .expect("parsing after-time")
+             .timestamp_nanos() as u64
+        ).unwrap_or(0);
 	let before_time = before_time
-		.map(|bt| ts_converter(bt, ts_format))
-		.unwrap_or(u64::MAX);
+		.map(|bt| parse_time(bt)
+             .expect("parsing before-time")
+             .timestamp_nanos() as u64
+		).unwrap_or(u64::MAX);
 
 	tx.delete(
 		first_key.unwrap_or(""),
@@ -513,4 +485,22 @@ fn compact(
 	}
 
 	Ok(())
+}
+
+fn parse_time(t: &str) -> Option<NaiveDateTime> {
+    if let Ok(k) = NaiveDateTime::parse_from_str(t, "%Y-%m-%dT%H:%M:%S.f") {
+        Some(k)
+    } else if let Ok(k) = NaiveDateTime::parse_from_str(t, "%Y-%m-%dT%H:%M:%S") {
+        Some(k)
+    } else if let Ok(k) = NaiveDateTime::parse_from_str(t, "%Y-%m-%d %H:%M:%S.f") {
+        Some(k)
+    } else if let Ok(k) = NaiveDateTime::parse_from_str(t, "%Y-%m-%d %H:%M:%S") {
+        Some(k)
+    } else if let Ok(k) = NaiveDateTime::parse_from_str(t, "%Y-%m-%d %H:%M:%S.f") {
+        Some(k)
+    } else if let Ok(k) = NaiveDate::parse_from_str(t, "%Y-%m-%d") {
+        Some(k.and_hms(0, 0, 0))
+    } else {
+        None
+    }
 }
