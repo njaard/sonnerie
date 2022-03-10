@@ -56,7 +56,10 @@ where
 	Source: Iterator<Item = Record>,
 	Record: std::fmt::Debug,
 {
-	pub fn new<CompareRecord>(orig_sources: Vec<Source>, compare_record: CompareRecord) -> Self
+	pub fn new<CompareRecord>(
+		orig_sources: Vec<(usize, Source)>,
+		compare_record: CompareRecord,
+	) -> Self
 	where
 		CompareRecord: Fn(&Record, &Record) -> Ordering + 'static + Send + Sync,
 	{
@@ -66,11 +69,11 @@ where
 
 		let mut sorter = BinaryHeap::with_capacity(orig_sources.len());
 
-		for (idx, mut src) in orig_sources.into_iter().enumerate() {
+		for (tx_id, mut src) in orig_sources.into_iter() {
 			if let Some(rec) = src.next() {
 				sorter.push(NextRecord {
 					source: src,
-					source_index: idx,
+					source_index: tx_id,
 					current_record: Some(rec),
 					compare_record: compare_record.clone(),
 				});
@@ -123,13 +126,16 @@ where
 	Source: Iterator<Item = Record>,
 	Record: std::fmt::Debug,
 {
-	type Item = Record;
+	type Item = (usize, Record);
 
 	fn next(&mut self) -> Option<Self::Item> {
 		// refill the most recent one
 		if let Some(mut most_recent) = self.most_recent.take() {
+			let source_index = most_recent.source_index;
+
 			if let Some(current) = most_recent.source.next() {
-				// we short-circuit putting `current` on the heap again by testing the current top of the heap
+				// we short-circuit putting `current` on the heap again by
+				// testing the current top of the heap
 
 				if let Some(next) = self.sorter.peek() {
 					match (most_recent.compare_record)(
@@ -144,7 +150,7 @@ where
 						Ordering::Less => {
 							// short circuit completed
 							self.most_recent = Some(most_recent);
-							return Some(current);
+							return Some((source_index, current));
 						} // done
 						Ordering::Greater => {}
 						Ordering::Equal => self.discard_repetitions(&current),
@@ -152,7 +158,7 @@ where
 				} else {
 					// short circuit completed
 					self.most_recent = Some(most_recent);
-					return Some(current);
+					return Some((source_index, current));
 				}
 
 				most_recent.current_record = Some(current);
@@ -161,6 +167,7 @@ where
 		}
 
 		let mut best = self.sorter.pop()?;
+		let tx_id = best.source_index;
 
 		let item = best.current_record.take().expect("current record is null");
 
@@ -168,7 +175,7 @@ where
 
 		self.most_recent = Some(best);
 
-		Some(item)
+		Some((tx_id, item))
 	}
 }
 
@@ -179,8 +186,8 @@ mod tests {
 	fn merge1() {
 		let a = [1u32, 2, 3, 4, 5].iter().cloned();
 		let b = [1, 3, 5, 8, 10].iter().cloned();
-		let merged = crate::merge::Merge::new(vec![a, b], |a, b| a.cmp(b));
-		let merged: Vec<_> = merged.collect();
+		let merged = crate::merge::Merge::new(vec![(0, a), (1, b)], |a, b| a.cmp(b));
+		let merged: Vec<_> = merged.map(|(_, x)| x).collect();
 		assert_eq!(merged, vec![1u32, 2, 3, 4, 5, 8, 10]);
 	}
 
@@ -188,8 +195,8 @@ mod tests {
 	fn merge_with_key() {
 		let a = [1u32, 2, 3, 4, 5].iter().rev().cloned();
 		let b = [1, 3, 5, 8, 10].iter().rev().cloned();
-		let merged = crate::merge::Merge::new(vec![a, b], |a, b| a.cmp(b).reverse());
-		let mut merged: Vec<_> = merged.collect();
+		let merged = crate::merge::Merge::new(vec![(0, a), (1, b)], |a, b| a.cmp(b).reverse());
+		let mut merged: Vec<_> = merged.map(|(_, x)| x).collect();
 		merged.reverse();
 		assert_eq!(merged, vec![1u32, 2, 3, 4, 5, 8, 10]);
 	}
@@ -199,15 +206,16 @@ mod tests {
 	fn merge_check_sorting() {
 		let a = [1u32, 2, 3, 4, 5].iter().cloned();
 		let b = [1, 3, 5, 8, 10].iter().cloned();
-		let merged = crate::merge::Merge::new(vec![a, b], |a, b| a.cmp(b).reverse());
-		let _: Vec<_> = merged.collect();
+		let merged = crate::merge::Merge::new(vec![(0, a), (1, b)], |a, b| a.cmp(b).reverse());
+		let _: Vec<_> = merged.map(|(_, x)| x).collect();
 	}
 
 	#[test]
 	fn merge_str() {
 		let a = ["a", "b"].iter().cloned();
 		let b = ["a", "c"].iter().cloned();
-		let mut merged = crate::merge::Merge::new(vec![a, b], |a, b| a.cmp(b));
+		let mut merged =
+			crate::merge::Merge::new(vec![(0, a), (1, b)], |a, b| a.cmp(b)).map(|(_, x)| x);
 		assert_eq!(merged.next().unwrap(), "a");
 		assert_eq!(merged.next().unwrap(), "b");
 		assert_eq!(merged.next().unwrap(), "c");
@@ -217,7 +225,8 @@ mod tests {
 	fn merge_last_reader() {
 		let a = [("b", 1), ("c", 1), ("d", 1), ("e", 1)].iter().cloned();
 		let b = [("c", 2)].iter().cloned();
-		let mut merged = crate::merge::Merge::new(vec![a, b], |a, b| a.0.cmp(&b.0));
+		let mut merged =
+			crate::merge::Merge::new(vec![(0, a), (1, b)], |a, b| a.0.cmp(&b.0)).map(|(_, x)| x);
 		//assert_eq!(merged.next().unwrap(), ("a",2));
 		assert_eq!(merged.next().unwrap(), ("b", 1));
 		assert_eq!(merged.next().unwrap(), ("c", 2));
@@ -229,7 +238,8 @@ mod tests {
 	fn merge_count_owns() {
 		let first = Rc::new(0);
 		let a = vec![first.clone(), Rc::new(1)];
-		let mut merged = crate::merge::Merge::new(vec![a.into_iter()], |a, b| a.cmp(b));
+		let mut merged =
+			crate::merge::Merge::new(vec![(0, a.into_iter())], |a, b| a.cmp(b)).map(|(_, x)| x);
 		assert_eq!(Rc::strong_count(&first), 2);
 		let m = merged.next().unwrap();
 		assert_eq!(Rc::strong_count(&m), 2);

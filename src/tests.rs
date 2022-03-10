@@ -5,6 +5,7 @@ use crate::write::Writer;
 use crate::CreateTx;
 use crate::Reader;
 
+use core::mem::drop;
 use rayon::iter::IntoParallelIterator;
 use rayon::iter::ParallelIterator;
 use std::io::BufWriter;
@@ -100,7 +101,7 @@ fn basic1() {
 	}
 
 	let w = std::fs::File::open(t.path().join("w")).unwrap();
-	let o = Reader::new(w).unwrap();
+	let o = Reader::new(w).unwrap().left().unwrap();
 	let s = o.get("ab");
 	let mut i = s.into_iter();
 	let a = i.next().unwrap();
@@ -143,7 +144,7 @@ fn basic3() {
 	}
 
 	let w = std::fs::File::open(t.path().join("w")).unwrap();
-	let o = Reader::new(w).unwrap();
+	let o = Reader::new(w).unwrap().left().unwrap();
 	let s = o.get_range(..);
 	let mut i = s.into_iter();
 	let a = i.next().unwrap();
@@ -204,7 +205,7 @@ fn basic2() {
 	}
 
 	let w = std::fs::File::open(t.path().join("w")).unwrap();
-	let o = Reader::new(w).unwrap();
+	let o = Reader::new(w).unwrap().left().unwrap();
 	o.print_info(&mut std::io::stderr()).unwrap();
 	let s = o.get("aa");
 	let i = s.into_iter();
@@ -244,7 +245,7 @@ fn basic_huge() {
 	}
 
 	let w = std::fs::File::open(t.path().join("w")).unwrap();
-	let o = Reader::new(w).unwrap();
+	let o = Reader::new(w).unwrap().left().unwrap();
 	let s = o.get("abc");
 	let i = s.into_iter();
 	assert_eq!(i.count(), 901000);
@@ -269,7 +270,7 @@ fn range_before() {
 	}
 
 	let w = std::fs::File::open(t.path().join("main")).unwrap();
-	let o = Reader::new(w).unwrap();
+	let o = Reader::new(w).unwrap().left().unwrap();
 	let s = o.get_range(..="bb");
 	assert_eq!(s.into_iter().count(), 2);
 	let s = o.get_range(.."bb");
@@ -296,7 +297,7 @@ fn multicolumn() {
 	}
 
 	let w = std::fs::File::open(t.path().join("main")).unwrap();
-	let o = Reader::new(w).unwrap();
+	let o = Reader::new(w).unwrap().left().unwrap();
 	let s = o.get_range("a".."z");
 	let mut i = s.into_iter();
 
@@ -360,7 +361,7 @@ fn multicolumn_string() {
 	}
 
 	let w = std::fs::File::open(t.path().join("main")).unwrap();
-	let o = Reader::new(w).unwrap();
+	let o = Reader::new(w).unwrap().left().unwrap();
 	let s = o.get_range("a".."z");
 	let mut i = s.into_iter();
 
@@ -407,7 +408,7 @@ fn write() {
 	}
 
 	let mut w = std::fs::File::open(t.path().join("w")).unwrap();
-	let o = SegmentReader::open(&mut w).unwrap();
+	let o = SegmentReader::open(&mut w).unwrap().left().unwrap();
 	o.print_info(&mut std::io::stderr()).unwrap();
 	let _ = o.find("a").unwrap();
 }
@@ -517,7 +518,7 @@ fn store_string1() {
 	}
 
 	let w = std::fs::File::open(t.path().join("main")).unwrap();
-	let o = Reader::new(w).unwrap();
+	let o = Reader::new(w).unwrap().left().unwrap();
 	let s = o.get_range("a".."z");
 	let mut i = s.into_iter();
 
@@ -578,7 +579,7 @@ fn homogenic_types() {
 	}
 
 	let w = std::fs::File::open(t.path().join("main")).unwrap();
-	let o = Reader::new(w).unwrap();
+	let o = Reader::new(w).unwrap().left().unwrap();
 	let s = o.get_range("a".."z");
 	let mut i = s.into_iter();
 
@@ -622,14 +623,14 @@ fn keys_split() {
 		w.finish().unwrap();
 	}
 	let mut f = std::fs::File::open(&t.path().join("w")).unwrap();
-	let o = SegmentReader::open(&mut f).unwrap();
+	let o = SegmentReader::open(&mut f).unwrap().left().unwrap();
 	{
 		let f = o.first().unwrap();
 		assert!(o.segment_after(&f).is_some());
 	}
 
 	let w = std::fs::File::open(t.path().join("w")).unwrap();
-	let o = Reader::new(w).unwrap();
+	let o = Reader::new(w).unwrap().left().unwrap();
 	let s = o.get("aa").count();
 	assert_eq!(s, 1050000);
 }
@@ -699,7 +700,7 @@ fn parallel_split3() {
 
 	{
 		let mut w = std::fs::File::open(_t.path().join("main")).unwrap();
-		let segs = SegmentReader::open(&mut w).unwrap();
+		let segs = SegmentReader::open(&mut w).unwrap().left().unwrap();
 		let mut seg = segs.first();
 		while seg.is_some() {
 			let s = seg.as_ref().unwrap();
@@ -776,4 +777,149 @@ fn string_records() {
 		&format!("{a:?}"),
 		"[\"Hello1\", \"Hello World\", \"Hello Planet\", \"Hello Universe\"]"
 	);
+}
+
+#[test]
+fn delete_all() {
+	let (t, _) = make_big_database(65536);
+
+	{
+		let mut tx = CreateTx::new(t.path()).unwrap();
+		tx.delete("", "", 0, u64::MAX, "%").unwrap();
+		tx.commit().unwrap();
+	}
+
+	let db = DatabaseReader::new(t.path()).unwrap();
+	assert_eq!(0, db.get_range(..).into_par_iter().count());
+}
+
+// this is a generalized form of the delete test with various flags for which
+// test is active
+fn configurable_delete_test(
+	with_time_start: bool,
+	with_time_end: bool,
+	with_key_start: bool,
+	with_key_end: bool,
+	wildcard_str: &str,
+) {
+	use either::Either::*;
+
+	let (t, db) = make_big_database(512);
+	let mut times = db
+		.get_range(..)
+		.into_iter()
+		.map(|r| r.time())
+		.collect::<Vec<_>>();
+	times.sort_unstable();
+	times.dedup();
+
+	let mut keys = db
+		.get_range(..)
+		.into_iter()
+		.map(|r| r.key().to_owned())
+		.collect::<Vec<_>>();
+	keys.sort_unstable();
+	keys.dedup();
+	let keys = keys.into_iter().collect::<Vec<_>>();
+
+	let begin_time = with_time_start.then(|| times[times.len() / 3]);
+	let end_time = with_time_end.then(|| times[times.len() * 2 / 3]);
+	let begin_key = with_key_start.then(|| keys[keys.len() / 3].clone());
+	let end_key = with_key_end.then(|| keys[keys.len() * 2 / 3].clone());
+
+	drop(times);
+	drop(keys);
+
+	// perform deletion
+	{
+		let mut tx = CreateTx::new(t.path()).unwrap();
+		tx.delete(
+			dbg!(begin_key.as_deref().unwrap_or("")),
+			dbg!(end_key.as_deref().unwrap_or("")),
+			dbg!(begin_time.map(|t| t.timestamp_nanos() as u64).unwrap_or(0)),
+			dbg!(end_time
+				.map(|t| t.timestamp_nanos() as u64)
+				.unwrap_or(u64::MAX)),
+			dbg!(wildcard_str),
+		)
+		.unwrap();
+		tx.commit().unwrap();
+	}
+
+	// perform read
+	let db = DatabaseReader::new(t.path()).unwrap();
+	let wildcard = match crate::wildcard::Wildcard::new(wildcard_str).as_regex() {
+		Some(re) => Left(re),
+		None => Right(wildcard_str.split("%").next().unwrap()),
+	};
+
+	let mut len = 0;
+	for record in db.get_range(..).into_iter() {
+		len += 1;
+
+		let time = record.time();
+		let key = record.key();
+
+		let unerased_by_time = match (begin_time.as_ref(), end_time.as_ref()) {
+			(Some(b), Some(e)) => time < *b || *e < time,
+			(Some(b), _) => time < *b,
+			(_, Some(e)) => *e < time,
+			_ => false,
+		};
+
+		let unerased_by_key = match (begin_key.as_deref(), end_key.as_deref()) {
+			(Some(b), Some(e)) => key < b || e < key,
+			(Some(b), _) => key < b,
+			(_, Some(e)) => e < key,
+			_ => false,
+		};
+
+		let unerased_by_wildcard = match &wildcard {
+			Left(re) => !re.is_match(key),
+			Right(start) => !key.starts_with(start),
+		};
+
+		let unerased = unerased_by_time || unerased_by_key || unerased_by_wildcard;
+
+		assert!(unerased);
+	}
+
+	if !with_time_start && !with_time_end && !with_key_start && !with_key_end && wildcard_str == "%"
+	{
+		assert_eq!(len, 0);
+	}
+}
+
+// TODO: if this test can be split into individual tests using a macro, be my
+// guest
+#[test]
+fn generalized_delete() {
+	use std::thread::spawn;
+
+	let mut threads = vec![];
+
+	for with_time_start in vec![false, true] {
+		for with_time_end in vec![false, true] {
+			for with_key_start in vec![false, true] {
+				for with_key_end in vec![false, true] {
+					for wildcard in vec!["%", "a%", "%a", "a%a", "%a%"] {
+						let handle = spawn(move || {
+							configurable_delete_test(
+								with_time_start,
+								with_time_end,
+								with_key_start,
+								with_key_end,
+								wildcard,
+							)
+						});
+						threads.push(handle);
+					}
+				}
+			}
+		}
+	}
+
+	for thread in threads {
+		thread.join().unwrap();
+	}
 }

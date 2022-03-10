@@ -35,6 +35,35 @@ fn main() -> std::io::Result<()> {
 						.takes_value(true)
 					)
 			)
+            .subcommand(
+                SubCommand::with_name("delete")
+                    .about("deletes records")
+					.arg(Arg::with_name("filter")
+						.help("select the keys to print out, \"%\" is the wildcard")
+						.takes_value(true)
+						.required_unless_one(&["before-key", "after-key", "before-time", "after-time"])
+					)
+					.arg(Arg::with_name("before-key")
+						.long("before-key")
+						.help("delete values before (but not including) this key")
+						.takes_value(true)
+					)
+					.arg(Arg::with_name("after-key")
+						.long("after-key")
+						.help("delete values after (and including) this key")
+						.takes_value(true)
+					)
+					.arg(Arg::with_name("before-time")
+						.long("before-time")
+						.help("delete values before (but not including) this time (in ISO-9601 format, date, seconds, or nanosecond precision)")
+						.takes_value(true)
+					)
+					.arg(Arg::with_name("after-time")
+						.long("after-time")
+						.help("delete values after (and including) this time, as --before-time")
+						.takes_value(true)
+					)
+            )
 			.subcommand(
 				SubCommand::with_name("compact")
 					.about("merge transactions")
@@ -132,6 +161,21 @@ fn main() -> std::io::Result<()> {
 		let ts_format = matches.value_of("timestamp-format").unwrap_or("%FT%T");
 
 		compact(dir, matches.is_present("major"), gegnum, ts_format).expect("compacting");
+	} else if let Some(matches) = matches.subcommand_matches("delete") {
+		let filter = matches.value_of("filter");
+		let before_key = matches.value_of("before-key");
+		let after_key = matches.value_of("after-key");
+		let before_time = matches.value_of("before-time");
+		let after_time = matches.value_of("after-time");
+
+		delete(
+			dir,
+			after_key,
+			before_key,
+			after_time,
+			before_time,
+			filter,
+		);
 	} else if let Some(matches) = matches.subcommand_matches("read") {
 		let print_format = matches.is_present("print-format");
 		let timestamp_format = matches.value_of("timestamp-format").unwrap_or("%F %T");
@@ -140,24 +184,6 @@ fn main() -> std::io::Result<()> {
 
 		let after_key = matches.value_of("after-key");
 		let before_key = matches.value_of("before-key");
-
-		fn parse_time(t: &str) -> Option<NaiveDateTime> {
-			if let Ok(k) = NaiveDateTime::parse_from_str(t, "%Y-%m-%dT%H:%M:%S.f") {
-				Some(k)
-			} else if let Ok(k) = NaiveDateTime::parse_from_str(t, "%Y-%m-%dT%H:%M:%S") {
-				Some(k)
-			} else if let Ok(k) = NaiveDateTime::parse_from_str(t, "%Y-%m-%d %H:%M:%S.f") {
-				Some(k)
-			} else if let Ok(k) = NaiveDateTime::parse_from_str(t, "%Y-%m-%d %H:%M:%S") {
-				Some(k)
-			} else if let Ok(k) = NaiveDateTime::parse_from_str(t, "%Y-%m-%d %H:%M:%S.f") {
-				Some(k)
-			} else if let Ok(k) = NaiveDate::parse_from_str(t, "%Y-%m-%d") {
-				Some(k.and_hms(0, 0, 0))
-			} else {
-				None
-			}
-		}
 
 		let after_time = matches
 			.value_of("after-time")
@@ -286,13 +312,22 @@ fn main() -> std::io::Result<()> {
 			}
 		}
 	} else {
-		eprintln!("A command must be specified (read, add, compact)");
+		eprintln!("A command must be specified (read, add, compact, delete)");
 		std::process::exit(1);
 	}
 
 	Ok(())
 }
 
+// this prepares the database reader and creates a CreateTx, which then passes
+// its information to add_from_stream
+//
+// add_from_stream parses the timestamp and the key then uses
+// row_format::to_stored_format to obtain a bytewise interpretation of the
+// payload, which is then passed into CreateTx::add_record
+//
+// delete's approach is to copy what add_from_stream does and call
+// CreateTx::add_record with a prepared bare payload
 fn add(dir: &Path, fmt: &str, ts_format: Option<&str>) {
 	let _db = DatabaseReader::new(dir).expect("opening db");
 	let mut tx = CreateTx::new(dir).expect("creating tx");
@@ -301,6 +336,43 @@ fn add(dir: &Path, fmt: &str, ts_format: Option<&str>) {
 	let mut stdin = stdin.lock();
 
 	formatted::add_from_stream(&mut tx, fmt, &mut stdin, ts_format).expect("adding value");
+	tx.commit().expect("failed to commit transaction");
+}
+
+// delete prepares a payload, as detailed by the specification
+// then delete passes the payload into CreateTx::add_record which requires a
+// key and format. CreateTx records the key which is set into the first_key and
+// last_key of the segment header. the format is for the format of the row in
+// the compressed payload. the payload is the payload
+fn delete(
+	dir: &Path,
+	first_key: Option<&str>,
+	last_key: Option<&str>,
+	after_time: Option<&str>,
+	before_time: Option<&str>,
+	filter: Option<&str>,
+) {
+	let mut tx = CreateTx::new(dir).expect("creating tx");
+
+	let after_time = after_time
+		.map(|at| parse_time(at)
+             .expect("parsing after-time")
+             .timestamp_nanos() as u64
+        ).unwrap_or(0);
+	let before_time = before_time
+		.map(|bt| parse_time(bt)
+             .expect("parsing before-time")
+             .timestamp_nanos() as u64
+		).unwrap_or(u64::MAX);
+
+	tx.delete(
+		first_key.unwrap_or(""),
+		last_key.unwrap_or(""),
+		after_time,
+		before_time,
+		filter.unwrap_or("%"),
+	)
+	.expect("deleting rows");
 	tx.commit().expect("failed to commit transaction");
 }
 
@@ -404,5 +476,31 @@ fn compact(
 		}
 	}
 
+	if major {
+		for txfile in db.delete_txes_paths() {
+			if let Err(e) = std::fs::remove_file(&txfile) {
+				eprintln!("warning: failed to remove {:?}: {}", txfile, e);
+			}
+		}
+	}
+
 	Ok(())
+}
+
+fn parse_time(t: &str) -> Option<NaiveDateTime> {
+    if let Ok(k) = NaiveDateTime::parse_from_str(t, "%Y-%m-%dT%H:%M:%S.f") {
+        Some(k)
+    } else if let Ok(k) = NaiveDateTime::parse_from_str(t, "%Y-%m-%dT%H:%M:%S") {
+        Some(k)
+    } else if let Ok(k) = NaiveDateTime::parse_from_str(t, "%Y-%m-%d %H:%M:%S.f") {
+        Some(k)
+    } else if let Ok(k) = NaiveDateTime::parse_from_str(t, "%Y-%m-%d %H:%M:%S") {
+        Some(k)
+    } else if let Ok(k) = NaiveDateTime::parse_from_str(t, "%Y-%m-%d %H:%M:%S.f") {
+        Some(k)
+    } else if let Ok(k) = NaiveDate::parse_from_str(t, "%Y-%m-%d") {
+        Some(k.and_hms(0, 0, 0))
+    } else {
+        None
+    }
 }

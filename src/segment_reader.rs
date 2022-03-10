@@ -1,6 +1,9 @@
 //use byteorder::{BigEndian};
 
 use crate::Segment;
+use chrono::NaiveDateTime;
+use either::Either;
+use std::io::Read;
 use std::io::Seek;
 
 pub(crate) struct SegmentReader {
@@ -9,10 +12,105 @@ pub(crate) struct SegmentReader {
 }
 
 impl SegmentReader {
-	pub(crate) fn open(file: &mut std::fs::File) -> std::io::Result<SegmentReader> {
+	pub(crate) fn open(
+		file: &mut std::fs::File,
+	) -> std::io::Result<Either<SegmentReader, DeleteMarker>> {
+		use byteorder::BigEndian;
+		use byteorder::ByteOrder as _;
+		use Either::*;
+
 		let len = file.seek(std::io::SeekFrom::End(0))? as usize;
 		let map = unsafe { memmap::Mmap::map(file)? };
-		Ok(SegmentReader { map, len })
+		let reader = SegmentReader { map, len };
+
+		if let Some(segment) = reader.first() {
+			// read the payload of the segment and check its first few bytes
+			let mut buffer = vec![];
+			decode_into_with_unescaping(&mut buffer, segment.payload);
+
+			// bytes 0 .. 4 are the key length
+			// bytes 4 .. 8 are the format string length
+			// bytes 8 .. 12 are the payload length
+			// next comes the key string
+			// next comes the format string
+			// we need to read from bytes 12 + key_length to
+			// 12 + key_length + fmt_length to get the format string
+
+			let key_length = BigEndian::read_u32(&buffer[0..4]);
+			let format_length = BigEndian::read_u32(&buffer[4..8]);
+
+			let fmt_from = (12 + key_length) as usize;
+			let fmt_to = (12 + key_length + format_length) as usize;
+
+			if &buffer[fmt_from..fmt_to] == "\u{007f}".as_bytes() {
+				// first varint will be the size of payload minus 8 bytes
+				// it will be disregarded
+				let (_payload_len, next_slice) = unsigned_varint::decode::usize(&buffer[fmt_to..])
+					.expect("Failed to read varint: not enough bytes");
+
+				// second varint will be the size of first key
+				let (fkey_len, next_slice) = unsigned_varint::decode::usize(next_slice)
+					.expect("Failed to read varint; not enough bytes");
+				// if second varint is nonzero, the next set of bytes is the
+				// first key
+				let first_key_slice = &next_slice[0..fkey_len];
+				let first_key = String::from_utf8(first_key_slice.to_owned())
+					.expect("Failed to read string: not a valid utf-8 string");
+				assert_eq!(first_key, segment.first_key);
+
+				// first 8 bytes being the first timestamp
+				let ts_slice = &next_slice[fkey_len..];
+				let ts_u64 = BigEndian::read_u64(ts_slice);
+				let start_ts = NaiveDateTime::from_timestamp(
+					(ts_u64 / 1_000_000_000) as i64,
+					(ts_u64 % 1_000_000_000) as u32,
+				);
+
+				// next 8 bytes being the last timestamp
+				let ts_slice = &next_slice[fkey_len + 8..fkey_len + 16];
+				let ts_u64 = BigEndian::read_u64(ts_slice);
+				let end_ts = NaiveDateTime::from_timestamp(
+					(ts_u64 / 1_000_000_000) as i64,
+					(ts_u64 % 1_000_000_000) as u32,
+				);
+
+				// next set of bytes is a varint containing the length of the
+				// wildcard
+				let (wc_len, next_slice) =
+					unsigned_varint::decode::usize(&next_slice[fkey_len + 16..])
+						.expect("Failed to read varint: not enough bytes");
+
+				// read, from the next slice, the slice for the filter string
+				let wildcard_slice = &next_slice[0..wc_len];
+				let wildcard = String::from_utf8(wildcard_slice.to_vec()).unwrap();
+
+				// next set of bytes is also another varint containing the
+				// length of the last key
+				let (lkey_len, next_slice) = unsigned_varint::decode::usize(&next_slice[wc_len..])
+					.expect("Failed to read varint: not enough bytes");
+
+				// read from the next slice, the slice for the last key
+				let last_key_slice = &next_slice[0..lkey_len];
+				let last_key = String::from_utf8(last_key_slice.to_owned())
+					.expect("Failed to read string: not a valid utf-8 string");
+				// unlike here, we cannot test whether segment's last key equals
+				// this last key because the interface that sets the first key
+				// up in the segment header bases on the first key in a
+				// different interface
+
+				let marker = DeleteMarker {
+					first_key: first_key,
+					last_key: last_key,
+					first_timestamp: start_ts,
+					last_timestamp: end_ts,
+					wildcard,
+				};
+
+				return Ok(Right(marker));
+			}
+		}
+
+		Ok(Left(reader))
 	}
 
 	/// instructs the OS I'm going to sequentially read starting here
@@ -195,4 +293,39 @@ impl SegmentReader {
 		let next = segment.segment_offset + segment.stride;
 		Segment::scan(&data[next..], next)
 	}
+}
+
+pub(crate) fn decode_into_with_unescaping(into: &mut Vec<u8>, from: &[u8]) {
+	let mut segmented: smallvec::SmallVec<[_; 4]> = smallvec::smallvec![];
+	{
+		let mut start = 0;
+		while let Some(pos) = crate::segment::find_escape_segment_invocation(&from[start..]) {
+			segmented.push(&from[start..pos + start]);
+			segmented.push(crate::segment::SEGMENT_INVOCATION);
+			start = start + pos + crate::segment::ESCAPE_SEGMENT_INVOCATION.len();
+		}
+		segmented.push(&from[start..]);
+	}
+
+	let mut reader: Option<Box<dyn Read>> = None;
+
+	for segment in segmented {
+		if let Some(head) = reader {
+			reader = Some(Box::new(head.chain(std::io::Cursor::new(segment))) as Box<_>);
+		} else {
+			reader = Some(Box::new(std::io::Cursor::new(segment)) as Box<_>);
+		}
+	}
+
+	let mut decoder = lz4::Decoder::new(reader.expect("empty segment")).expect("lz4 decoding");
+	decoder.read_to_end(into).expect("lz4 decoding 2");
+}
+
+#[derive(Debug, Clone)]
+pub struct DeleteMarker {
+	pub first_key: String,
+	pub last_key: String,
+	pub first_timestamp: NaiveDateTime,
+	pub last_timestamp: NaiveDateTime,
+	pub wildcard: String,
 }

@@ -26,7 +26,7 @@ pub fn add_from_stream<R: std::io::BufRead>(
 	let row_format = parse_row_format(format);
 
 	let mut line = String::new();
-	let mut row_data = vec![];
+	let mut row_data = vec![]; // this is single allocation only
 
 	while 0 != input.read_line(&mut line).unwrap() {
 		let tail = line.trim_end();

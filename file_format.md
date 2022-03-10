@@ -44,6 +44,28 @@ The payload stores all its keys as such:
   * The value for each column as specified in the format. If a column is
   a string, store the string's length as a varint and then the string.
 
+# Delete Marker
+If the file format character is `\x7f`, the transaction becomes a delete
+transaction. There must be only one segment in the delete transaction and there
+must be only one record in the payload of the segment, which is the delete
+marker. The first and last key in the segment header will be the first key in
+the `delete` parameter, and the payload instead consists of the following, in
+order:
+* first key
+  * the varint containing the length of the first key
+  * first key in the range to delete
+* first timestamp in the range to delete, stored as an 8-byte integer
+* last timestamp in the range to delete, stored as an 8-byte integer
+* key wildcard
+  * the varint containing the length of the wildcard
+  * the wildcard string
+* last key
+  * the varint containing the length of the last key
+  * last key in the range to delete
+
+Records before the delete transaction that satisfies the delete criteria will
+not be reflected from `read`s and `compact`s.
+
 
 # A segments-file
 A file of segments contains a bunch of segments, each with their

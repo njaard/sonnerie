@@ -7,8 +7,13 @@ use std::path::{Path, PathBuf};
 use crate::key_reader::*;
 use crate::merge::Merge;
 use crate::record::Record;
+use crate::segment_reader::DeleteMarker;
 use crate::Wildcard;
 use std::ops::Bound;
+
+use chrono::NaiveDateTime;
+use either::Either;
+use regex::Regex;
 
 /// Read a database in key-timestamp sorted format.
 ///
@@ -16,7 +21,8 @@ use std::ops::Bound;
 /// [`get_filter`](#method.get_filter) or [`get_range`](#method.get_range) to select which keys to read.
 pub struct DatabaseReader {
 	_dir: PathBuf,
-	txes: Vec<(PathBuf, Reader)>,
+	txes: Vec<(usize, PathBuf, Reader)>,
+	filter_out: Vec<(usize, PathBuf, DeleteMarker)>,
 }
 
 impl DatabaseReader {
@@ -43,6 +49,8 @@ impl DatabaseReader {
 	/// the main database should not be opened. This is useful for
 	/// minor compaction.
 	fn new_opts(dir: &Path, include_main_db: bool) -> std::io::Result<DatabaseReader> {
+		use Either::*;
+
 		let dir_reader = std::fs::read_dir(dir)?;
 
 		let mut paths = vec![];
@@ -57,7 +65,7 @@ impl DatabaseReader {
 		}
 
 		paths.sort();
-		let mut txes = Vec::with_capacity(paths.len());
+		let mut txes: Vec<(usize, PathBuf, Reader)> = Vec::with_capacity(paths.len());
 
 		if include_main_db {
 			let main_db_name = dir.join("main");
@@ -66,12 +74,23 @@ impl DatabaseReader {
 			if len == 0 {
 				eprintln!("disregarding main database, it is zero length");
 			} else {
-				let main_db = Reader::new(f)?;
-				txes.push((main_db_name, main_db));
+				match Reader::new(f)? {
+					Left(main_db) => txes.push((0, main_db_name, main_db)),
+					// the main database cannot be a delete marker
+					Right(_) => unreachable!(),
+				}
 			}
 		}
 
-		for p in paths {
+		let mut filter_out = vec![];
+
+		let iter = paths
+			.into_iter()
+			.enumerate()
+			// we add 1 because we'd reserve the 0 for the main database,
+			// regardless of whether `include_main_db` or not
+			.map(|(txid, p)| (txid + 1, p));
+		for (txid, p) in iter {
 			let mut f = File::open(&p)?;
 			let len = f.seek(std::io::SeekFrom::End(0))? as usize;
 			if len == 0 {
@@ -79,11 +98,17 @@ impl DatabaseReader {
 				continue;
 			}
 			let r = Reader::new(f)?;
-			txes.push((p, r));
+
+			// match the reader if it is indeed a reader or a delete marker
+			match r {
+				Left(r) => txes.push((txid, p, r)),
+				Right(d) => filter_out.push((txid, p, d)),
+			}
 		}
 
 		Ok(DatabaseReader {
 			txes,
+			filter_out,
 			_dir: dir.to_owned(),
 		})
 	}
@@ -97,7 +122,12 @@ impl DatabaseReader {
 	/// This function also returns the path for `main`,
 	/// which is overwritten. Don't delete that.
 	pub fn transaction_paths(&self) -> Vec<PathBuf> {
-		self.txes.iter().map(|e| e.0.clone()).collect()
+		self.txes.iter().map(|(_, e, _)| e.clone()).collect()
+	}
+
+	/// Get the filenames of the transactions that have a delete marker in them.
+	pub fn delete_txes_paths<'a>(&'a self) -> impl Iterator<Item = &Path> {
+		self.filter_out.iter().map(|(_, path, _)| &**path)
 	}
 
 	/// Get a reader for only a single key
@@ -190,7 +220,7 @@ impl<'d> DatabaseKeyReader<'d> {
 			.iter()
 			.map(|tx| {
 				let filter =
-					tx.1.get_filter_range(self.matcher.clone(), self.prefix, self.range.clone());
+					tx.2.get_filter_range(self.matcher.clone(), self.prefix, self.range.clone());
 				let b = filter.compressed_bytes();
 				(filter, b)
 			})
@@ -270,17 +300,17 @@ impl<'d> DatabaseKeyReader<'d> {
 impl<'d> IntoIterator for DatabaseKeyReader<'d> {
 	type Item = Record;
 	type IntoIter = DatabaseKeyIterator<'d>;
+
 	fn into_iter(self) -> Self::IntoIter {
 		self.check();
 
 		let mut readers = Vec::with_capacity(self.db.txes.len());
 
-		for tx in &self.db.txes {
-			readers.push(tx.1.get_filter_range(
-				self.matcher.clone(),
-				self.prefix,
-				self.range.clone(),
-			));
+		for (txid, _path, reader) in self.db.txes.iter() {
+			let iter =
+				reader.get_filter_range(self.matcher.clone(), self.prefix, self.range.clone());
+
+			readers.push((*txid, iter));
 		}
 		let merge = Merge::new(readers, |a, b| {
 			a.key()
@@ -288,7 +318,20 @@ impl<'d> IntoIterator for DatabaseKeyReader<'d> {
 				.then_with(|| a.timestamp_nanos().cmp(&b.timestamp_nanos()))
 		});
 
+		let filter_out = self
+			.db
+			.filter_out
+			.iter()
+			.map(|(txid, _path, dm)| {
+				(
+					txid.clone(),
+					DeleteMarkerPrecomputed::from_delete_marker(&dm),
+				)
+			})
+			.collect::<Vec<_>>();
+
 		DatabaseKeyIterator {
+			filter_out: filter_out,
 			merge: Box::new(merge),
 		}
 	}
@@ -299,13 +342,93 @@ impl<'d> IntoIterator for DatabaseKeyReader<'d> {
 /// Yields an [`Record`](record/struct.Record.html)
 /// for each row in the database, sorted by key and timestamp.
 pub struct DatabaseKeyIterator<'d> {
+	filter_out: Vec<(usize, DeleteMarkerPrecomputed<'d>)>,
 	merge: Box<Merge<StringKeyRangeReader<'d, 'd>, Record>>,
+}
+
+struct DeleteMarkerPrecomputed<'a> {
+	pub first_key: &'a str,
+	pub last_key: &'a str,
+	pub first_timestamp: NaiveDateTime,
+	pub last_timestamp: NaiveDateTime,
+	pub wildcard: Either<Regex, &'a str>,
+}
+
+impl<'a> DeleteMarkerPrecomputed<'a> {
+	fn from_delete_marker(marker: &'a DeleteMarker) -> DeleteMarkerPrecomputed<'a> {
+		use Either::*;
+
+		let wildcard = match Wildcard::new(&*marker.wildcard).as_regex() {
+			Some(re) => Left(re),
+			None => {
+				let starts_with = marker.wildcard.split("%").next().unwrap();
+				Right(starts_with)
+			}
+		};
+
+		DeleteMarkerPrecomputed {
+			first_key: &*marker.first_key,
+			last_key: &*marker.last_key,
+			first_timestamp: marker.first_timestamp,
+			last_timestamp: marker.last_timestamp,
+			wildcard,
+		}
+	}
+
+	fn wildcard_matches(&self, key: &str) -> bool {
+		use Either::*;
+
+		match &self.wildcard {
+			Left(re) => re.is_match(key),
+			Right(start) => key.starts_with(start),
+		}
+	}
 }
 
 impl<'d, 'k> Iterator for DatabaseKeyIterator<'d> {
 	type Item = Record;
 
 	fn next(&mut self) -> Option<Self::Item> {
-		self.merge.next()
+		while let Some((txid, record)) = self.merge.next() {
+			let is_filtered_out = self
+				.filter_out
+				.iter()
+				// select only transactions that are indexed lower than the
+				// delete transaction
+				.filter(|(del_txid, _)| txid < *del_txid)
+				// check if the record's timestamp is within filtering out
+				// this assumes that the filter_out is sorted ascending by
+				// first timestamp (which should have been done in
+				// DatabaseReader::new())
+				.filter(|(_, filter)| {
+					let record_time = record.time();
+					filter.first_timestamp <= record_time && record_time <= filter.last_timestamp
+				})
+				.filter(|(_, filter)| record.time() <= filter.last_timestamp)
+				// if any of the filters went here (i.e. any() returns a true),
+				// then that means that filter found one filter that filters out
+				// the current record. that should be discarded
+				.any(|(_, filter)| {
+					let key = record.key();
+
+					if !(&*filter.first_key <= key) {
+						return false;
+					}
+
+					if &*filter.last_key != "" {
+						if !(key <= &*filter.last_key) {
+							return false;
+						}
+					}
+
+					filter.wildcard_matches(key)
+				});
+
+			if !is_filtered_out {
+				return Some(record);
+			}
+		}
+
+		None
 	}
 }

@@ -27,7 +27,7 @@ fn main() -> std::io::Result<()> {
 
 	let w = std::fs::File::open(db)?;
 	let r = Reader::new(w).unwrap();
-	for record in r.get_filter(&filter).into_iter() {
+	for record in r.left().unwrap().get_filter(&filter).into_iter() {
 		sonnerie::formatted::print_record(
 			&record,
 			&mut stdout,
