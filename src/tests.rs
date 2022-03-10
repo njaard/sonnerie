@@ -860,28 +860,28 @@ fn configurable_delete_test(
 		let time = record.time();
 		let key = record.key();
 
-		let unerased_by_time = match (begin_time.as_ref(), end_time.as_ref()) {
-			(Some(b), Some(e)) => time < *b || *e < time,
+		let present_by_time = match (begin_time.as_ref(), end_time.as_ref()) {
+			(Some(b), Some(e)) => time <= *b || *e <= time,
 			(Some(b), _) => time < *b,
-			(_, Some(e)) => *e < time,
+			(_, Some(e)) => *e <= time,
 			_ => false,
 		};
 
-		let unerased_by_key = match (begin_key.as_deref(), end_key.as_deref()) {
-			(Some(b), Some(e)) => key < b || e < key,
+		let present_by_key = match (begin_key.as_deref(), end_key.as_deref()) {
+			(Some(b), Some(e)) => key < b || e <= key,
 			(Some(b), _) => key < b,
-			(_, Some(e)) => e < key,
+			(_, Some(e)) => e <= key,
 			_ => false,
 		};
 
-		let unerased_by_wildcard = match &wildcard {
+		let present_by_wildcard = match &wildcard {
 			Left(re) => !re.is_match(key),
 			Right(start) => !key.starts_with(start),
 		};
 
-		let unerased = unerased_by_time || unerased_by_key || unerased_by_wildcard;
+		let present = present_by_time || present_by_key || present_by_wildcard;
 
-		assert!(unerased);
+		assert!(present, "t={time}, k={key}");
 	}
 
 	if !with_time_start && !with_time_end && !with_key_start && !with_key_end && wildcard_str == "%"
@@ -890,36 +890,44 @@ fn configurable_delete_test(
 	}
 }
 
-// TODO: if this test can be split into individual tests using a macro, be my
-// guest
-#[test]
-fn generalized_delete() {
-	use std::thread::spawn;
-
-	let mut threads = vec![];
-
-	for with_time_start in vec![false, true] {
-		for with_time_end in vec![false, true] {
-			for with_key_start in vec![false, true] {
-				for with_key_end in vec![false, true] {
-					for wildcard in vec!["%", "a%", "%a", "a%a", "%a%"] {
-						let handle = spawn(move || {
-							configurable_delete_test(
-								with_time_start,
-								with_time_end,
-								with_key_start,
-								with_key_end,
-								wildcard,
-							)
-						});
-						threads.push(handle);
-					}
+macro_rules! delete_test
+{
+	($wildcardlabel:ident, $wildcard:expr) =>
+	{
+		delete_test!($wildcardlabel, $wildcard, true);
+		delete_test!($wildcardlabel, $wildcard, false);
+	};
+	($wildcardlabel:ident, $wildcard:expr, $begin_time:expr) =>
+	{
+		delete_test!($wildcardlabel, $wildcard, $begin_time, true);
+		delete_test!($wildcardlabel, $wildcard, $begin_time, false);
+	};
+	($wildcardlabel:ident, $wildcard:expr, $begin_time:expr, $end_time:expr) =>
+	{
+		delete_test!($wildcardlabel, $wildcard, $begin_time, $end_time, true);
+		delete_test!($wildcardlabel, $wildcard, $begin_time, $end_time, false);
+	};
+	($wildcardlabel:ident, $wildcard:expr, $begin_time:expr, $end_time:expr, $begin_key:expr) =>
+	{
+		delete_test!($wildcardlabel, $wildcard, $begin_time, $end_time, $begin_key, true);
+		delete_test!($wildcardlabel, $wildcard, $begin_time, $end_time, $begin_key, false);
+	};
+	($wildcardlabel:ident, $wildcard:expr, $begin_time:expr, $end_time:expr, $begin_key:expr, $end_key:expr) =>
+	{
+		concat_idents::concat_idents!(name = delete_, $begin_time, _, $end_time, _, $begin_key, _, $end_key, _, $wildcardlabel
+			{
+				#[test]
+				fn name()
+				{
+					configurable_delete_test($begin_time, $end_time, $begin_key, $end_key, $wildcard);
 				}
 			}
-		}
-	}
-
-	for thread in threads {
-		thread.join().unwrap();
-	}
+		);
+	};
 }
+
+delete_test!(all, "%");
+delete_test!(prefix, "a%");
+delete_test!(infix, "%a%");
+delete_test!(suffix, "%a");
+delete_test!(inter, "a%a");

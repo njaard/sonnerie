@@ -318,20 +318,15 @@ impl<'d> IntoIterator for DatabaseKeyReader<'d> {
 				.then_with(|| a.timestamp_nanos().cmp(&b.timestamp_nanos()))
 		});
 
-		let filter_out = self
+		let filter_out: Vec<_> = self
 			.db
 			.filter_out
 			.iter()
-			.map(|(txid, _path, dm)| {
-				(
-					txid.clone(),
-					DeleteMarkerPrecomputed::from_delete_marker(&dm),
-				)
-			})
-			.collect::<Vec<_>>();
+			.map(|(txid, _path, dm)| (*txid, DeleteMarkerPrecomputed::from_delete_marker(&dm)))
+			.collect();
 
 		DatabaseKeyIterator {
-			filter_out: filter_out,
+			filter_out,
 			merge: Box::new(merge),
 		}
 	}
@@ -402,7 +397,7 @@ impl<'d, 'k> Iterator for DatabaseKeyIterator<'d> {
 				// DatabaseReader::new())
 				.filter(|(_, filter)| {
 					let record_time = record.time();
-					filter.first_timestamp <= record_time && record_time <= filter.last_timestamp
+					(filter.first_timestamp..filter.last_timestamp).contains(&record_time)
 				})
 				.filter(|(_, filter)| record.time() <= filter.last_timestamp)
 				// if any of the filters went here (i.e. any() returns a true),
@@ -416,7 +411,7 @@ impl<'d, 'k> Iterator for DatabaseKeyIterator<'d> {
 					}
 
 					if &*filter.last_key != "" {
-						if !(key <= &*filter.last_key) {
+						if !(key < &*filter.last_key) {
 							return false;
 						}
 					}

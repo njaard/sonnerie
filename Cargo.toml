@@ -48,6 +48,7 @@ either="1.6"
 
 [dev-dependencies]
 rand={version="0.8", features=["small_rng"]}
+concat-idents="1"
 
 [[bin]]
 name="sonnerie"
