@@ -322,7 +322,6 @@ fn worker_thread<W: Write + Send>(
 
 		let wrote_size;
 		{
-			use std::convert::TryInto;
 			let ps = wl.prev_size;
 			let mut bc = WriteCounter::new(&mut wl.writer);
 

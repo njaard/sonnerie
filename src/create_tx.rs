@@ -173,8 +173,6 @@ impl CreateTx {
 			}
 		}
 
-		use std::convert::TryInto;
-
 		for attempt in 0.. {
 			let timestamp: i64 = std::time::SystemTime::now()
 				.duration_since(std::time::SystemTime::UNIX_EPOCH)
