@@ -122,7 +122,7 @@ impl CreateTx {
 	/// Commit the transaction, but give it a specific name.
 	///
 	/// This function is necessary for compacting, normally
-	/// you would just call the basic [`CreateTx::commit`](.
+	/// you would just call the basic [`CreateTx::commit`].
 	pub fn commit_to(self, final_name: &Path) -> std::io::Result<()> {
 		let writer = self.writer;
 		let mut file = writer.finish()?;
