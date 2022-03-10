@@ -1,11 +1,14 @@
-# 0.6.5: Unreleased
+# 0.7.0: Unreleased
+* New feature, [deleting](https://github.com/njaard/sonnerie/issues/12) which
+allows instantaneous deletion of ranges of records. Data is purged after a compaction.
+Thank you [f5xs-0000a](https://github.com/f5xs-0000a) for the contribution!
 * Fix a critical bug in string fields, when multiple appear consecutively.
 * The transaction filenames now permit 1M transactions per second
 
 # 0.6.4: 2022-02-17
 * Fix bug in which sometimes the latest version of a record did not take
 precedence.
-* Increase version of the depencency `parking_lot`
+* Increase version of the dependency `parking_lot`
 * Add exponential backoff when trying to create more than 1 transaction
 per second. This is a workaround for how transaction filenames are based on
 seconds and not a smaller unit.
