@@ -2,7 +2,7 @@
 [![Crates.io](https://img.shields.io/crates/v/sonnerie.svg)](https://crates.io/crates/sonnerie)
 [![docs](https://img.shields.io/badge/docs-api-green)](https://docs.rs/sonnerie)
 
-2021-08-18: A new major release of version 0.6.0. Refer to the [Changelog](Changelog.md).
+Refer to the [Changelog](Changelog.md) for information on releases.
 
 # Introduction
 
@@ -91,6 +91,16 @@ Sonnerie outputs the matched values:
 	fibonacci 2020-01-05 00:00:00     5
 	fibonacci 2020-01-06 00:00:00     8
 
+## Delete records
+
+	sonnerie -d database/ delete --after-time=2020-01-04
+
+Instantaneously removes all values at the specified time and later, also available
+is `--before-time` and similar functions for filtering by key range.
+
+The data is immediately removed from the database. A later compaction will
+purge it and recover disk space.
+
 # Usage
 
 ## Row format
@@ -137,7 +147,7 @@ that allowed the test to be bypassed for performance.
 
 All actions can be done by running `sonnerie -d /path/to/data/`. Furthermore,
 a file, (after it gets its ".tmp" suffix removed) will never change, though
-the file named `main` will get replaced sometimes. This means you can
+the files may sometimes get replaced. This means you can
 replicate a database by hardlinking all the files (`ln`).
 
 ## The database must be compacted
@@ -152,7 +162,7 @@ There are two types of compactions, a major and a minor one. A major
 one replaces the entire database, which requires reading
 and rewriting the entire database. A minor one replaces all of the transaction
 files with a single new transaction file. This is a lot faster because it
-requires only reading and rewriting the contents the transaction files
+requires only reading and rewriting the contents of the transaction files
 and not the `main` file.
 
 A major compaction is accomplished with:
@@ -171,7 +181,7 @@ Compactions are atomic, so you can cancel it (with `^C`) at any time.
 
 ## You can compact and filter
 
-In case some data in the database needs to be removed, you can use
+In case some data in the database needs to be modified, you can use
 `compact` with the `--gegnum` option. Gegnum means "through" in Icelandic.
 
 This command removes records that start with `bad-objects`:
