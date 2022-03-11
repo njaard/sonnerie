@@ -172,15 +172,16 @@ fn main() -> std::io::Result<()> {
 		let before_key = matches.value_of("before-key");
 		let after_time;
 		let before_time;
-		if let Some(time) = matches.value_of("time").map(|a| parse_time(a).unwrap())
-		{
+		if let Some(time) = matches.value_of("time").map(|a| parse_time(a).unwrap()) {
 			after_time = Some(time);
 			before_time = Some(time + chrono::Duration::nanoseconds(1));
-		}
-		else
-		{
-			after_time = matches.value_of("after-time").map(|a| parse_time(a).expect("parsing after-time"));
-			before_time = matches.value_of("before-time").map(|a| parse_time(a).expect("parsing before-time"));
+		} else {
+			after_time = matches
+				.value_of("after-time")
+				.map(|a| parse_time(a).expect("parsing after-time"));
+			before_time = matches
+				.value_of("before-time")
+				.map(|a| parse_time(a).expect("parsing before-time"));
 		}
 
 		delete(dir, after_key, before_key, after_time, before_time, filter);
@@ -363,7 +364,9 @@ fn delete(
 	let mut tx = CreateTx::new(dir).expect("creating tx");
 
 	let after_time = after_time.map(|t| t.timestamp_nanos() as u64).unwrap_or(0);
-	let before_time = before_time.map(|t| t.timestamp_nanos() as u64).unwrap_or(u64::MAX);
+	let before_time = before_time
+		.map(|t| t.timestamp_nanos() as u64)
+		.unwrap_or(u64::MAX);
 
 	tx.delete(
 		first_key.unwrap_or(""),
