@@ -41,7 +41,7 @@ fn main() -> std::io::Result<()> {
 					.arg(Arg::with_name("filter")
 						.help("select the keys to print out, \"%\" is the wildcard")
 						.takes_value(true)
-						.required_unless_one(&["before-key", "after-key", "before-time", "after-time"])
+						.required_unless_one(&["before-key", "after-key", "before-time", "after-time","time"])
 					)
 					.arg(Arg::with_name("after-key")
 						.long("after-key")
@@ -57,15 +57,17 @@ fn main() -> std::io::Result<()> {
 						.long("after-time")
 						.help("delete values after (and including) this time")
 						.takes_value(true)
+						.conflicts_with("time")
 					)
 					.arg(Arg::with_name("before-time")
 						.long("before-time")
 						.help("delete values before (but not including) this time (in ISO-9601 format, date, seconds, or nanosecond precision)")
 						.takes_value(true)
+						.conflicts_with("time")
 					)
 					.arg(Arg::with_name("time")
-						.long("before-time")
-						.help("delete values before (but not including) this time (in ISO-9601 format, date, seconds, or nanosecond precision)")
+						.long("time")
+						.help("delete values at exactly this time (in ISO-9601 format, date, seconds, or nanosecond precision)")
 						.takes_value(true)
 					)
 			)
@@ -166,10 +168,20 @@ fn main() -> std::io::Result<()> {
 		compact(dir, matches.is_present("major"), gegnum, ts_format).expect("compacting");
 	} else if let Some(matches) = matches.subcommand_matches("delete") {
 		let filter = matches.value_of("filter");
-		let before_key = matches.value_of("before-key");
 		let after_key = matches.value_of("after-key");
-		let before_time = matches.value_of("before-time");
-		let after_time = matches.value_of("after-time");
+		let before_key = matches.value_of("before-key");
+		let after_time;
+		let before_time;
+		if let Some(time) = matches.value_of("time").map(|a| parse_time(a).unwrap())
+		{
+			after_time = Some(time);
+			before_time = Some(time + chrono::Duration::nanoseconds(1));
+		}
+		else
+		{
+			after_time = matches.value_of("after-time").map(|a| parse_time(a).expect("parsing after-time"));
+			before_time = matches.value_of("before-time").map(|a| parse_time(a).expect("parsing before-time"));
+		}
 
 		delete(dir, after_key, before_key, after_time, before_time, filter);
 	} else if let Some(matches) = matches.subcommand_matches("read") {
@@ -344,26 +356,14 @@ fn delete(
 	dir: &Path,
 	first_key: Option<&str>,
 	last_key: Option<&str>,
-	after_time: Option<&str>,
-	before_time: Option<&str>,
+	after_time: Option<NaiveDateTime>,
+	before_time: Option<NaiveDateTime>,
 	filter: Option<&str>,
 ) {
 	let mut tx = CreateTx::new(dir).expect("creating tx");
 
-	let after_time = after_time
-		.map(|at| {
-			parse_time(at)
-				.expect("parsing after-time")
-				.timestamp_nanos() as u64
-		})
-		.unwrap_or(0);
-	let before_time = before_time
-		.map(|bt| {
-			parse_time(bt)
-				.expect("parsing before-time")
-				.timestamp_nanos() as u64
-		})
-		.unwrap_or(u64::MAX);
+	let after_time = after_time.map(|t| t.timestamp_nanos() as u64).unwrap_or(0);
+	let before_time = before_time.map(|t| t.timestamp_nanos() as u64).unwrap_or(u64::MAX);
 
 	tx.delete(
 		first_key.unwrap_or(""),
