@@ -1,8 +1,41 @@
 //! Efficiently split lines by whitespace, while handling the backslash
 //! escape sequences in Rust-like string format.
+//!
+//! For example, if you had a string like:
+//! ```text
+//!   One\ two three\ four
+//! ```
+//! Naïve splitting on whitespace would produce four outputs:
+//! * `One\`
+//! * `two`
+//! * `three\`
+//! * `four`
+//!
+//! This crate will instead produce two strings:
+//! * `One two`
+//! * `three four`
+//!
+//! This crate also handles special escape sequences like "\n", which represents a newline.
+//! Specifically, the escape sequences are:
+//!
+//! * `\a`
+//! * `\b`
+//! * `\t`
+//! * `\n`
+//! * `\v`
+//! * `\f`
+//! * `\r`
+//! * `\\`
+//!
+//! If the backslash character is found, but the successive character is not special,
+//! then the backslash is disregarded and the successive character is included verbatim.
 
 use std::borrow::Cow;
 
+/// Splits once
+///
+/// Returns a tuple of the first "word" up until the first unescaped whitespace character,
+/// and then every after the whitespace characters.
 pub fn split_one_bytes<'a>(bytes: &'a [u8])
 	-> Option<(Cow<'a, [u8]>, &'a [u8])>
 {
@@ -112,6 +145,7 @@ pub fn split_one<'a>(text: &'a str)
 	}
 }
 
+/// Produce all the words as a vector
 pub fn split<'a>(mut text: &'a str)
 	-> Option<Vec<Cow<'a, str>>>
 {
@@ -128,6 +162,7 @@ pub fn split<'a>(mut text: &'a str)
 	Some(res)
 }
 
+/// Converts text with all the special characters escape with a backslash
 pub fn escape<'a>(text: &'a str)
 	-> Cow<'a, str>
 {
