@@ -1,9 +1,9 @@
-# 0.7.0: Unreleased
+# 0.7.0: 2022-03-14
 * New feature, [deleting](https://github.com/njaard/sonnerie/issues/12) which
 allows instantaneous deletion of ranges of records. Data is purged after a compaction.
 Thank you [f5xs-0000a](https://github.com/f5xs-0000a) for the contribution!
 * Fix a critical bug in string fields, when multiple appear consecutively.
-* The transaction filenames now permit 1M transactions per second
+* The transaction filenames now permit 1M transactions per second.
 
 # 0.6.4: 2022-02-17
 * Fix bug in which sometimes the latest version of a record did not take
