@@ -4,6 +4,9 @@ allows instantaneous deletion of ranges of records. Data is purged after a compa
 Thank you [f5xs-0000a](https://github.com/f5xs-0000a) for the contribution!
 * Fix a critical bug in string fields, when multiple appear consecutively.
 * The transaction filenames now permit 1M transactions per second.
+* This version is backwards and forwards-compatible with version 0.6, except
+when you use deletions. If you use deletion, a major compaction will
+restore full backwards and forwards compatibility.
 
 # 0.6.4: 2022-02-17
 * Fix bug in which sometimes the latest version of a record did not take
