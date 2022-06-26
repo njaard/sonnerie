@@ -28,6 +28,10 @@ impl SegmentReader {
 			let mut buffer = vec![];
 			decode_into_with_unescaping(&mut buffer, segment.payload);
 
+			if buffer.is_empty() {
+				return Ok(Left(reader));
+			}
+
 			// bytes 0 .. 4 are the key length
 			// bytes 4 .. 8 are the format string length
 			// bytes 8 .. 12 are the payload length
