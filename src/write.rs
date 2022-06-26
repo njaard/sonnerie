@@ -180,7 +180,9 @@ impl<W: Write + Send> Writer<W> {
 				}
 			}
 
-			if self.current_segment_data.len() + self.current_key_data.len() >= SEGMENT_SIZE_GOAL {
+			if self.current_segment_data.len() + self.current_key_data.len() >= SEGMENT_SIZE_GOAL
+				&& !self.current_segment_data.is_empty()
+			{
 				// the segment is full, flush it
 				self.store_current_segment()?;
 				self.first_segment_key.replace_range(.., key);
@@ -345,6 +347,7 @@ fn worker_thread<W: Write + Send>(
 			}
 			wrote_size = bc.count().try_into().map_err(ee)?;
 		}
+
 		if header.last_key == header.first_key {
 			wl.stored_size_last_key += wrote_size;
 		} else {
