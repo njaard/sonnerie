@@ -20,6 +20,10 @@ Sonnerie can very efficiently do random insertions and updates, and works
 well for huge databases. Due to the compact disk format, sparse data such
 as keys with only a few timestamps can be very efficiently stored.
 
+Sonnerie is mostly intended for on-disk archival, realtime updates, and realtime accesses
+of individual series. For analytical purposes, one would load the necessary data
+into memory and process it through other means.
+
 # Features
 * A straight-forward protocol for reading and writing
 * Easy setup: insert data on the command line.
@@ -120,8 +124,8 @@ preceded by a backslash.
 
 In the above "fibonacci" example, we're using the "u" format.
 
-Multi-column rows are not extensively tested, but would look something like this,
-for two floating point values representing latitude and longitude:
+Multi-column rows are permitted; for two floating point values representing
+latitude and longitude:
 
 	oceanic-airlines 2018-01-01T00:00:00 ff 37.686751 -122.602227
 	oceanic-airlines 2018-01-01T00:00:01 ff 37.686810 -122.603713
@@ -196,6 +200,8 @@ The `--gegnum` runs its command inside a /bin/sh, so pipelines work. Filter
 out bad objects AND modify the names of other objects:
 
     compact --major --gegnum 'grep -v ^bad-objects | sed "s/^old-name/new-name/"'
+
+The outut of the `--gegnum` command must be in sorted order.
 
 You can also see a preview of its output by piping your command into `| tee /dev/stderr`.
 
