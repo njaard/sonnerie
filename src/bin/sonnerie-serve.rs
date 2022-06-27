@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use hyper::Server;
-use parking_lot::RwLock;
+use antidote::RwLock;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 

@@ -1,6 +1,6 @@
 use byteorder::{BigEndian, ByteOrder, WriteBytesExt};
 use crossbeam::channel;
-use parking_lot::{Condvar, Mutex};
+use antidote::{Condvar, Mutex};
 use std::io::Write;
 use std::sync::Arc;
 
@@ -316,7 +316,7 @@ fn worker_thread<W: Write + Send>(
 
 		let mut wl = writer_state.lock();
 		while counter != wl.counter {
-			writer_notifier.wait(&mut wl);
+			wl = writer_notifier.wait(wl);
 		}
 
 		fn wv(vec: &mut impl Write, data: u32) -> std::io::Result<()> {
