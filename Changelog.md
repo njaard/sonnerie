@@ -1,3 +1,9 @@
+# 0.7.1: 2022-06-27
+* Don't sometimes write empty segments that are unreabable, particularly when using
+string fields.
+* Stop using `parking_lot` because Rust 1.62 will have much faster locks and
+we don't need the relatively large dependency.
+
 # 0.7.0: 2022-03-14
 * New feature, [deleting](https://github.com/njaard/sonnerie/issues/12) which
 allows instantaneous deletion of ranges of records. Data is purged after a compaction.
