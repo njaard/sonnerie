@@ -26,7 +26,7 @@ have to look at older versions of `file_format.md` to see documentation for prev
 * The LZ4-compressed payload. The compressed size is recorded in the header.
 If `@TSDB_SEGMENT_` is in the _compressed_ data, then it is replaced with "`@TSDB_SEGMENT_\xff\xff`".
 
-The first key is always lexigraphically less than or equal to the last one.
+The first key is always lexicographically less than or equal to the last one.
 
 # Payload
 The payload stores all its keys as such:
@@ -69,7 +69,7 @@ not be reflected from `read`s and `compact`s.
 
 # A segments-file
 A file of segments contains a bunch of segments, each with their
-complete header. The file of segments' segments are sorted lexicgraphically
+complete header. The file of segments' segments are sorted lexicographically
 by key. A key may span multiple segments. Sonnerie chooses a reasonable approximate
 maximum segment size.
 
@@ -123,3 +123,6 @@ corresponding to 32 or 64-bit float, unsigned integer, signed integer, respectiv
 A character may also be 's', which means that the column stores a string
 of a non-fixed length. Storage of the actual data uses the "non-fixed length" storage
 which includes some varints for length.
+
+The format string may also be `\x7f`, which is a special case described in the section
+"Delete Marker".
