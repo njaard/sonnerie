@@ -780,6 +780,34 @@ fn string_records() {
 }
 
 #[test]
+fn many_string_records() {
+	let t = tempfile::TempDir::new().unwrap();
+
+	let mut count = 0;
+
+	{
+		let mut tx = CreateTx::new(t.path()).expect("creating tx");
+
+		let row = crate::row_format::parse_row_format("ss");
+
+		let mut size = 0;
+		while size < crate::write::SEGMENT_SIZE_GOAL
+		{
+			let mut buf = vec![];
+			row.to_stored_format(size as u64, "short text", &mut buf).unwrap();
+			tx.add_record("abcdef", "ss", &buf).unwrap();
+			size += buf.len();
+			count += 1;
+		}
+
+		tx.commit_to(&t.path().join("main")).expect("committed");
+	}
+	let r = DatabaseReader::new(t.path()).unwrap();
+	assert_eq!(count, r.get("abcdef").count());
+}
+
+
+#[test]
 fn delete_all() {
 	let (t, _) = make_big_database(65536);
 

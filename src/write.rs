@@ -9,17 +9,27 @@ const SEGMENT_SIZE_EXTRA: usize = 1024 * 1024 + 1024 * 32;
 
 pub(crate) struct Writer<W: Write + Send + 'static> {
 	writer_state: Option<Arc<Mutex<WriterState<W>>>>,
+	/// the last key that was added
 	last_key: String,
+	/// the format string that was previously added
 	last_format: String,
+	/// the first key currently stored in `current_segment_data`
 	first_segment_key: String,
+	/// the last key currently stored in `current_segment_data` (updated when `last_segment_key()` is called)
 	last_segment_key: String,
+	/// the data for the segment; data for the current key doesn't get put here until it's finished, so we want large
+	/// keys to have a chance to overflow into a new segment
 	current_segment_data: Vec<u8>,
+	/// data for the current key (`last_key`) that hasn't been flushed into a segment yet
 	current_key_data: Vec<u8>,
+	/// the most recent timestamp (used for ensuring ordering)
 	current_timestamp: [u8; 8],
-	worker_threads: Option<channel::Sender<WorkerMessage>>,
+	/// Used for verifying that the records comply with their format, if None, then they are variable (string) sized
 	current_record_size: Option<usize>,
+	/// these threads actually do the LZ4-ing
+	worker_threads: Option<channel::Sender<WorkerMessage>>,
 	thread_handles: Vec<std::thread::JoinHandle<std::io::Result<()>>>,
-	// a counter to keep each thread writing its output in the right order
+	/// a counter to keep each thread writing its output in the right order
 	thread_ordering: usize,
 }
 
@@ -125,8 +135,10 @@ impl<W: Write + Send> Writer<W> {
 			crate::row_format::row_format_size(format).map(|m| m + crate::record::TIMESTAMP_SIZE);
 	}
 
+	/// copy the data for the current key into `current_segment_data`
 	fn flush_current_key(&mut self) {
 		if !self.current_key_data.is_empty() {
+			// fill in key data length
 			let l = self.current_key_data.len() as u32
 				- 12 - self.last_key.len() as u32
 				- self.last_format.len() as u32;
@@ -144,8 +156,8 @@ impl<W: Write + Send> Writer<W> {
 		format: &str,
 		data: &[u8],
 	) -> std::result::Result<(), WriteFailure> {
-		// this is the first key ever seen
 		if self.current_key_data.is_empty() {
+			// this is the first key ever seen
 			self.new_key_begin(key, format);
 			self.first_segment_key.replace_range(.., key);
 			if let Some(sz) = self.current_record_size {
@@ -180,8 +192,9 @@ impl<W: Write + Send> Writer<W> {
 				}
 			}
 
-			if self.current_segment_data.len() + self.current_key_data.len() >= SEGMENT_SIZE_GOAL {
-				// the segment is full, flush it
+			if self.current_segment_data.len() + self.current_key_data.len() >= SEGMENT_SIZE_GOAL
+				&& ! self.current_segment_data.is_empty()
+			{
 				self.store_current_segment()?;
 				self.first_segment_key.replace_range(.., key);
 			}
@@ -395,9 +408,5 @@ fn near_boundary() {
 	w.add_record(q, "f", b"012345671234").unwrap();
 	w.add_record("r", "f", b"012345671234").unwrap();
 	let v = w.finish().unwrap();
-	{
-		let mut f = std::fs::File::create("temp.bin").unwrap();
-		f.write_all(&v).unwrap();
-	}
 	assert_eq!(memchr::memmem::find_iter(&v, q).count(), 2);
 }
