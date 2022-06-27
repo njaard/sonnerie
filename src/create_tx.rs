@@ -58,6 +58,13 @@ impl CreateTx {
 		self.writer.add_record(key, format, data)
 	}
 
+	/// Delete a range of records
+	///
+	/// You can use an empty string to indicate "unbounded" and `u64::MIN` and `u64::MAX`
+	/// for the timestamps, similarly.
+	///
+	/// This function must be called as the one and only action in a transaction
+	/// and then committed.
 	pub fn delete(
 		&mut self,
 		first_key: &str,
@@ -77,11 +84,11 @@ impl CreateTx {
 
 		let mut row_data = Vec::with_capacity(
 			first_key.as_bytes().len()
-                + filter.as_bytes().len()
-                + last_key.as_bytes().len()
-                + 16 // length of two u64's
-                + 27 // practical maximum length of three varints
-                + 1, // the format
+				+ filter.as_bytes().len()
+				+ last_key.as_bytes().len()
+				+ 16 // length of two u64's
+				+ 27 // practical maximum length of three varints
+				+ 1, // the format
 		);
 
 		// bypass RowFormat entirely, we're going to be building row_data here

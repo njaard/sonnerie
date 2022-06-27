@@ -791,10 +791,10 @@ fn many_string_records() {
 		let row = crate::row_format::parse_row_format("ss");
 
 		let mut size = 0;
-		while size < crate::write::SEGMENT_SIZE_GOAL
-		{
+		while size < crate::write::SEGMENT_SIZE_GOAL {
 			let mut buf = vec![];
-			row.to_stored_format(size as u64, "short text", &mut buf).unwrap();
+			row.to_stored_format(size as u64, "short text", &mut buf)
+				.unwrap();
 			tx.add_record("abcdef", "ss", &buf).unwrap();
 			size += buf.len();
 			count += 1;
@@ -805,7 +805,6 @@ fn many_string_records() {
 	let r = DatabaseReader::new(t.path()).unwrap();
 	assert_eq!(count, r.get("abcdef").count());
 }
-
 
 #[test]
 fn delete_all() {

@@ -193,7 +193,7 @@ impl<W: Write + Send> Writer<W> {
 			}
 
 			if self.current_segment_data.len() + self.current_key_data.len() >= SEGMENT_SIZE_GOAL
-				&& ! self.current_segment_data.is_empty()
+				&& !self.current_segment_data.is_empty()
 			{
 				self.store_current_segment()?;
 				self.first_segment_key.replace_range(.., key);
