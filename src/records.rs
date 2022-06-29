@@ -316,11 +316,12 @@ impl RecordBuilder for RecordBuilderEnd {
 /// The Rust type of each column is used to determine the stored format string. For example,
 /// a `u32` will be stored with the format string `u`.
 ///
-/// ```
+/// ```no_run
+/// # let mut transaction = sonnerie::CreateTx::new(std::path::Path::new("")).unwrap();
 /// transaction.add_record(
 ///    "key name",
 ///    "2010-01-01T00:00:01".parse().unwrap(),
-///    record("Column 1").add("Column 2").add(3i32)
+///    sonnerie::record("Column 1").add("Column 2").add(3i32)
 ///  ).unwrap();
 /// ```
 ///

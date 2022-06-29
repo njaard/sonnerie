@@ -45,22 +45,24 @@ impl CreateTx {
 	/// The values can be encoded with the function [`crate::record()`]
 	///
 	/// The format string is automatically inferred by the Rust-types of the values.
-	/// ```
+	/// ```no_run
+	/// # let mut transaction = sonnerie::CreateTx::new(std::path::Path::new("")).unwrap();
 	/// transaction.add_record(
 	///    "key name",
 	///    "2010-01-01T00:00:01".parse().unwrap(),
-	///    record("Column 1").add("Column 2").add(3)
+	///    sonnerie::record("Column 1").add("Column 2").add(3i32)
 	///  ).unwrap();
 	/// ```
 	///
 	/// Because &[&dyn ToRecord] also implements the [`crate::RecordBuilder`] trait,
 	/// you can also use an array to specify the types, but then less work happens at compile-time
 	/// and the performance isn't as good:
-	/// ```
+	/// ```no_run
+	/// # let mut transaction = sonnerie::CreateTx::new(std::path::Path::new("")).unwrap();
 	/// transaction.add_record(
 	///    "key name",
 	///    "2010-01-01T00:00:01".parse().unwrap(),
-	///    [&"Column 1" as &dyn ToRecord, "Column 2", 3]
+	///    &[&"Column 1" as &dyn sonnerie::ToRecord, &"Column 2", &3i32]
 	///  ).unwrap();
 	/// ```
 	///
