@@ -55,8 +55,10 @@ struct WorkerMessage {
 /// A reason a write could not be completed
 #[derive(Debug)]
 pub enum WriteFailure {
-	/// The key (`.0`) came lexicographically before key `.1`.
-	OrderingViolation(String, String),
+	/// The key `second` does not come lexicographically after `first`, but they were added in that order
+	KeyOrderingViolation{ first: String, second: String },
+	/// The timestamp `second` does not come chronologically after `first`, but they were added in that order, in the same key (`key`)
+	TimeOrderingViolation{ first: chrono::NaiveDateTime, second: chrono::NaiveDateTime, key: String },
 	/// The size of data was not expected
 	IncorrectLength(usize),
 	/// An IO error from the OS
@@ -163,17 +165,26 @@ impl<W: Write + Send> Writer<W> {
 			self.first_segment_key.replace_range(.., key);
 		} else {
 			if key.as_bytes() < self.last_key.as_bytes() {
-				return Err(WriteFailure::OrderingViolation(
-					key.to_string(),
-					self.last_key.clone(),
-				));
+				return Err(WriteFailure::KeyOrderingViolation{
+					second: key.to_string(),
+					first: self.last_key.clone(),
+				});
 			}
 
 			if key.as_bytes() == self.last_key.as_bytes() && timestamp <= self.current_timestamp {
-				return Err(WriteFailure::OrderingViolation(
-					key.to_string(),
-					self.last_key.clone(),
-				));
+				let first = chrono::NaiveDateTime::from_timestamp(
+					(self.current_timestamp / 1_000_000_000) as i64,
+					(self.current_timestamp % 1_000_000_000) as u32,
+				);
+				let second = chrono::NaiveDateTime::from_timestamp(
+					(timestamp / 1_000_000_000) as i64,
+					(timestamp % 1_000_000_000) as u32,
+				);
+				return Err(WriteFailure::TimeOrderingViolation{
+					key: key.to_string(),
+					first,
+					second,
+				});
 			}
 
 			if key != self.last_key || format != self.last_format {
