@@ -1,6 +1,6 @@
 //! Read a key from a transaction file.
 
-use crate::record::*;
+use crate::records::*;
 use crate::segment::*;
 use crate::segment_reader::*;
 use crate::Wildcard;
@@ -351,11 +351,11 @@ impl<'rdr, 'k> Iterator for StringKeyRangeReader<'rdr, 'k> {
 			fmt_pos: self.current_fmt_text_pos,
 			fmt_len: self.current_fmt_text_len,
 			value_pos: self.pos,
-			value_len: current_record_len + crate::record::TIMESTAMP_SIZE,
+			value_len: current_record_len + crate::TIMESTAMP_SIZE,
 			data,
 		};
 
-		self.pos += current_record_len + crate::record::TIMESTAMP_SIZE;
+		self.pos += current_record_len + crate::TIMESTAMP_SIZE;
 		Some(r)
 	}
 }

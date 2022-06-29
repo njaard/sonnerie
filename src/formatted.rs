@@ -48,7 +48,7 @@ pub fn add_from_stream<R: std::io::BufRead>(
 			.to_stored_format(ts, tail, &mut row_data)
 			.unwrap_or_else(|_| panic!("parsing values \"{}\"", tail));
 
-		tx.add_record(&key, format, &row_data)?;
+		tx.add_record_raw(&key, format, &row_data)?;
 		row_data.clear();
 		line.clear();
 	}
@@ -91,7 +91,7 @@ pub fn add_from_stream_with_fmt<R: std::io::BufRead>(
 			.to_stored_format(ts, values, &mut row_data)
 			.unwrap();
 
-		tx.add_record(&key, &format, &row_data)?;
+		tx.add_record_raw(&key, &format, &row_data)?;
 		row_data.clear();
 		line.clear();
 	}
@@ -141,7 +141,7 @@ impl std::default::Default for PrintTimestamp<'static> {
 /// on the options for the parameters `print_timestamp`
 /// or `print_record_format`.
 pub fn print_record<W: std::io::Write>(
-	record: &crate::record::Record,
+	record: &crate::Record,
 	out: &mut W,
 	print_timestamp: PrintTimestamp<'_>,
 	print_record_format: PrintRecordFormat,

@@ -5,6 +5,7 @@ use crate::write::Writer;
 use crate::CreateTx;
 use crate::Reader;
 
+use crate::record;
 use core::mem::drop;
 use rayon::iter::IntoParallelIterator;
 use rayon::iter::ParallelIterator;
@@ -66,7 +67,7 @@ fn make_big_database(count: usize) -> (tempfile::TempDir, DatabaseReader) {
 			let mut buf = [0; 12];
 			byteorder::BigEndian::write_u64(&mut buf[..], timestamp as u64);
 			random_values.fill_bytes(&mut buf[8..]);
-			tx.add_record(&name, "u", &buf[..]).unwrap();
+			tx.add_record_raw(&name, "u", &buf[..]).unwrap();
 			total += 1;
 		}
 		last = name;
@@ -89,13 +90,13 @@ fn basic1() {
 		let w = BufWriter::new(w);
 
 		let mut w = Writer::new(w);
-		w.add_record("ab", "u", b"\0\0\0\0\0\0\0\0\0\0\0\0")
+		w.add_record_raw("ab", "u", b"\0\0\0\0\0\0\0\0\0\0\0\0")
 			.unwrap();
-		w.add_record("ab", "u", b"\0\0\0\0\0\0\0\x01\0\0\0\x01")
+		w.add_record_raw("ab", "u", b"\0\0\0\0\0\0\0\x01\0\0\0\x01")
 			.unwrap();
-		w.add_record("ab", "u", b"\0\0\0\0\0\0\0\x02\0\0\0\x02")
+		w.add_record_raw("ab", "u", b"\0\0\0\0\0\0\0\x02\0\0\0\x02")
 			.unwrap();
-		w.add_record("ab", "u", b"\0\0\0\0\0\0\0\x03\x03\0\0\x03")
+		w.add_record_raw("ab", "u", b"\0\0\0\0\0\0\0\x03\x03\0\0\x03")
 			.unwrap();
 		w.finish().unwrap();
 	}
@@ -133,12 +134,13 @@ fn basic3() {
 		let w = BufWriter::new(w);
 
 		let mut w = Writer::new(w);
-		w.add_record("a", "u", b"\0\0\0\0\0\0\0\0\0\0\0\0").unwrap();
-		w.add_record("a", "u", b"\0\0\0\0\0\0\0\x01\0\0\0\x01")
+		w.add_record_raw("a", "u", b"\0\0\0\0\0\0\0\0\0\0\0\0")
 			.unwrap();
-		w.add_record("b", "u", b"\0\0\0\0\0\0\0\x02\0\0\0\x02")
+		w.add_record_raw("a", "u", b"\0\0\0\0\0\0\0\x01\0\0\0\x01")
 			.unwrap();
-		w.add_record("b", "u", b"\0\0\0\0\0\0\0\x03\x03\0\0\x03")
+		w.add_record_raw("b", "u", b"\0\0\0\0\0\0\0\x02\0\0\0\x02")
+			.unwrap();
+		w.add_record_raw("b", "u", b"\0\0\0\0\0\0\0\x03\x03\0\0\x03")
 			.unwrap();
 		w.finish().unwrap();
 	}
@@ -173,7 +175,7 @@ fn write_many<W: std::io::Write + Send>(w: &mut Writer<W>, key: &str, range: std
 		let mut buf = [0u8; 12];
 		byteorder::BigEndian::write_u64(&mut buf[..], n as u64);
 		byteorder::BigEndian::write_u32(&mut buf[8..12], n);
-		w.add_record(key, "u", &buf).unwrap();
+		w.add_record_raw(key, "u", &buf).unwrap();
 	}
 }
 fn write_many_u64<W: std::io::Write + Send>(
@@ -185,7 +187,7 @@ fn write_many_u64<W: std::io::Write + Send>(
 		let mut buf = [0u8; 16];
 		byteorder::BigEndian::write_u64(&mut buf[..], n as u64);
 		byteorder::BigEndian::write_u64(&mut buf[8..16], n);
-		w.add_record(key, "U", &buf).unwrap();
+		w.add_record_raw(key, "U", &buf).unwrap();
 	}
 }
 
@@ -403,7 +405,8 @@ fn write() {
 		let w = BufWriter::new(w);
 
 		let mut w = Writer::new(w);
-		w.add_record("a", "u", b"\0\0\0\0\0\0\0\0\0\0\0\0").unwrap();
+		w.add_record_raw("a", "u", b"\0\0\0\0\0\0\0\0\0\0\0\0")
+			.unwrap();
 		w.finish().unwrap();
 	}
 
@@ -424,24 +427,24 @@ fn database_merge1() {
 		}
 
 		let mut tx = CreateTx::new(t.path()).unwrap();
-		tx.add_record("a", "U", &[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
+		tx.add_record_raw("a", "U", &[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
 			.unwrap();
-		tx.add_record("a", "U", &[1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
+		tx.add_record_raw("a", "U", &[1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
 			.unwrap();
-		tx.add_record("c", "U", &[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
+		tx.add_record_raw("c", "U", &[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
 			.unwrap();
-		tx.add_record("c", "U", &[1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
+		tx.add_record_raw("c", "U", &[1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
 			.unwrap();
 		tx.commit().unwrap();
 
 		let mut tx = CreateTx::new(t.path()).unwrap();
-		tx.add_record("b", "U", &[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
+		tx.add_record_raw("b", "U", &[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
 			.unwrap();
-		tx.add_record("b", "U", &[1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
+		tx.add_record_raw("b", "U", &[1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
 			.unwrap();
-		tx.add_record("d", "U", &[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
+		tx.add_record_raw("d", "U", &[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
 			.unwrap();
-		tx.add_record("d", "U", &[1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
+		tx.add_record_raw("d", "U", &[1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
 			.unwrap();
 		tx.commit().unwrap();
 	}
@@ -470,7 +473,7 @@ fn correct_size() {
 	}
 	{
 		let mut tx = CreateTx::new(t.path()).unwrap();
-		tx.add_record("a", "U", &[0, 0, 0, 0, 0, 0, 0, 0, 1])
+		tx.add_record_raw("a", "U", &[0, 0, 0, 0, 0, 0, 0, 0, 1])
 			.unwrap();
 		tx.commit().unwrap();
 	}
@@ -487,12 +490,12 @@ fn database_merge_last() {
 		}
 
 		let mut tx = CreateTx::new(t.path()).unwrap();
-		tx.add_record("a", "U", &[0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0])
+		tx.add_record_raw("a", "U", &[0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0])
 			.unwrap();
 		tx.commit().unwrap();
 
 		let mut tx = CreateTx::new(t.path()).unwrap();
-		tx.add_record("a", "U", &[0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0])
+		tx.add_record_raw("a", "U", &[0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0])
 			.unwrap();
 		tx.commit().unwrap();
 	}
@@ -549,8 +552,8 @@ fn escape_invocation() {
 		assert_eq!(14, crate::segment::SEGMENT_INVOCATION.len());
 		naughty.extend_from_slice(crate::segment::SEGMENT_INVOCATION);
 
-		tx.add_record("b", "s", &naughty).unwrap();
-		tx.add_record("c", "u", &[0, 0, 0, 0, 0, 0, 0, 0, 0x42, 42, 0, 0])
+		tx.add_record_raw("b", "s", &naughty).unwrap();
+		tx.add_record_raw("c", "u", &[0, 0, 0, 0, 0, 0, 0, 0, 0x42, 42, 0, 0])
 			.unwrap();
 		tx.commit().unwrap();
 	}
@@ -755,6 +758,120 @@ fn high_level_reader() {
 }
 
 #[test]
+fn high_level_writer() {
+	let t = tempfile::TempDir::new().unwrap();
+
+	{
+		let mut tx = CreateTx::new(t.path()).expect("creating tx");
+		tx.add_record(
+			"a",
+			"2010-01-01T00:00:01".parse().unwrap(),
+			&[&42u32 as &dyn crate::ToRecord],
+		)
+		.unwrap();
+		tx.add_record(
+			"a",
+			"2010-01-01T00:00:02".parse().unwrap(),
+			&[&84u32 as &dyn crate::ToRecord],
+		)
+		.unwrap();
+		tx.add_record(
+			"a",
+			"2010-01-01T00:00:03".parse().unwrap(),
+			&[&66u32 as &dyn crate::ToRecord],
+		)
+		.unwrap();
+		tx.add_record(
+			"b",
+			"2010-01-01T00:00:04".parse().unwrap(),
+			&[&34.0f64 as &dyn crate::ToRecord, &22.0f32],
+		)
+		.unwrap();
+		tx.add_record(
+			"b",
+			"2010-01-01T00:00:05".parse().unwrap(),
+			&[&3.1415f64 as &dyn crate::ToRecord, &2.7182f32],
+		)
+		.unwrap();
+		tx.add_record(
+			"c",
+			"2010-01-01T00:00:01".parse().unwrap(),
+			&[&"Hello World" as &dyn crate::ToRecord, &"Rustacean"],
+		)
+		.unwrap();
+
+		tx.commit_to(&t.path().join("main")).expect("committed");
+	}
+	let r = DatabaseReader::new(t.path()).unwrap();
+	let a: Vec<u64> = r.get("a").map(|m| m.value()).collect();
+	assert_eq!(a, vec![42, 84, 66]);
+	let a: Vec<(String, f64, f64)> = r
+		.get("b")
+		.map(|m| (m.format().to_owned(), m.get(0), m.get(1)))
+		.collect();
+	assert_eq!(
+		format!("{:.4?}", a),
+		r#"[("Ff", 34.0000, 22.0000), ("Ff", 3.1415, 2.7182)]"#
+	);
+	let a: Vec<(String, String)> = r.get("c").map(|m| (m.get(0), m.get(1))).collect();
+	assert_eq!(
+		a,
+		vec![("Hello World".to_string(), "Rustacean".to_string())]
+	);
+}
+
+#[test]
+fn high_level_writer2() {
+	let t = tempfile::TempDir::new().unwrap();
+
+	{
+		let mut tx = CreateTx::new(t.path()).expect("creating tx");
+		tx.add_record("a", "2010-01-01T00:00:01".parse().unwrap(), record(42u32))
+			.unwrap();
+		tx.add_record("a", "2010-01-01T00:00:02".parse().unwrap(), record(84u32))
+			.unwrap();
+		tx.add_record("a", "2010-01-01T00:00:03".parse().unwrap(), record(66u32))
+			.unwrap();
+		tx.add_record(
+			"b",
+			"2010-01-01T00:00:04".parse().unwrap(),
+			record(34.0f64).add(22.0f32),
+		)
+		.unwrap();
+		tx.add_record(
+			"b",
+			"2010-01-01T00:00:05".parse().unwrap(),
+			record(3.1415f64).add(2.7182f32),
+		)
+		.unwrap();
+		tx.add_record(
+			"c",
+			"2010-01-01T00:00:01".parse().unwrap(),
+			record("Hello World").add("Rustacean"),
+		)
+		.unwrap();
+
+		tx.commit_to(&t.path().join("main")).expect("committed");
+	}
+	let r = DatabaseReader::new(t.path()).unwrap();
+	let a: Vec<u64> = r.get("a").map(|m| m.value()).collect();
+	assert_eq!(a, vec![42, 84, 66]);
+	let a: Vec<(String, f64, f64)> = r
+		.get("b")
+		.map(|m| (m.format().to_owned(), m.get(0), m.get(1)))
+		.collect();
+	assert_eq!(
+		format!("{:.4?}", a),
+		r#"[("Ff", 34.0000, 22.0000), ("Ff", 3.1415, 2.7182)]"#
+	);
+	let a: Vec<(String, String)> = r.get("c").map(|m| (m.get(0), m.get(1))).collect();
+	assert_eq!(
+		a,
+		vec![("Hello World".to_string(), "Rustacean".to_string())]
+	);
+}
+
+#[test]
 fn string_records() {
 	let t = tempfile::TempDir::new().unwrap();
 	let data = "\
@@ -795,8 +912,35 @@ fn many_string_records() {
 			let mut buf = vec![];
 			row.to_stored_format(size as u64, "short text", &mut buf)
 				.unwrap();
-			tx.add_record("abcdef", "ss", &buf).unwrap();
+			tx.add_record_raw("abcdef", "ss", &buf).unwrap();
 			size += buf.len();
+			count += 1;
+		}
+
+		tx.commit_to(&t.path().join("main")).expect("committed");
+	}
+	let r = DatabaseReader::new(t.path()).unwrap();
+	assert_eq!(count, r.get("abcdef").count());
+}
+
+#[test]
+fn many_string_records_highlevel() {
+	let t = tempfile::TempDir::new().unwrap();
+
+	let mut count = 0;
+
+	{
+		let mut tx = CreateTx::new(t.path()).expect("creating tx");
+
+		let mut size = 0;
+		while size < crate::write::SEGMENT_SIZE_GOAL * 2 {
+			tx.add_record(
+				"abcdef",
+				chrono::NaiveDateTime::from_timestamp(size as i64, 0),
+				record("short text"),
+			)
+			.unwrap();
+			size += 17;
 			count += 1;
 		}
 

@@ -6,8 +6,8 @@ use std::path::{Path, PathBuf};
 
 use crate::key_reader::*;
 use crate::merge::Merge;
-use crate::record::Record;
 use crate::segment_reader::DeleteMarker;
+use crate::Record;
 use crate::Wildcard;
 use std::ops::Bound;
 

@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
-use hyper::Server;
 use antidote::RwLock;
+use hyper::Server;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -192,7 +192,7 @@ impl Tsrv {
 				row_format
 					.to_stored_format(ts, &tail, &mut row_data)
 					.map_err(|e| format!("parsing data according to format: {}", e))?;
-				tx.add_record(&key, &format, &row_data)
+				tx.add_record_raw(&key, &format, &row_data)
 					.map_err(|e| format!("processing record {}[{}]: {:?}", key, ts, e))?;
 				row_data.clear();
 			}

@@ -1,6 +1,6 @@
+use antidote::{Condvar, Mutex};
 use byteorder::{BigEndian, ByteOrder, WriteBytesExt};
 use crossbeam::channel;
-use antidote::{Condvar, Mutex};
 use std::io::Write;
 use std::sync::Arc;
 
@@ -23,7 +23,7 @@ pub(crate) struct Writer<W: Write + Send + 'static> {
 	/// data for the current key (`last_key`) that hasn't been flushed into a segment yet
 	current_key_data: Vec<u8>,
 	/// the most recent timestamp (used for ensuring ordering)
-	current_timestamp: [u8; 8],
+	current_timestamp: crate::Timestamp,
 	/// Used for verifying that the records comply with their format, if None, then they are variable (string) sized
 	current_record_size: Option<usize>,
 	/// these threads actually do the LZ4-ing
@@ -105,7 +105,7 @@ impl<W: Write + Send> Writer<W> {
 			last_segment_key: String::new(),
 			current_key_data: Vec::with_capacity(SEGMENT_SIZE_EXTRA),
 			current_segment_data: Vec::with_capacity(SEGMENT_SIZE_EXTRA),
-			current_timestamp: [0; 8],
+			current_timestamp: 0,
 			worker_threads: Some(send),
 			thread_handles,
 			thread_ordering: 0,
@@ -132,7 +132,7 @@ impl<W: Write + Send> Writer<W> {
 		self.current_key_data.write_all(format.as_bytes()).unwrap();
 
 		self.current_record_size =
-			crate::row_format::row_format_size(format).map(|m| m + crate::record::TIMESTAMP_SIZE);
+			crate::row_format::row_format_size(format).map(|m| m + crate::TIMESTAMP_SIZE);
 	}
 
 	/// copy the data for the current key into `current_segment_data`
@@ -150,21 +150,17 @@ impl<W: Write + Send> Writer<W> {
 		self.last_segment_key = self.last_key.clone();
 	}
 
-	pub(crate) fn add_record(
+	pub(crate) fn add_record_base(
 		&mut self,
 		key: &str,
+		timestamp: crate::Timestamp,
 		format: &str,
-		data: &[u8],
+		serialize_values: impl FnOnce(&mut Vec<u8>),
 	) -> std::result::Result<(), WriteFailure> {
 		if self.current_key_data.is_empty() {
 			// this is the first key ever seen
 			self.new_key_begin(key, format);
 			self.first_segment_key.replace_range(.., key);
-			if let Some(sz) = self.current_record_size {
-				if data.len() != sz {
-					return Err(WriteFailure::IncorrectLength(sz));
-				}
-			}
 		} else {
 			if key.as_bytes() < self.last_key.as_bytes() {
 				return Err(WriteFailure::OrderingViolation(
@@ -173,9 +169,7 @@ impl<W: Write + Send> Writer<W> {
 				));
 			}
 
-			if key.as_bytes() == self.last_key.as_bytes()
-				&& data[0..8] <= self.current_timestamp[..]
-			{
+			if key.as_bytes() == self.last_key.as_bytes() && timestamp <= self.current_timestamp {
 				return Err(WriteFailure::OrderingViolation(
 					key.to_string(),
 					self.last_key.clone(),
@@ -186,11 +180,6 @@ impl<W: Write + Send> Writer<W> {
 				self.flush_current_key();
 				self.new_key_begin(key, format);
 			}
-			if let Some(sz) = self.current_record_size {
-				if data.len() != sz {
-					return Err(WriteFailure::IncorrectLength(sz));
-				}
-			}
 
 			if self.current_segment_data.len() + self.current_key_data.len() >= SEGMENT_SIZE_GOAL
 				&& !self.current_segment_data.is_empty()
@@ -200,17 +189,74 @@ impl<W: Write + Send> Writer<W> {
 			}
 		}
 
-		self.current_timestamp.copy_from_slice(&data[0..8]);
+		self.current_timestamp = timestamp;
+		serialize_values(&mut self.current_key_data);
 
-		if self.current_record_size.is_none() {
-			let mut buf = unsigned_varint::encode::u32_buffer();
-			// subtract 8, for the timestamp
-			let o = unsigned_varint::encode::u32(data.len() as u32 - 8, &mut buf);
-			self.current_key_data.write_all(o).unwrap();
-		}
-
-		self.current_key_data.write_all(data).unwrap();
 		Ok(())
+	}
+
+	pub(crate) fn add_record(
+		&mut self,
+		key: &str,
+		timestamp: crate::Timestamp,
+		values: impl crate::RecordBuilder,
+	) -> std::result::Result<(), WriteFailure> {
+		let mut fmt = compact_str::CompactString::default();
+		values.format_str(&mut fmt);
+
+		let expected_size = values.size();
+		let variable_size = values.variable_size();
+
+		self.add_record_base(
+			key,
+			timestamp,
+			&fmt,
+			|buf|
+			{
+				if variable_size
+				{
+					let mut lenbuf = unsigned_varint::encode::usize_buffer();
+					let o = unsigned_varint::encode::usize(expected_size, &mut lenbuf);
+					buf.write_all(&o).unwrap();
+				}
+
+				let before_len = buf.len();
+
+				buf.write_u64::<BigEndian>(timestamp).unwrap();
+				values.store(buf);
+
+				if before_len + expected_size + 8 != buf.len() {
+					panic!("ToRecord didn't produce data of a valid size (this is a bug, report it): expected={expected_size}, actual={}", buf.len()-before_len);
+				}
+			}
+		)
+	}
+
+	pub(crate) fn add_record_raw(
+		&mut self,
+		key: &str,
+		format: &str,
+		data: &[u8],
+	) -> std::result::Result<(), WriteFailure> {
+		let timestamp = BigEndian::read_u64(&data[0..8]);
+		let constant_size =
+			crate::row_format::row_format_size(format).map(|m| m + crate::TIMESTAMP_SIZE);
+
+		let mut lenbuf = unsigned_varint::encode::usize_buffer();
+		let var_len = if let Some(sz) = constant_size {
+			if data.len() != sz {
+				return Err(WriteFailure::IncorrectLength(sz));
+			}
+			&[]
+		} else {
+			// subtract 8, for the timestamp
+			unsigned_varint::encode::usize(data.len() - 8, &mut lenbuf)
+		};
+
+		self.add_record_base(key, timestamp, format, |buf| {
+			buf.write_all(&var_len).unwrap();
+			buf.write_all(&data).unwrap();
+		})
 	}
 
 	/// send the current segment to a worker thread to get written
@@ -405,8 +451,8 @@ fn near_boundary() {
 	w.current_key_data = vec![0x42u8; SEGMENT_SIZE_GOAL - 40];
 	w.first_segment_key = "a".to_string();
 	w.last_segment_key = "a".to_string();
-	w.add_record(q, "f", b"012345671234").unwrap();
-	w.add_record("r", "f", b"012345671234").unwrap();
+	w.add_record_raw(q, "f", b"012345671234").unwrap();
+	w.add_record_raw("r", "f", b"012345671234").unwrap();
 	let v = w.finish().unwrap();
 	assert_eq!(memchr::memmem::find_iter(&v, q).count(), 2);
 }

@@ -40,6 +40,42 @@ impl CreateTx {
 		Ok(tx)
 	}
 
+	/// Add a record with the given key, timestamp, and values.
+	///
+	/// The values can be encoded with the function [`crate::record()`]
+	///
+	/// The format string is automatically inferred by the Rust-types of the values.
+	/// ```
+	/// transaction.add_record(
+	///    "key name",
+	///    "2010-01-01T00:00:01".parse().unwrap(),
+	///    record("Column 1").add("Column 2").add(3)
+	///  ).unwrap();
+	/// ```
+	///
+	/// Because &[&dyn ToRecord] also implements the [`crate::RecordBuilder`] trait,
+	/// you can also use an array to specify the types, but then less work happens at compile-time
+	/// and the performance isn't as good:
+	/// ```
+	/// transaction.add_record(
+	///    "key name",
+	///    "2010-01-01T00:00:01".parse().unwrap(),
+	///    [&"Column 1" as &dyn ToRecord, "Column 2", 3]
+	///  ).unwrap();
+	/// ```
+	///
+	/// Each successive call to this function must have greater
+	/// or equal values for key and timestamp.
+	pub fn add_record(
+		&mut self,
+		key: &str,
+		timestamp: chrono::NaiveDateTime,
+		values: impl crate::RecordBuilder,
+	) -> std::result::Result<(), crate::write::WriteFailure> {
+		self.writer
+			.add_record(key, timestamp.timestamp_nanos() as crate::Timestamp, values)
+	}
+
 	/// Add a record with the given key, format, and payload.
 	///
 	/// The data must match the format (otherwise you can corrupt
@@ -49,13 +85,16 @@ impl CreateTx {
 	/// or equal values for key and timestamp.
 	///
 	/// Encode the data with [`crate::row_format::RowFormat`].
-	pub fn add_record(
+	///
+	/// This function is made available for tools that need more versaility
+	/// in how they process databases. It's generally preferable to use [`CreateTx::add_record()`]
+	pub fn add_record_raw(
 		&mut self,
 		key: &str,
 		format: &str,
 		data: &[u8],
 	) -> std::result::Result<(), crate::write::WriteFailure> {
-		self.writer.add_record(key, format, data)
+		self.writer.add_record_raw(key, format, data)
 	}
 
 	/// Delete a range of records
@@ -123,7 +162,7 @@ impl CreateTx {
 			.to_stored_format(&last_key, &mut row_data)
 			.unwrap();
 
-		self.add_record(&key, &format, &row_data)
+		self.writer.add_record_raw(key, format, &row_data)
 	}
 
 	/// Commit the transaction, but give it a specific name.

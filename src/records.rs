@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 pub(crate) const TIMESTAMP_SIZE: usize = 8;
 
-use byteorder::{BigEndian, ByteOrder};
+use byteorder::{BigEndian, ByteOrder, WriteBytesExt};
 
 /// Stores a single timestamp for a single key of data
 ///
@@ -117,6 +117,263 @@ impl Record {
 	/// bytes in nanoseconds, and then each column in turn
 	pub fn raw(&self) -> &[u8] {
 		&self.data[self.value_pos..self.value_pos + self.value_len]
+	}
+}
+
+/// Implements conversions from Rust types to Sonnerie records
+pub trait ToRecord {
+	fn store(&self, buf: &mut Vec<u8>);
+	fn format_char(&self) -> u8;
+	fn size(&self) -> usize;
+	fn variable_size(&self) -> bool;
+}
+
+impl ToRecord for i32 {
+	fn store(&self, buf: &mut Vec<u8>) {
+		buf.write_i32::<BigEndian>(*self).unwrap();
+	}
+	fn format_char(&self) -> u8 {
+		b'i'
+	}
+	fn size(&self) -> usize {
+		4
+	}
+	fn variable_size(&self) -> bool {
+		false
+	}
+}
+impl ToRecord for u32 {
+	fn store(&self, buf: &mut Vec<u8>) {
+		buf.write_u32::<BigEndian>(*self).unwrap();
+	}
+	fn format_char(&self) -> u8 {
+		b'u'
+	}
+	fn size(&self) -> usize {
+		4
+	}
+	fn variable_size(&self) -> bool {
+		false
+	}
+}
+
+impl ToRecord for i64 {
+	fn store(&self, buf: &mut Vec<u8>) {
+		buf.write_i64::<BigEndian>(*self).unwrap();
+	}
+	fn format_char(&self) -> u8 {
+		b'I'
+	}
+	fn size(&self) -> usize {
+		8
+	}
+	fn variable_size(&self) -> bool {
+		false
+	}
+}
+impl ToRecord for u64 {
+	fn store(&self, buf: &mut Vec<u8>) {
+		buf.write_u64::<BigEndian>(*self).unwrap();
+	}
+	fn format_char(&self) -> u8 {
+		b'U'
+	}
+	fn size(&self) -> usize {
+		8
+	}
+	fn variable_size(&self) -> bool {
+		false
+	}
+}
+
+impl ToRecord for f32 {
+	fn store(&self, buf: &mut Vec<u8>) {
+		buf.write_f32::<BigEndian>(*self).unwrap();
+	}
+	fn format_char(&self) -> u8 {
+		b'f'
+	}
+	fn size(&self) -> usize {
+		4
+	}
+	fn variable_size(&self) -> bool {
+		false
+	}
+}
+impl ToRecord for f64 {
+	fn store(&self, buf: &mut Vec<u8>) {
+		buf.write_f64::<BigEndian>(*self).unwrap();
+	}
+	fn format_char(&self) -> u8 {
+		b'F'
+	}
+	fn size(&self) -> usize {
+		8
+	}
+	fn variable_size(&self) -> bool {
+		false
+	}
+}
+
+impl ToRecord for &str {
+	fn store(&self, buf: &mut Vec<u8>) {
+		let len = self.len();
+		let mut lenbuf = unsigned_varint::encode::usize_buffer();
+		let lenbuf = unsigned_varint::encode::usize(len, &mut lenbuf);
+		buf.extend_from_slice(lenbuf);
+		buf.extend_from_slice(self.as_bytes());
+	}
+	fn format_char(&self) -> u8 {
+		b's'
+	}
+	fn size(&self) -> usize {
+		let mut buf = unsigned_varint::encode::usize_buffer();
+		let buf = unsigned_varint::encode::usize(self.len(), &mut buf);
+		buf.len() + self.len()
+	}
+	fn variable_size(&self) -> bool {
+		true
+	}
+}
+
+/// Converts multiple-column data to the internal encoding
+///
+/// Create this type with [`crate::record()`]
+pub trait RecordBuilder {
+	#[doc(hidden)]
+	fn format_str(&self, to: &mut compact_str::CompactString);
+	#[doc(hidden)]
+	fn variable_size(&self) -> bool;
+	#[doc(hidden)]
+	fn size(&self) -> usize;
+	#[doc(hidden)]
+	fn store(&self, buf: &mut Vec<u8>);
+}
+
+#[doc(hidden)]
+pub struct BuildingRecord<Value, Tail>
+where
+	Tail: RecordBuilder,
+	Value: ToRecord,
+{
+	value: Value,
+	tail: Tail,
+}
+
+impl<Value, Tail> BuildingRecord<Value, Tail>
+where
+	Tail: RecordBuilder,
+	Value: ToRecord,
+{
+	pub fn add<Next: ToRecord>(self, value: Next) -> BuildingRecord<Next, Self> {
+		BuildingRecord { value, tail: self }
+	}
+}
+
+impl<Value, Tail> RecordBuilder for BuildingRecord<Value, Tail>
+where
+	Tail: RecordBuilder,
+	Value: ToRecord,
+{
+	fn format_str(&self, to: &mut compact_str::CompactString) {
+		self.tail.format_str(to);
+		to.push(self.value.format_char() as char);
+	}
+	fn variable_size(&self) -> bool {
+		if self.value.variable_size() {
+			return true;
+		}
+		self.tail.variable_size()
+	}
+	fn size(&self) -> usize {
+		self.value.size() + self.tail.size()
+	}
+
+	fn store(&self, buf: &mut Vec<u8>) {
+		self.tail.store(buf);
+		self.value.store(buf);
+	}
+}
+
+#[doc(hidden)]
+pub struct RecordBuilderEnd;
+impl RecordBuilder for RecordBuilderEnd {
+	fn format_str(&self, _: &mut compact_str::CompactString) {}
+	fn variable_size(&self) -> bool {
+		false
+	}
+	fn size(&self) -> usize {
+		0
+	}
+	fn store(&self, _: &mut Vec<u8>) {}
+}
+
+/// A high-level function to build records from Rust types
+///
+/// `record()` encodes the given value into a column, you can call `add()` on returned
+/// object as many times as you want by chaining, to create multicolumn records.
+///
+/// The Rust type of each column is used to determine the stored format string. For example,
+/// a `u32` will be stored with the format string `u`.
+///
+/// ```
+/// transaction.add_record(
+///    "key name",
+///    "2010-01-01T00:00:01".parse().unwrap(),
+///    record("Column 1").add("Column 2").add(3i32)
+///  ).unwrap();
+/// ```
+///
+/// This function performs most of its work at compile-time.
+pub fn record<Rec: ToRecord>(value: Rec) -> BuildingRecord<Rec, RecordBuilderEnd> {
+	BuildingRecord {
+		value,
+		tail: RecordBuilderEnd,
+	}
+}
+
+impl RecordBuilder for &[&dyn ToRecord] {
+	fn format_str(&self, fmt: &mut compact_str::CompactString) {
+		self.iter().for_each(|v| fmt.push(v.format_char().into()));
+	}
+	fn variable_size(&self) -> bool {
+		self.iter().map(|m| m.variable_size()).any(|a| a)
+	}
+	fn size(&self) -> usize {
+		self.iter().map(|m| m.size()).sum::<usize>()
+	}
+	fn store(&self, buf: &mut Vec<u8>) {
+		self.iter().for_each(|v| v.store(buf))
+	}
+}
+
+impl RecordBuilder for [&dyn ToRecord] {
+	fn format_str(&self, fmt: &mut compact_str::CompactString) {
+		self.iter().for_each(|v| fmt.push(v.format_char().into()));
+	}
+	fn variable_size(&self) -> bool {
+		self.iter().map(|m| m.variable_size()).any(|a| a)
+	}
+	fn size(&self) -> usize {
+		self.iter().map(|m| m.size()).sum::<usize>()
+	}
+	fn store(&self, buf: &mut Vec<u8>) {
+		self.iter().for_each(|v| v.store(buf))
+	}
+}
+
+impl<const N: usize> RecordBuilder for &[&dyn ToRecord; N] {
+	fn format_str(&self, fmt: &mut compact_str::CompactString) {
+		self.iter().for_each(|v| fmt.push(v.format_char().into()));
+	}
+	fn variable_size(&self) -> bool {
+		self.iter().map(|m| m.variable_size()).any(|a| a)
+	}
+	fn size(&self) -> usize {
+		self.iter().map(|m| m.size()).sum::<usize>()
+	}
+	fn store(&self, buf: &mut Vec<u8>) {
+		self.iter().for_each(|v| v.store(buf))
 	}
 }
 

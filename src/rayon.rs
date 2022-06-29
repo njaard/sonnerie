@@ -1,4 +1,4 @@
-use crate::record::Record;
+use crate::Record;
 use crate::*;
 use ::rayon::iter::plumbing::*;
 use ::rayon::prelude::*;

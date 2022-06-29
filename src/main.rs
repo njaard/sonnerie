@@ -454,7 +454,7 @@ fn compact(
 		let reader = db.get_range(..);
 		let mut n = 0u64;
 		for record in reader {
-			compacted.add_record(record.key(), record.format(), record.raw())?;
+			compacted.add_record_raw(record.key(), record.format(), record.raw())?;
 			n += 1;
 		}
 		eprintln!("compacted {} records", n);
