@@ -4,10 +4,10 @@ use ::rayon::iter::plumbing::*;
 use ::rayon::prelude::*;
 
 struct RecordProducer<'k> {
-	reader: DatabaseKeyReader<'k>,
+	reader: DatabaseRecordReader<'k>,
 }
 
-impl<'k> ParallelIterator for DatabaseKeyReader<'k> {
+impl<'k> ParallelIterator for DatabaseRecordReader<'k> {
 	type Item = Record;
 
 	fn drive_unindexed<C>(self, consumer: C) -> C::Result

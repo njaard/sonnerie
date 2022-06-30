@@ -134,8 +134,8 @@ impl DatabaseReader {
 	///
 	/// Returns an object that will read all of the
 	/// records for only one key.
-	pub fn get<'rdr>(&'rdr self, key: &'rdr str) -> DatabaseKeyReader<'rdr> {
-		DatabaseKeyReader {
+	pub fn get<'rdr>(&'rdr self, key: &'rdr str) -> DatabaseRecordReader<'rdr> {
+		DatabaseRecordReader {
 			db: self,
 			matcher: None,
 			prefix: "",
@@ -154,8 +154,8 @@ impl DatabaseReader {
 	pub fn get_range<'d>(
 		&'d self,
 		range: impl std::ops::RangeBounds<&'d str> + 'd + Clone,
-	) -> DatabaseKeyReader<'d> {
-		DatabaseKeyReader {
+	) -> DatabaseRecordReader<'d> {
+		DatabaseRecordReader {
 			db: self,
 			matcher: None,
 			prefix: "",
@@ -167,16 +167,16 @@ impl DatabaseReader {
 	///
 	/// A wildcard filter that has a fixed prefix, such as
 	/// `"chimp%"` is always efficient.
-	pub fn get_filter<'d>(&'d self, wildcard: &'d Wildcard) -> DatabaseKeyReader<'d> {
+	pub fn get_filter<'d>(&'d self, wildcard: &'d Wildcard) -> DatabaseRecordReader<'d> {
 		if wildcard.is_exact() {
-			DatabaseKeyReader {
+			DatabaseRecordReader {
 				db: self,
 				matcher: wildcard.as_regex(),
 				prefix: wildcard.prefix(),
 				range: crate::disassemble_range_bound(wildcard.prefix()..=wildcard.prefix()).into(),
 			}
 		} else {
-			DatabaseKeyReader {
+			DatabaseRecordReader {
 				db: self,
 				matcher: wildcard.as_regex(),
 				prefix: wildcard.prefix(),
@@ -193,14 +193,14 @@ impl DatabaseReader {
 ///
 /// Note that only one thread will get any specific key; keys are never
 /// divided between multiple workers.
-pub struct DatabaseKeyReader<'d> {
+pub struct DatabaseRecordReader<'d> {
 	db: &'d DatabaseReader,
 	matcher: Option<regex::Regex>,
 	prefix: &'d str,
 	range: crate::CowStringRange<'d>,
 }
 
-impl<'d> DatabaseKeyReader<'d> {
+impl<'d> DatabaseRecordReader<'d> {
 	pub(crate) fn check(&self) {
 		match (self.range.start_bound(), self.range.end_bound()) {
 			(Bound::Unbounded, _) => {}
@@ -212,7 +212,7 @@ impl<'d> DatabaseKeyReader<'d> {
 		}
 	}
 
-	pub(crate) fn split(&self) -> Option<(DatabaseKeyReader<'d>, DatabaseKeyReader<'d>)> {
+	pub(crate) fn split(&self) -> Option<(DatabaseRecordReader<'d>, DatabaseRecordReader<'d>)> {
 		// look into the readers and see which Reader was biggest
 		let (biggest_reader, biggest_portion_size) = self
 			.db
@@ -250,7 +250,7 @@ impl<'d> DatabaseKeyReader<'d> {
 
 		assert_ne!(self.range.start_bound(), Bound::Included(middle_start_key));
 
-		let first_half = DatabaseKeyReader {
+		let first_half = DatabaseRecordReader {
 			db: self.db,
 			matcher: self.matcher.clone(),
 			prefix: self.prefix,
@@ -274,7 +274,7 @@ impl<'d> DatabaseKeyReader<'d> {
 
 		// TODO sometimes we need to use included bounds and sometimes not
 
-		let second_half = DatabaseKeyReader {
+		let second_half = DatabaseRecordReader {
 			db: self.db,
 			matcher: self.matcher.clone(),
 			prefix: self.prefix,
@@ -297,9 +297,9 @@ impl<'d> DatabaseKeyReader<'d> {
 	}
 }
 
-impl<'d> IntoIterator for DatabaseKeyReader<'d> {
+impl<'d> IntoIterator for DatabaseRecordReader<'d> {
 	type Item = Record;
-	type IntoIter = DatabaseKeyIterator<'d>;
+	type IntoIter = DatabaseRecordIterator<'d>;
 
 	fn into_iter(self) -> Self::IntoIter {
 		self.check();
@@ -325,7 +325,7 @@ impl<'d> IntoIterator for DatabaseKeyReader<'d> {
 			.map(|(txid, _path, dm)| (*txid, DeleteMarkerPrecomputed::from_delete_marker(dm)))
 			.collect();
 
-		DatabaseKeyIterator {
+		DatabaseRecordIterator {
 			filter_out,
 			merge: Box::new(merge),
 		}
@@ -336,7 +336,7 @@ impl<'d> IntoIterator for DatabaseKeyReader<'d> {
 ///
 /// Yields an [`Record`](record/struct.Record.html)
 /// for each row in the database, sorted by key and timestamp.
-pub struct DatabaseKeyIterator<'d> {
+pub struct DatabaseRecordIterator<'d> {
 	filter_out: Vec<(usize, DeleteMarkerPrecomputed<'d>)>,
 	merge: Box<Merge<StringKeyRangeReader<'d, 'd>, Record>>,
 }
@@ -380,7 +380,7 @@ impl<'a> DeleteMarkerPrecomputed<'a> {
 	}
 }
 
-impl<'d> Iterator for DatabaseKeyIterator<'d> {
+impl<'d> Iterator for DatabaseRecordIterator<'d> {
 	type Item = Record;
 
 	fn next(&mut self) -> Option<Self::Item> {
