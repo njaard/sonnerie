@@ -1,7 +1,7 @@
 # 0.7.1: 2022-06-27
-* Don't sometimes write empty segments that are unreabable, particularly when using
+* Don't sometimes write empty segments that are unreadable, particularly when using
 string fields.
-* Stop using `parking_lot` because Rust 1.62 will have much faster locks and
+* Stop using `parking_lot` because Rust 1.62 has much faster locks and
 we don't need the relatively large dependency.
 
 # 0.7.0: 2022-03-14
