@@ -15,14 +15,16 @@ use chrono::NaiveDateTime;
 use either::Either;
 use regex::Regex;
 
+use crate::bykey::DatabaseKeyReader;
+
 /// Read a database in key-timestamp sorted format.
 ///
 /// Open a database with [`new`](#method.new) and then [`get`](#method.get),
 /// [`get_filter`](#method.get_filter) or [`get_range`](#method.get_range) to select which keys to read.
 pub struct DatabaseReader {
 	_dir: PathBuf,
-	txes: Vec<(usize, PathBuf, Reader)>,
-	filter_out: Vec<(usize, PathBuf, DeleteMarker)>,
+	pub(crate) txes: Vec<(usize, PathBuf, Reader)>,
+	pub(crate) filter_out: Vec<(usize, PathBuf, DeleteMarker)>,
 }
 
 impl DatabaseReader {
@@ -177,6 +179,28 @@ impl DatabaseReader {
 			}
 		} else {
 			DatabaseRecordReader {
+				db: self,
+				matcher: wildcard.as_regex(),
+				prefix: wildcard.prefix(),
+				range: crate::disassemble_range_bound(wildcard.prefix()..).into(),
+			}
+		}
+	}
+
+	/// Get a reader that filters on SQL's "LIKE"-like syntax.
+	///
+	/// A wildcard filter that has a fixed prefix, such as
+	/// `"chimp%"` is always efficient.
+	pub fn get_filter_keys<'d>(&'d self, wildcard: &'d Wildcard) -> DatabaseKeyReader<'d> {
+		if wildcard.is_exact() {
+			DatabaseKeyReader {
+				db: self,
+				matcher: wildcard.as_regex(),
+				prefix: wildcard.prefix(),
+				range: crate::disassemble_range_bound(wildcard.prefix()..=wildcard.prefix()).into(),
+			}
+		} else {
+			DatabaseKeyReader {
 				db: self,
 				matcher: wildcard.as_regex(),
 				prefix: wildcard.prefix(),

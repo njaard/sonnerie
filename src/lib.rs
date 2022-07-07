@@ -1,3 +1,4 @@
+mod bykey;
 mod create_tx;
 pub(crate) mod database_reader;
 pub mod formatted;

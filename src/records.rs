@@ -21,7 +21,21 @@ pub struct Record {
 
 impl std::fmt::Debug for Record {
 	fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-		write!(f, "Record {{ key={}, data={:?} }}", self.key(), self.raw())
+		write!(f, "Record {{ key={}, t={}", self.key(), self.time())?;
+
+		for (idx, c) in self.format().chars().enumerate() {
+			match c {
+				'f' => write!(f, ", {}", self.get::<f32>(idx))?,
+				'F' => write!(f, ", {}", self.get::<f64>(idx))?,
+				'i' => write!(f, ", {}", self.get::<i32>(idx))?,
+				'I' => write!(f, ", {}", self.get::<i64>(idx))?,
+				'u' => write!(f, ", {}", self.get::<u32>(idx))?,
+				'U' => write!(f, ", {}", self.get::<u64>(idx))?,
+				's' => write!(f, ", \"{}\"", self.get::<&str>(idx).escape_default())?,
+				a => panic!("unknown format column '{a}'"),
+			}
+		}
+		write!(f, " }}")
 	}
 }
 
