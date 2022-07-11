@@ -4,7 +4,7 @@ use crate::merge::Merge;
 use crate::segment_reader::DeleteMarker;
 use crate::Record;
 use crate::Wildcard;
-use lender::{Borrower, Lender};
+use lending_cell::{LendingCell,BorrowedCell};
 use std::ops::Bound;
 
 use chrono::NaiveDateTime;
@@ -201,7 +201,7 @@ impl<'d> IntoIterator for DatabaseKeyReader<'d> {
 		}
 
 		DatabaseKeyIterator {
-			hot_potato_hole: Lender::new(hot_potato),
+			hot_potato_hole: LendingCell::new(hot_potato),
 		}
 	}
 }
@@ -268,7 +268,7 @@ impl<'d> HotPotato<'d> {
 /// Yields an [`Record`](record/struct.Record.html)
 /// for each row in the database, sorted by key and timestamp.
 pub struct DatabaseKeyIterator<'d> {
-	hot_potato_hole: Lender<HotPotato<'d>>,
+	hot_potato_hole: LendingCell<HotPotato<'d>>,
 }
 
 impl<'d> Iterator for DatabaseKeyIterator<'d> {
@@ -285,7 +285,7 @@ impl<'d> Iterator for DatabaseKeyIterator<'d> {
 				hot_potato.current_key.replace_range(.., next.key());
 				hot_potato.queued_record = Some(next);
 				return Some(KeyRecordReader {
-					hot_potato: self.hot_potato_hole.to_borrower(),
+					hot_potato: self.hot_potato_hole.to_borrowed(),
 				});
 			}
 			//eprintln!("discarding {next:?}, c={}", hot_potato.current_key);
@@ -294,7 +294,7 @@ impl<'d> Iterator for DatabaseKeyIterator<'d> {
 }
 
 pub struct KeyRecordReader<'d> {
-	hot_potato: Borrower<HotPotato<'d>>,
+	hot_potato: BorrowedCell<HotPotato<'d>>,
 }
 
 impl<'d> KeyRecordReader<'d> {

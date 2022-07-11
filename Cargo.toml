@@ -47,7 +47,7 @@ rayon="1.1"
 either="1.6"
 compact_str="0.5"
 lazy-init="0.5"
-lender = {version="0.1.0", path="lender" }
+lending-cell = {version="0.1.0" }
 
 [dev-dependencies]
 rand={version="0.8", features=["small_rng"]}
