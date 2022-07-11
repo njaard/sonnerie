@@ -50,13 +50,15 @@ impl<'a> DeleteMarkerPrecomputed<'a> {
 	}
 }
 
-/// Keeps a range associated with a query, implements `IntoIterator`
+/// Iterate over keys, from which you may iterate over each record with that key.
+///
+/// Create this object with [`DatabaseReader::get_filter_keys`].
+///
+/// This Iterator generates items of the type [`DatabaseKeyIterator`], and that
+/// is an iterator of [`Record`]s.
 ///
 /// You can call [`into_par_iter`](https://docs.rs/rayon/1.1/rayon/iter/trait.IntoParallelIterator.html#tymethod.into_par_iter)
-/// on this object to get a Rayon parallel iterator.
-///
-/// Note that only one thread will get any specific key; keys are never
-/// divided between multiple workers.
+/// on this object to get a Rayon parallel iterator. Each worker thread gets entire keys.
 pub struct DatabaseKeyReader<'d> {
 	pub(crate) db: &'d DatabaseReader,
 	pub(crate) matcher: Option<regex::Regex>,
@@ -263,10 +265,10 @@ impl<'d> HotPotato<'d> {
 	}
 }
 
-/// An iterator over the filtered keys in a database.
+/// An iterator over records associated with a specific key.
 ///
-/// Yields an [`Record`](record/struct.Record.html)
-/// for each row in the database, sorted by key and timestamp.
+/// Yields a [`Record`](record/struct.Record.html)
+/// for each row in the database, sorted by timestamp.
 pub struct DatabaseKeyIterator<'d> {
 	hot_potato_hole: LendingCell<HotPotato<'d>>,
 }
@@ -298,6 +300,9 @@ pub struct KeyRecordReader<'d> {
 }
 
 impl<'d> KeyRecordReader<'d> {
+	/// Returns the value of the key that this iterator reads.
+	/// This key will almost match the [`Record::key`] for every element
+	/// yielded by this iterator.
 	pub fn key(&self) -> &str {
 		&self.hot_potato.current_key
 	}
