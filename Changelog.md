@@ -1,3 +1,15 @@
+# 0.8.0: 2022-07-13
+* Rename `DatabaseKeyReader` to `DatabaseRecordReader`
+* Rename `CreateTx::add_record()` to `CreateTx::add_record_raw()`
+* Add `record()` function which makes typesafe records for use with a new `CreateTx::add_record()`
+* Add the feature `by-key` (not enabled by default) which adds `DatabaseReader::get_range_keys()`
+and `DatabaseReader::get_filter_keys()`. It returns an iterator of keys which can each be iterated
+over to get individual records; this is as opposed to the normal API which returns all keys. This
+feature can be used with Rayon. This feature is experimental and feedback is sought.
+* The `--gegnum` option to `sonnerie compact` now outputs timestamps in integer nanoseconds, as
+documented. If you use `--gegnum` through scripts (why would you do that?) then this may
+break your workflows.
+
 # 0.7.1: 2022-06-27
 * Don't sometimes write empty segments that are unreadable, particularly when using
 string fields.
