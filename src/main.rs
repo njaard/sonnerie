@@ -163,7 +163,7 @@ fn main() -> std::io::Result<()> {
 		add(dir, format, ts_format);
 	} else if let Some(matches) = matches.subcommand_matches("compact") {
 		let gegnum = matches.value_of_os("gegnum");
-		let ts_format = matches.value_of("timestamp-format").unwrap_or("%FT%T");
+		let ts_format = matches.value_of("timestamp-format");
 
 		compact(dir, matches.is_present("major"), gegnum, ts_format).expect("compacting");
 	} else if let Some(matches) = matches.subcommand_matches("delete") {
@@ -383,7 +383,7 @@ fn compact(
 	dir: &Path,
 	major: bool,
 	gegnum: Option<&std::ffi::OsStr>,
-	ts_format: &str,
+	ts_format: Option<&str>,
 ) -> Result<(), crate::WriteFailure> {
 	use fs2::FileExt;
 
@@ -411,11 +411,15 @@ fn compact(
 		let childinput = child.stdin.take().expect("process had no stdin");
 		let mut childinput = std::io::BufWriter::new(childinput);
 
-		let ts_format_copy = ts_format.to_owned();
+		let ts_format_cloned = ts_format.map(|m| m.to_owned());
+
 		// a thread that reads from "db" and writes to the child
 		let reader_db = db.clone();
 		let reader_thread = std::thread::spawn(move || -> std::io::Result<()> {
-			let timestamp_format = formatted::PrintTimestamp::FormatString(&ts_format_copy);
+			let timestamp_format =
+				if let Some(ts_format) = &ts_format_cloned { formatted::PrintTimestamp::FormatString(&ts_format) }
+				else { formatted::PrintTimestamp::Nanos };
+
 			let reader = reader_db.get_range(..);
 			for record in reader {
 				formatted::print_record(
@@ -431,7 +435,7 @@ fn compact(
 
 		let childoutput = child.stdout.take().expect("process had no stdout");
 		let mut childoutput = std::io::BufReader::new(childoutput);
-		formatted::add_from_stream_with_fmt(&mut compacted, &mut childoutput, Some(ts_format))?;
+		formatted::add_from_stream_with_fmt(&mut compacted, &mut childoutput, ts_format)?;
 
 		reader_thread
 			.join()
