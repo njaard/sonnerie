@@ -4,8 +4,9 @@
 * Add `record()` function which makes typesafe records for use with a new `CreateTx::add_record()`
 * Add the feature `by-key` (not enabled by default) which adds `DatabaseReader::get_range_keys()`
 and `DatabaseReader::get_filter_keys()`. It returns an iterator of keys which can each be iterated
-over to get individual records; this is as opposed to the normal API which returns all keys. This
-feature can be used with Rayon. This feature is experimental and feedback is sought.
+over to get individual records; this is as opposed to the normal API which returns all records over
+all (selected) keys. This feature can be used with Rayon. This feature is experimental and feedback
+is sought.
 * The `--gegnum` option to `sonnerie compact` now outputs timestamps in integer nanoseconds, as
 documented. If you use `--gegnum` through scripts (why would you do that?) then this may
 break your workflows.

@@ -233,7 +233,8 @@ impl<'d> HotPotato<'d> {
 ///
 /// For example:
 /// ```no_run
-/// let mut keys = database.get_range_keys(..);
+/// # let database = sonnerie::DatabaseReader::new(std::path::Path::new("")).unwrap();
+/// let mut keys = database.get_range_keys(..).into_iter();
 /// let item = keys.next().unwrap();
 /// drop(item); // this must be included or the following statement will panic
 /// keys.next();
@@ -241,6 +242,7 @@ impl<'d> HotPotato<'d> {
 ///
 /// Of course, normal nested iterations will work fine:
 /// ```no_run
+/// # let database = sonnerie::DatabaseReader::new(std::path::Path::new("")).unwrap();
 /// for keys in database.get_range_keys(..) {
 ///    for record in keys {
 ///       dbg!(record);
