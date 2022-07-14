@@ -1,3 +1,4 @@
+#[cfg(feature = "by-key")]
 mod bykey;
 mod create_tx;
 pub(crate) mod database_reader;
@@ -15,13 +16,14 @@ pub(crate) mod write;
 pub use write::WriteFailure;
 
 pub use crate::rayon::*;
+#[cfg(feature = "by-key")]
+pub use bykey::*;
 pub use create_tx::*;
 pub use database_reader::*;
 pub use key_reader::*;
 pub use records::*;
 pub(crate) use segment::*;
 pub use wildcard::*;
-
 #[cfg(test)]
 mod tests;
 

@@ -16,6 +16,7 @@ default=["bin", "sonnerie-serve"]
 bin = ["clap" ]
 sonnerie-serve = ["clap","url","hyper","tokio","futures",
 	"lines_from_request", "serde", "serde_derive", "shardio" ]
+by-key=["lending-cell"]
 
 [dependencies]
 memchr="2.4"
@@ -47,7 +48,7 @@ rayon="1.1"
 either="1.6"
 compact_str="0.5"
 lazy-init="0.5"
-lending-cell = {version="0.1.0" }
+lending-cell = {version="0.1.1", optional=true }
 
 [dev-dependencies]
 rand={version="0.8", features=["small_rng"]}
@@ -64,3 +65,5 @@ required-features = ["sonnerie-serve"]
 [package.metadata.deb]
 section = "Databases"
 
+[package.metadata.docs.rs]
+all-features = true

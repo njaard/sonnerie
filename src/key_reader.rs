@@ -5,11 +5,10 @@ use crate::segment::*;
 use crate::segment_reader::*;
 use crate::Wildcard;
 use byteorder::{BigEndian, ByteOrder};
+use either::Either;
 use std::ops::Bound;
 use std::ops::Bound::*;
 use std::ops::RangeBounds;
-//use std::rc::Rc;
-use either::Either;
 use std::sync::Arc as Rc;
 
 /// Read and filter keys from a single transaction file

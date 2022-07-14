@@ -1,56 +1,12 @@
 use crate::database_reader::DatabaseReader;
 use crate::key_reader::*;
 use crate::merge::Merge;
-use crate::segment_reader::DeleteMarker;
+use crate::DeleteMarkerPrecomputed;
 use crate::Record;
-use crate::Wildcard;
-use lending_cell::{LendingCell,BorrowedCell};
+use lending_cell::{BorrowedCell, LendingCell};
 use std::ops::Bound;
 
-use chrono::NaiveDateTime;
-use either::Either;
-use regex::Regex;
-
-struct DeleteMarkerPrecomputed<'a> {
-	pub first_key: &'a str,
-	pub last_key: &'a str,
-	pub first_timestamp: NaiveDateTime,
-	pub last_timestamp: NaiveDateTime,
-	pub wildcard: Either<Regex, &'a str>,
-}
-
-impl<'a> DeleteMarkerPrecomputed<'a> {
-	fn from_delete_marker(marker: &'a DeleteMarker) -> DeleteMarkerPrecomputed<'a> {
-		use Either::*;
-
-		let wildcard = match Wildcard::new(&*marker.wildcard).as_regex() {
-			Some(re) => Left(re),
-			None => {
-				let starts_with = marker.wildcard.split("%").next().unwrap();
-				Right(starts_with)
-			}
-		};
-
-		DeleteMarkerPrecomputed {
-			first_key: &*marker.first_key,
-			last_key: &*marker.last_key,
-			first_timestamp: marker.first_timestamp,
-			last_timestamp: marker.last_timestamp,
-			wildcard,
-		}
-	}
-
-	fn wildcard_matches(&self, key: &str) -> bool {
-		use Either::*;
-
-		match &self.wildcard {
-			Left(re) => re.is_match(key),
-			Right(start) => key.starts_with(start),
-		}
-	}
-}
-
-/// Iterate over keys, from which you may iterate over each record with that key.
+/// Iterate over keys, from which you may iterate over each record with that key. **`feature=by-key`**
 ///
 /// Create this object with [`DatabaseReader::get_filter_keys`].
 ///
@@ -58,7 +14,7 @@ impl<'a> DeleteMarkerPrecomputed<'a> {
 /// is an iterator of [`Record`]s.
 ///
 /// You can call [`into_par_iter`](https://docs.rs/rayon/1.1/rayon/iter/trait.IntoParallelIterator.html#tymethod.into_par_iter)
-/// on this object to get a Rayon parallel iterator. Each worker thread gets entire keys.
+/// on this object to get a Rayon parallel iterator.
 pub struct DatabaseKeyReader<'d> {
 	pub(crate) db: &'d DatabaseReader,
 	pub(crate) matcher: Option<regex::Regex>,
@@ -265,10 +221,32 @@ impl<'d> HotPotato<'d> {
 	}
 }
 
-/// An iterator over records associated with a specific key.
+/// An iterator over each key. **`feature=by-key`**
 ///
-/// Yields a [`Record`](record/struct.Record.html)
+/// Yields a [`KeyRecordReader`]
 /// for each row in the database, sorted by timestamp.
+///
+/// # Warning
+/// It is a runtime error (panic) to call `next` on this
+/// object when you still have instance of [`KeyRecordReader`]
+/// that this yielded in-scope.
+///
+/// For example:
+/// ```no_run
+/// let mut keys = database.get_range_keys(..);
+/// let item = keys.next().unwrap();
+/// drop(item); // this must be included or the following statement will panic
+/// keys.next();
+/// ```
+///
+/// Of course, normal nested iterations will work fine:
+/// ```no_run
+/// for keys in database.get_range_keys(..) {
+///    for record in keys {
+///       dbg!(record);
+///    }
+/// }
+/// ```
 pub struct DatabaseKeyIterator<'d> {
 	hot_potato_hole: LendingCell<HotPotato<'d>>,
 }
@@ -295,6 +273,10 @@ impl<'d> Iterator for DatabaseKeyIterator<'d> {
 	}
 }
 
+/// Allows iterating over every record for a given key. **`feature=by-key`**
+///
+/// [`DatabaseKeyIterator`] yields one of these for every
+/// record for the given key.
 pub struct KeyRecordReader<'d> {
 	hot_potato: BorrowedCell<HotPotato<'d>>,
 }

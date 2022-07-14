@@ -1,3 +1,4 @@
+#[cfg(feature = "by-key")]
 use crate::bykey::*;
 use crate::Record;
 use crate::*;
@@ -46,10 +47,12 @@ impl<'k> UnindexedProducer for RecordProducer<'k> {
 	}
 }
 
+#[cfg(feature = "by-key")]
 struct KeyProducer<'k> {
 	reader: DatabaseKeyReader<'k>,
 }
 
+#[cfg(feature = "by-key")]
 impl<'k> ParallelIterator for DatabaseKeyReader<'k> {
 	type Item = KeyRecordReader<'k>;
 
@@ -61,6 +64,7 @@ impl<'k> ParallelIterator for DatabaseKeyReader<'k> {
 	}
 }
 
+#[cfg(feature = "by-key")]
 impl<'k> UnindexedProducer for KeyProducer<'k> {
 	type Item = KeyRecordReader<'k>;
 

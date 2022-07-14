@@ -15,6 +15,7 @@ use chrono::NaiveDateTime;
 use either::Either;
 use regex::Regex;
 
+#[cfg(feature = "by-key")]
 use crate::bykey::DatabaseKeyReader;
 
 /// Read a database in key-timestamp sorted format.
@@ -165,6 +166,30 @@ impl DatabaseReader {
 		}
 	}
 
+	/// Get a key reader for a lexicographic range of keys **`feature=by-key`**
+	///
+	/// Each iterator represents a given key, you may iterate over each of those
+	/// to get each record for that key.
+	///
+	/// Use inclusive or exclusive range syntax to select a range.
+	///
+	/// Example: `rdr.get_range("chimpan-ay" ..= "chimpan-zee")`
+	///
+	/// Range queries are always efficient and readahead
+	/// may occur.
+	#[cfg(feature = "by-key")]
+	pub fn get_range_keys<'d>(
+		&'d self,
+		range: impl std::ops::RangeBounds<&'d str> + 'd + Clone,
+	) -> DatabaseKeyReader<'d> {
+		DatabaseKeyReader {
+			db: self,
+			matcher: None,
+			prefix: "",
+			range: crate::disassemble_range_bound(range).into(),
+		}
+	}
+
 	/// Get a reader that filters on SQL's "LIKE"-like syntax.
 	///
 	/// A wildcard filter that has a fixed prefix, such as
@@ -187,10 +212,14 @@ impl DatabaseReader {
 		}
 	}
 
-	/// Get a reader that filters on SQL's "LIKE"-like syntax.
+	/// Get a key reader that filters on SQL's "LIKE"-like syntax. **`feature=by-key`**
+	///
+	/// Each iterator represents a given key, you may iterate over each of those
+	/// to get each record for that key.
 	///
 	/// A wildcard filter that has a fixed prefix, such as
 	/// `"chimp%"` is always efficient.
+	#[cfg(feature = "by-key")]
 	pub fn get_filter_keys<'d>(&'d self, wildcard: &'d Wildcard) -> DatabaseKeyReader<'d> {
 		if wildcard.is_exact() {
 			DatabaseKeyReader {
@@ -365,7 +394,7 @@ pub struct DatabaseRecordIterator<'d> {
 	merge: Box<Merge<StringKeyRangeReader<'d, 'd>, Record>>,
 }
 
-struct DeleteMarkerPrecomputed<'a> {
+pub(crate) struct DeleteMarkerPrecomputed<'a> {
 	pub first_key: &'a str,
 	pub last_key: &'a str,
 	pub first_timestamp: NaiveDateTime,
@@ -374,7 +403,7 @@ struct DeleteMarkerPrecomputed<'a> {
 }
 
 impl<'a> DeleteMarkerPrecomputed<'a> {
-	fn from_delete_marker(marker: &'a DeleteMarker) -> DeleteMarkerPrecomputed<'a> {
+	pub(crate) fn from_delete_marker(marker: &'a DeleteMarker) -> DeleteMarkerPrecomputed<'a> {
 		use Either::*;
 
 		let wildcard = match Wildcard::new(&*marker.wildcard).as_regex() {
@@ -394,7 +423,7 @@ impl<'a> DeleteMarkerPrecomputed<'a> {
 		}
 	}
 
-	fn wildcard_matches(&self, key: &str) -> bool {
+	pub(crate) fn wildcard_matches(&self, key: &str) -> bool {
 		use Either::*;
 
 		match &self.wildcard {
