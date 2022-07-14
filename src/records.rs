@@ -295,7 +295,15 @@ where
 	}
 }
 
-#[doc(hidden)]
+/// Placeholder type to mark the end of a record, when writing
+///
+/// Rust's generics are used to build a chain of types, [`record()`]
+/// returns a `BuildingRecord<FirstColumnType,RecordBuilderEnd>`
+/// where `FirstColumnType` implements [`RecordBuilder`] trait
+/// for the first column value. When you use [`BuildingRecord::add()`]
+/// to add an additional column, the type
+/// `BuildingRecord<BuildingRecord<SecondColumnType, FirstColumnType>,RecordBuilderEnd>`
+/// will be built.
 pub struct RecordBuilderEnd;
 impl RecordBuilder for RecordBuilderEnd {
 	fn format_str(&self, _: &mut compact_str::CompactString) {}
