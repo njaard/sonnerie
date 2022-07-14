@@ -232,7 +232,7 @@ impl<W: Write + Send> Writer<W> {
 				{
 					let mut lenbuf = unsigned_varint::encode::usize_buffer();
 					let o = unsigned_varint::encode::usize(expected_size, &mut lenbuf);
-					buf.write_all(&o).unwrap();
+					buf.write_all(o).unwrap();
 				}
 
 				let before_len = buf.len();
@@ -269,8 +269,8 @@ impl<W: Write + Send> Writer<W> {
 		};
 
 		self.add_record_base(key, timestamp, format, |buf| {
-			buf.write_all(&var_len).unwrap();
-			buf.write_all(&data).unwrap();
+			buf.write_all(var_len).unwrap();
+			buf.write_all(data).unwrap();
 		})
 	}
 
@@ -352,17 +352,15 @@ fn worker_thread<W: Write + Send>(
 			payload,
 		} = message;
 
-		let compressed;
-
-		if disable_compression {
-			compressed = payload;
+		let compressed = if disable_compression {
+			payload
 		} else {
 			let mut encoder = lz4::EncoderBuilder::new().level(9).build(vec![]).unwrap();
 			encoder.write_all(&payload)?;
 			let (c, e) = encoder.finish();
 			e?;
-			compressed = c;
-		}
+			c
+		};
 
 		let mut segmented: smallvec::SmallVec<[_; 4]> = smallvec::smallvec![];
 		{

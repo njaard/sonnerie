@@ -99,8 +99,8 @@ impl SegmentReader {
 				// different interface
 
 				let marker = DeleteMarker {
-					first_key: first_key,
-					last_key: last_key,
+					first_key,
+					last_key,
 					first_timestamp: start_ts,
 					last_timestamp: end_ts,
 					wildcard,

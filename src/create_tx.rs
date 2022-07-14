@@ -137,7 +137,7 @@ impl CreateTx {
 
 		// write first key
 		ElementString
-			.to_stored_format(&first_key, &mut row_data)
+			.to_stored_format(first_key, &mut row_data)
 			.unwrap();
 
 		// write first timestamp
@@ -156,12 +156,12 @@ impl CreateTx {
 
 		// write key wildcard
 		ElementString
-			.to_stored_format(&filter, &mut row_data)
+			.to_stored_format(filter, &mut row_data)
 			.unwrap();
 
 		// write last key
 		ElementString
-			.to_stored_format(&last_key, &mut row_data)
+			.to_stored_format(last_key, &mut row_data)
 			.unwrap();
 
 		self.writer.add_record_raw(key, format, &row_data)
@@ -186,8 +186,7 @@ impl CreateTx {
 		}
 		file.sync_all()?;
 		drop(file);
-		let named = self
-			.tmp
+		self.tmp
 			.persist_by_rename(&final_name)
 			.map_err(|e| e.error)?;
 		if let Some(umask) = get_umask() {
@@ -195,7 +194,7 @@ impl CreateTx {
 			let p = std::fs::Permissions::from_mode((0o444 & !umask) as u32);
 			let _ = std::fs::set_permissions(final_name, p);
 		}
-		Ok(named)
+		Ok(())
 	}
 
 	/// Commit the transaction.

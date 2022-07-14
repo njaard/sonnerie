@@ -170,14 +170,14 @@ impl Element for ElementI32 {
 	fn to_stored_format<'s>(&self, from: &'s str, dest: &mut Vec<u8>) -> Result<&'s str, String> {
 		let at = dest.len();
 		dest.resize(at + 4, 0);
-		let mut dest = &mut dest[at..];
+		let dest = &mut dest[at..];
 
 		let (t, rest) = split_one(from).unwrap();
 
 		let v = t
 			.parse()
 			.map_err(|e| format!("while parsing {}: {}", t, e))?;
-		BigEndian::write_i32(&mut dest, v);
+		BigEndian::write_i32(dest, v);
 
 		Ok(rest)
 	}
@@ -197,14 +197,14 @@ impl Element for ElementU32 {
 	fn to_stored_format<'s>(&self, from: &'s str, dest: &mut Vec<u8>) -> Result<&'s str, String> {
 		let at = dest.len();
 		dest.resize(at + 4, 0);
-		let mut dest = &mut dest[at..];
+		let dest = &mut dest[at..];
 
 		let (t, rest) = split_one(from).unwrap();
 
 		let v = t
 			.parse()
 			.map_err(|e| format!("while parsing {}: {}", t, e))?;
-		BigEndian::write_u32(&mut dest, v);
+		BigEndian::write_u32(dest, v);
 
 		Ok(rest)
 	}
@@ -224,14 +224,14 @@ impl Element for ElementI64 {
 	fn to_stored_format<'s>(&self, from: &'s str, dest: &mut Vec<u8>) -> Result<&'s str, String> {
 		let at = dest.len();
 		dest.resize(at + 8, 0);
-		let mut dest = &mut dest[at..];
+		let dest = &mut dest[at..];
 
 		let (t, rest) = split_one(from).unwrap();
 
 		let v = t
 			.parse()
 			.map_err(|e| format!("while parsing {}: {}", t, e))?;
-		BigEndian::write_i64(&mut dest, v);
+		BigEndian::write_i64(dest, v);
 
 		Ok(rest)
 	}
@@ -251,14 +251,14 @@ impl Element for ElementU64 {
 	fn to_stored_format<'s>(&self, from: &'s str, dest: &mut Vec<u8>) -> Result<&'s str, String> {
 		let at = dest.len();
 		dest.resize(at + 8, 0);
-		let mut dest = &mut dest[at..];
+		let dest = &mut dest[at..];
 
 		let (t, rest) = split_one(from).unwrap();
 
 		let v = t
 			.parse()
 			.map_err(|e| format!("while parsing {}: {}", t, e))?;
-		BigEndian::write_u64(&mut dest, v);
+		BigEndian::write_u64(dest, v);
 
 		Ok(rest)
 	}
@@ -278,20 +278,17 @@ impl Element for ElementF32 {
 	fn to_stored_format<'s>(&self, from: &'s str, dest: &mut Vec<u8>) -> Result<&'s str, String> {
 		let at = dest.len();
 		dest.resize(at + 4, 0);
-		let mut dest = &mut dest[at..];
+		let dest = &mut dest[at..];
 
 		let (t, rest) = split_one(from).unwrap();
 
-		let v;
-
-		if t == "nan" {
-			v = ::std::f32::NAN;
+		let v = if t == "nan" {
+			::std::f32::NAN
 		} else {
-			v = t
-				.parse()
-				.map_err(|e| format!("while parsing {}: {}", t, e))?;
-		}
-		BigEndian::write_f32(&mut dest, v);
+			t.parse()
+				.map_err(|e| format!("while parsing {}: {}", t, e))?
+		};
+		BigEndian::write_f32(dest, v);
 
 		Ok(rest)
 	}
@@ -311,20 +308,17 @@ impl Element for ElementF64 {
 	fn to_stored_format<'s>(&self, from: &'s str, dest: &mut Vec<u8>) -> Result<&'s str, String> {
 		let at = dest.len();
 		dest.resize(at + 8, 0);
-		let mut dest = &mut dest[at..];
+		let dest = &mut dest[at..];
 
 		let (t, rest) = split_one(from).unwrap();
 
-		let v;
-
-		if t == "nan" {
-			v = ::std::f64::NAN;
+		let v = if t == "nan" {
+			::std::f64::NAN
 		} else {
-			v = t
-				.parse()
-				.map_err(|e| format!("while parsing {}: {}", t, e))?;
-		}
-		BigEndian::write_f64(&mut dest, v);
+			t.parse()
+				.map_err(|e| format!("while parsing {}: {}", t, e))?
+		};
+		BigEndian::write_f64(dest, v);
 
 		Ok(rest)
 	}

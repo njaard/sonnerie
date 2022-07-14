@@ -322,7 +322,7 @@ impl<'d> IntoIterator for DatabaseKeyReader<'d> {
 			.db
 			.filter_out
 			.iter()
-			.map(|(txid, _path, dm)| (*txid, DeleteMarkerPrecomputed::from_delete_marker(&dm)))
+			.map(|(txid, _path, dm)| (*txid, DeleteMarkerPrecomputed::from_delete_marker(dm)))
 			.collect();
 
 		DatabaseKeyIterator {
@@ -356,7 +356,7 @@ impl<'a> DeleteMarkerPrecomputed<'a> {
 		let wildcard = match Wildcard::new(&*marker.wildcard).as_regex() {
 			Some(re) => Left(re),
 			None => {
-				let starts_with = marker.wildcard.split("%").next().unwrap();
+				let starts_with = marker.wildcard.split('%').next().unwrap();
 				Right(starts_with)
 			}
 		};
@@ -380,11 +380,11 @@ impl<'a> DeleteMarkerPrecomputed<'a> {
 	}
 }
 
-impl<'d, 'k> Iterator for DatabaseKeyIterator<'d> {
+impl<'d> Iterator for DatabaseKeyIterator<'d> {
 	type Item = Record;
 
 	fn next(&mut self) -> Option<Self::Item> {
-		while let Some((txid, record)) = self.merge.next() {
+		for (txid, record) in self.merge.by_ref() {
 			let is_filtered_out = self
 				.filter_out
 				.iter()
@@ -406,14 +406,12 @@ impl<'d, 'k> Iterator for DatabaseKeyIterator<'d> {
 				.any(|(_, filter)| {
 					let key = record.key();
 
-					if !(&*filter.first_key <= key) {
+					if &*filter.first_key > key {
 						return false;
 					}
 
-					if &*filter.last_key != "" {
-						if !(key < &*filter.last_key) {
-							return false;
-						}
+					if !filter.last_key.is_empty() && key >= &*filter.last_key {
+						return false;
 					}
 
 					filter.wildcard_matches(key)

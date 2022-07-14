@@ -234,12 +234,11 @@ impl Tsrv {
 
 		let human_dates = query_string.iter().any(|k| k.0 == "human");
 
-		let timestamp_fmt;
-		if human_dates {
-			timestamp_fmt = Default::default();
+		let timestamp_fmt = if human_dates {
+			Default::default()
 		} else {
-			timestamp_fmt = sonnerie::formatted::PrintTimestamp::Nanos;
-		}
+			sonnerie::formatted::PrintTimestamp::Nanos
+		};
 
 		let filter = sonnerie::Wildcard::new(key);
 		let (mut send, recv) = futures::channel::mpsc::channel(16);
@@ -278,12 +277,11 @@ impl Tsrv {
 				}
 
 				// trick sonnerie to not do an fadvise when you search for a single key
-				let searcher: Box<dyn Iterator<Item = sonnerie::Record>>;
-				if filter.is_exact() {
-					searcher = Box::new(db.get(filter.prefix()).into_iter());
+				let searcher: Box<dyn Iterator<Item = sonnerie::Record>> = if filter.is_exact() {
+					Box::new(db.get(filter.prefix()).into_iter())
 				} else {
-					searcher = Box::new(db.get_filter(&filter).into_iter());
-				}
+					Box::new(db.get_filter(&filter).into_iter())
+				};
 
 				for record in searcher {
 					let mut row: Vec<u8> = vec![];

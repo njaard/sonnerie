@@ -228,7 +228,7 @@ fn main() -> std::io::Result<()> {
 				use std::io::BufWriter;
 				use std::process::*;
 
-				let ref shell = std::env::var_os("SHELL").unwrap_or("sh".into());
+				let shell = &std::env::var_os("SHELL").unwrap_or("sh".into());
 
 				struct CheckOnDrop(Child, BufWriter<ChildStdin>);
 				impl Drop for CheckOnDrop {
@@ -390,12 +390,11 @@ fn compact(
 	let lock = File::create(dir.join(".compact"))?;
 	lock.lock_exclusive()?;
 
-	let db;
-	if major {
-		db = DatabaseReader::new(dir)?;
+	let db = if major {
+		DatabaseReader::new(dir)?
 	} else {
-		db = DatabaseReader::without_main_db(dir)?;
-	}
+		DatabaseReader::without_main_db(dir)?
+	};
 	let db = std::sync::Arc::new(db);
 
 	let mut compacted = CreateTx::new(dir)?;
@@ -461,21 +460,20 @@ fn compact(
 	}
 
 	let source_transaction_paths = db.transaction_paths();
-	let removed_transaction_paths;
 
-	if major {
+	let removed_transaction_paths = if major {
 		compacted
 			.commit_to(&dir.join("main"))
 			.expect("failed to replace main database");
-		removed_transaction_paths = &source_transaction_paths[..];
+		&source_transaction_paths[..]
 	} else {
 		// allow OS to atomically replace `first_path` (and don't delete it afterwards)
 		let first_path = &source_transaction_paths[0];
 		compacted
 			.commit_to(first_path)
 			.expect("failed to commit compacted database");
-		removed_transaction_paths = &source_transaction_paths[1..];
-	}
+		&source_transaction_paths[1..]
+	};
 
 	for txfile in removed_transaction_paths {
 		if txfile.file_name().expect("filename in txfile") == "main" {

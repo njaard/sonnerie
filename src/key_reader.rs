@@ -80,21 +80,19 @@ impl Reader {
 		range: crate::CowStringRange<'k>,
 	) -> StringKeyRangeReader<'rdr, 'k> {
 		let mut data = vec![];
-		let segment;
 
-		match range.start_bound() {
-			Included(v) | Excluded(v) => segment = self.segments.find(v),
-			Unbounded => segment = self.segments.first(),
-		}
+		let segment = match range.start_bound() {
+			Included(v) | Excluded(v) => self.segments.find(v),
+			Unbounded => self.segments.first(),
+		};
 
 		if let Some(d) = segment.as_ref() {
 			{
 				// don't do posix_fadvise if we're looking up a single key
-				let do_advise;
-				match (range.start_bound(), range.end_bound()) {
-					(Included(v1), Included(v2)) => do_advise = v1 != v2,
-					_ => do_advise = true,
-				}
+				let do_advise = match (range.start_bound(), range.end_bound()) {
+					(Included(v1), Included(v2)) => v1 != v2,
+					_ => true,
+				};
 				if do_advise {
 					self.segments.advise(d);
 				}
@@ -233,12 +231,11 @@ impl<'rdr, 'k> StringKeyRangeReader<'rdr, 'k> {
 				let klen = BigEndian::read_u32(&data[self.pos..self.pos + 4]) as usize;
 				let flen = BigEndian::read_u32(&data[self.pos + 4..self.pos + 8]) as usize;
 
-				let pos;
-				if segment.segment_version == 0x0000 {
-					pos = self.pos + 12;
+				let pos = if segment.segment_version == 0x0000 {
+					self.pos + 12
 				} else {
-					pos = self.pos + 8;
-				}
+					self.pos + 8
+				};
 
 				let dlen = BigEndian::read_u32(&data[pos..pos + 4]) as usize;
 

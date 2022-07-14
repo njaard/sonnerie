@@ -265,6 +265,7 @@ where
 	Tail: RecordBuilder,
 	Value: ToRecord,
 {
+	#[allow(clippy::should_implement_trait)]
 	pub fn add<Next: ToRecord>(self, value: Next) -> BuildingRecord<Next, Self> {
 		BuildingRecord { value, tail: self }
 	}
@@ -399,16 +400,16 @@ impl<'a> FromRecord<'a> for i32 {
 				format!("cannot decode i32 from '{}'", fmt_char as char),
 			));
 		}
-		Ok(BigEndian::read_i32(&bytes))
+		Ok(BigEndian::read_i32(bytes))
 	}
 }
 
 impl<'a> FromRecord<'a> for i64 {
 	fn get(fmt_char: u8, bytes: &'a [u8]) -> std::io::Result<Self> {
 		if fmt_char == b'i' {
-			Ok(BigEndian::read_i32(&bytes) as i64)
+			Ok(BigEndian::read_i32(bytes) as i64)
 		} else if fmt_char == b'I' {
-			Ok(BigEndian::read_i64(&bytes))
+			Ok(BigEndian::read_i64(bytes))
 		} else {
 			Err(std::io::Error::new(
 				std::io::ErrorKind::InvalidData,
@@ -426,16 +427,16 @@ impl<'a> FromRecord<'a> for u32 {
 				format!("cannot decode u32 from '{}'", fmt_char as char),
 			));
 		}
-		Ok(BigEndian::read_u32(&bytes))
+		Ok(BigEndian::read_u32(bytes))
 	}
 }
 
 impl<'a> FromRecord<'a> for u64 {
 	fn get(fmt_char: u8, bytes: &'a [u8]) -> std::io::Result<Self> {
 		if fmt_char == b'u' {
-			Ok(BigEndian::read_u32(&bytes) as u64)
+			Ok(BigEndian::read_u32(bytes) as u64)
 		} else if fmt_char == b'U' {
-			Ok(BigEndian::read_u64(&bytes))
+			Ok(BigEndian::read_u64(bytes))
 		} else {
 			Err(std::io::Error::new(
 				std::io::ErrorKind::InvalidData,
@@ -453,16 +454,16 @@ impl<'a> FromRecord<'a> for f32 {
 				format!("cannot decode f32 from '{}'", fmt_char as char),
 			));
 		}
-		Ok(BigEndian::read_f32(&bytes))
+		Ok(BigEndian::read_f32(bytes))
 	}
 }
 
 impl<'a> FromRecord<'a> for f64 {
 	fn get(fmt_char: u8, bytes: &'a [u8]) -> std::io::Result<Self> {
 		if fmt_char == b'f' {
-			Ok(BigEndian::read_f32(&bytes) as f64)
+			Ok(BigEndian::read_f32(bytes) as f64)
 		} else if fmt_char == b'F' {
-			Ok(BigEndian::read_f64(&bytes))
+			Ok(BigEndian::read_f64(bytes))
 		} else {
 			Err(std::io::Error::new(
 				std::io::ErrorKind::InvalidData,
@@ -492,7 +493,7 @@ impl<'a> FromRecord<'a> for &'a str {
 			std::io::Error::new(std::io::ErrorKind::InvalidData, format!("{:?}", e))
 		})?;
 
-		Ok(std::str::from_utf8(&tail[..len as usize])
-			.map_err(|k| std::io::Error::new(std::io::ErrorKind::InvalidData, k))?)
+		std::str::from_utf8(&tail[..len as usize])
+			.map_err(|k| std::io::Error::new(std::io::ErrorKind::InvalidData, k))
 	}
 }
