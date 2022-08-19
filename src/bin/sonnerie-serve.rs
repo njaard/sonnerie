@@ -1,6 +1,8 @@
+use std::net::SocketAddr;
 use std::path::PathBuf;
 
 use antidote::RwLock;
+use clap::Parser;
 use hyper::Server;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -17,34 +19,20 @@ use escape_string::split_one;
 use futures::sink::SinkExt;
 use futures::stream::StreamExt;
 
-fn main() {
-	use clap::Arg;
-	let matches = clap::App::new("sonnerie-serve")
-		.version("0.7.0")
-		.author("Charles Samuels <kalle@eventures.vc>")
-		.about("A network server for sonnerie")
-		.arg(
-			Arg::with_name("listen")
-				.long("listen")
-				.short('l')
-				.help("listen on this address (unix:/path or addr:port)")
-				.required(true)
-				.takes_value(true),
-		)
-		.arg(
-			Arg::with_name("dir")
-				.long("dir")
-				.short('d')
-				.help("store data here")
-				.required(true)
-				.takes_value(true),
-		)
-		.get_matches();
+#[derive(Parser, Debug)]
+#[clap(author, version, about = "A network server for sonnerie", long_about = None)]
+struct Opt {
+	/// Store data here in this directory.
+	#[clap(short, long)]
+	dir: PathBuf,
 
-	let addr = matches.value_of("listen").expect("--listen");
-	let addr = addr.parse().unwrap();
-	let dir = matches.value_of_os("dir").expect("--dir");
-	let dir = std::path::Path::new(dir);
+	/// Listen on this address (unix:/path or addr:port)
+	#[clap(short, long)]
+	listen: SocketAddr,
+}
+
+fn main() {
+	let opt = Opt::parse();
 
 	let runtime = tokio::runtime::Builder::new_multi_thread()
 		.thread_name("sonnerie")
@@ -54,8 +42,8 @@ fn main() {
 		.expect("tokio runtime");
 
 	let srv = Tsrv {
-		dir: dir.to_owned(),
-		shared_reader: RwLock::new(Arc::new(DatabaseReader::new(dir).unwrap())),
+		dir: opt.dir.clone(),
+		shared_reader: RwLock::new(Arc::new(DatabaseReader::new(&opt.dir).unwrap())),
 		shared_reader_age: RwLock::new(Some(Instant::now())),
 	};
 
@@ -82,7 +70,7 @@ fn main() {
 
 	runtime
 		.block_on(async {
-			let serve = Server::bind(&addr).serve(make_service);
+			let serve = Server::bind(&opt.listen).serve(make_service);
 			eprintln!("now running");
 			serve.await
 		})
