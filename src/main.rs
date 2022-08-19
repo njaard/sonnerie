@@ -1,328 +1,313 @@
 use ::rayon::prelude::*;
 use chrono::{NaiveDate, NaiveDateTime};
-use sonnerie::formatted;
-use sonnerie::*;
+use clap::{Parser, Subcommand};
+use sonnerie::{formatted, *};
+use std::ffi::OsString;
 use std::fs::File;
 use std::io::Write;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::str::FromStr;
+
+#[derive(Parser, Debug)]
+#[clap(author, version, about, long_about = None)]
+struct Opt {
+	/// Store data here in this directory. Create a "main" file here first.
+	#[clap(short, long)]
+	dir: PathBuf,
+
+	#[clap(subcommand)]
+	command: Command,
+}
+
+#[derive(Subcommand, Debug)]
+enum Command {
+	/// Adds records.
+	Add {
+		#[clap(short, long)]
+		format: String,
+
+		/// Instead of nanoseconds since the epoch, use this strftime format.
+		#[clap(long)]
+		timestamp_format: Option<String>,
+	},
+	/// Deletes records.
+	Delete {
+		/// Select the keys to print out, "%" is the wildcard.
+		#[clap(required_unless_one = ["before-key", "after-key", "before-time", "after-time","time"])]
+		filter: Option<String>,
+
+		/// Delete values after (and including) this key.
+		#[clap(long)]
+		after_key: Option<String>,
+
+		/// Delete values before (but not including) this key.
+		#[clap(long)]
+		before_key: Option<String>,
+
+		/// Delete values after (and including) this time.
+		#[clap(long, conflicts_with = "time")]
+		after_time: Option<EasyNaiveDateTime>,
+
+		/// Delete values before (but not including) this time
+		/// (in ISO-9601 format, date, seconds, or nanosecond precision).
+		#[clap(long, conflicts_with = "time")]
+		before_time: Option<EasyNaiveDateTime>,
+
+		/// Delete values at exactly this time (in ISO-9601 format, date, seconds, or nanosecond precision).
+		#[clap(long, conflicts_with = "time")]
+		time: Option<EasyNaiveDateTime>,
+	},
+	/// Merges transactions.
+	Compact {
+		/// Compact everything into a new main database.
+		#[clap(short = 'M', long)]
+		major: bool,
+
+		/// Run this command, writing compacted data as if by "read"
+		/// into the process's stdin, and reading its stdout as if by "add".
+		/// This is useful for removing or modifying data.
+		///
+		/// It is recommended to backup the database first
+		/// (or make hard links of the files). You probably want to
+		/// use this with --major to get the entire database.
+		#[clap(long)]
+		gegnum: Option<OsString>,
+
+		/// With --gegnum, instead of nanoseconds since the epoch, use this strftime format.
+		#[clap(long, requires = "gegnum")]
+		timestamp_format: Option<String>,
+	},
+	/// Reads records.
+	Read {
+		/// Select the keys to print out, "%" is the wildcard.
+		#[clap(long, required_unless_one = ["before-key", "after-key"])]
+		filter: Option<String>,
+
+		/// Output the line format after the timestamp for each record.
+		#[clap(long)]
+		print_format: bool,
+
+		/// Instead of "%F %T", output in this strftime format.
+		#[clap(long, default_value = "%F %T")]
+		timestamp_format: String,
+
+		/// Print timestamps as nanoseconds since the unix epoch.
+		#[clap(long, conflicts_with = "timestamp-format")]
+		timestamp_nanos: bool,
+
+		/// Print timestamps as seconds since the unix epoch (rounded down if necessary).
+		#[clap(
+			long,
+			conflicts_with = "timestamp-format",
+			conflicts_with = "timestamp-nanos"
+		)]
+		timestamp_seconds: bool,
+
+		/// Read values before (but not including) this key.
+		#[clap(long, conflicts_with = "filter")]
+		before_key: Option<String>,
+
+		/// Read values after (and including) this key.
+		#[clap(long, conflicts_with = "filter")]
+		after_key: Option<String>,
+
+		/// Read values before (but not including) this time
+		/// (in ISO-9601 format, date, seconds, or nanosecond precision).
+		#[clap(long)]
+		before_time: Option<EasyNaiveDateTime>,
+
+		/// Read values after (and including) this time, as --before-time.
+		#[clap(long)]
+		after_time: Option<EasyNaiveDateTime>,
+
+		/// Run several of this command in parallel, piping a portion of the results into each.
+		/// Keys are never divided between two commands.
+		#[clap(long)]
+		parallel: Option<String>,
+	},
+}
 
 fn main() -> std::io::Result<()> {
-	use clap::{Arg, SubCommand};
-	let matches
-		= clap::App::new("sonnerie")
-			.version("0.7.0")
-			.author("Charles Samuels <kalle@eventures.vc>")
-			.about("A compressed timeseries database")
-			.arg(Arg::with_name("dir")
-				.long("dir")
-				.short("d")
-				.help("store data here in this directory. Create a \"main\" file here first.")
-				.required(true)
-				.takes_value(true)
-			)
-			.subcommand(
-				SubCommand::with_name("add")
-					.about("adds records")
-					.arg(Arg::with_name("format")
-						.short("f")
-						.long("format")
-						.takes_value(true)
-						.required(true)
-					)
-					.arg(Arg::with_name("timestamp-format")
-						.long("timestamp-format")
-						.help("instead of nanoseconds since the epoch, use this strftime format")
-						.takes_value(true)
-					)
-			)
-			.subcommand(
-				SubCommand::with_name("delete")
-					.about("deletes records")
-					.arg(Arg::with_name("filter")
-						.help("select the keys to print out, \"%\" is the wildcard")
-						.takes_value(true)
-						.required_unless_one(&["before-key", "after-key", "before-time", "after-time","time"])
-					)
-					.arg(Arg::with_name("after-key")
-						.long("after-key")
-						.help("delete values after (and including) this key")
-						.takes_value(true)
-					)
-					.arg(Arg::with_name("before-key")
-						.long("before-key")
-						.help("delete values before (but not including) this key")
-						.takes_value(true)
-					)
-					.arg(Arg::with_name("after-time")
-						.long("after-time")
-						.help("delete values after (and including) this time")
-						.takes_value(true)
-						.conflicts_with("time")
-					)
-					.arg(Arg::with_name("before-time")
-						.long("before-time")
-						.help("delete values before (but not including) this time (in ISO-9601 format, date, seconds, or nanosecond precision)")
-						.takes_value(true)
-						.conflicts_with("time")
-					)
-					.arg(Arg::with_name("time")
-						.long("time")
-						.help("delete values at exactly this time (in ISO-9601 format, date, seconds, or nanosecond precision)")
-						.takes_value(true)
-					)
-			)
-			.subcommand(
-				SubCommand::with_name("compact")
-					.about("merge transactions")
-					.arg(Arg::with_name("major")
-						.short("M")
-						.long("major")
-						.help("compact everything into a new main database")
-					)
-					.arg(Arg::with_name("gegnum")
-						.long("gegnum")
-						.help("Run this command, writing compacted data as if by \"read\" \
-							into the process's stdin, and reading its stdout as if by \"add\". \
-							This is useful for removing or modifying data. \
-							It is recommended to backup the database first \
-							(or make hard links of the files). You probably want to \
-							use this with --major to get the entire database.")
-						.takes_value(true)
-					)
-					.arg(Arg::with_name("timestamp-format")
-						.long("timestamp-format")
-						.help("with --gegnum, instead of nanoseconds since the epoch, use this strftime format")
-						.takes_value(true)
-						.requires("gegnum")
-					)
-			)
-			.subcommand(
-				SubCommand::with_name("read")
-					.about("reads records")
-					.arg(Arg::with_name("filter")
-						.help("select the keys to print out, \"%\" is the wildcard")
-						.takes_value(true)
-						.required_unless_one(&["before-key", "after-key"])
-					)
-					.arg(Arg::with_name("print-format")
-						.long("print-format")
-						.help("Output the line format after the timestamp for each record")
-					)
-					.arg(Arg::with_name("timestamp-format")
-						.long("timestamp-format")
-						.help("instead of \"%F %T\", output in this strftime format")
-						.takes_value(true)
-					)
-					.arg(Arg::with_name("timestamp-nanos")
-						.long("timestamp-nanos")
-						.help("Print timestamps as nanoseconds since the unix epoch")
-						.conflicts_with("timestamp-format")
-					)
-					.arg(Arg::with_name("timestamp-seconds")
-						.long("timestamp-seconds")
-						.help("Print timestamps as seconds since the unix epoch (rounded down if necessary)")
-						.conflicts_with("timestamp-format")
-						.conflicts_with("timestamp-nanos")
-					)
-					.arg(Arg::with_name("before-key")
-						.long("before-key")
-						.help("read values before (but not including) this key")
-						.takes_value(true)
-						.conflicts_with("filter")
-					)
-					.arg(Arg::with_name("after-key")
-						.long("after-key")
-						.help("read values after (and including) this key")
-						.takes_value(true)
-						.conflicts_with("filter")
-					)
-					.arg(Arg::with_name("before-time")
-						.long("before-time")
-						.help("read values before (but not including) this time (in ISO-9601 format, date, seconds, or nanosecond precision)")
-						.takes_value(true)
-					)
-					.arg(Arg::with_name("after-time")
-						.long("after-time")
-						.help("read values after (and including) this time, as --before-time")
-						.takes_value(true)
-					)
-					.arg(Arg::with_name("parallel")
-						.long("parallel")
-						.help("Run several of this command in parallel, piping a portion of the results into each. Keys are never divided between two commands.")
-						.takes_value(true)
-					)
-			)
-			.get_matches();
+	let opt = Opt::parse();
 
-	let dir = matches.value_of_os("dir").expect("--dir");
-	let dir = std::path::Path::new(dir);
+	match opt.command {
+		Command::Add {
+			format,
+			timestamp_format,
+		} => add(&opt.dir, &format, timestamp_format.as_deref()),
+		Command::Compact {
+			major,
+			gegnum,
+			timestamp_format,
+		} => compact(
+			&opt.dir,
+			major,
+			gegnum.as_deref(),
+			timestamp_format.as_deref(),
+		)
+		.expect("compacting"),
+		Command::Delete {
+			filter,
+			after_key,
+			before_key,
+			after_time,
+			before_time,
+			time,
+		} => {
+			let mut after_time = after_time.map(|d| d.0);
+			let mut before_time = before_time.map(|d| d.0);
 
-	if let Some(matches) = matches.subcommand_matches("add") {
-		let format = matches.value_of("format").unwrap();
-		let ts_format = matches.value_of("timestamp-format");
-		add(dir, format, ts_format);
-	} else if let Some(matches) = matches.subcommand_matches("compact") {
-		let gegnum = matches.value_of_os("gegnum");
-		let ts_format = matches.value_of("timestamp-format");
+			if let Some(time) = time {
+				after_time = Some(time.0);
+				before_time = Some(time.0 + chrono::Duration::nanoseconds(1));
+			}
 
-		compact(dir, matches.is_present("major"), gegnum, ts_format).expect("compacting");
-	} else if let Some(matches) = matches.subcommand_matches("delete") {
-		let filter = matches.value_of("filter");
-		let after_key = matches.value_of("after-key");
-		let before_key = matches.value_of("before-key");
-		let after_time;
-		let before_time;
-		if let Some(time) = matches.value_of("time").map(|a| parse_time(a).unwrap()) {
-			after_time = Some(time);
-			before_time = Some(time + chrono::Duration::nanoseconds(1));
-		} else {
-			after_time = matches
-				.value_of("after-time")
-				.map(|a| parse_time(a).expect("parsing after-time"));
-			before_time = matches
-				.value_of("before-time")
-				.map(|a| parse_time(a).expect("parsing before-time"));
+			delete(
+				&opt.dir,
+				after_key.as_deref(),
+				before_key.as_deref(),
+				after_time,
+				before_time,
+				filter.as_deref(),
+			);
 		}
+		Command::Read {
+			filter,
+			print_format,
+			timestamp_format,
+			timestamp_nanos,
+			timestamp_seconds,
+			before_key,
+			after_key,
+			before_time,
+			after_time,
+			parallel,
+		} => {
+			let after_time = after_time.map(|t| t.0.timestamp_nanos() as u64);
+			let before_time = before_time.map(|t| t.0.timestamp_nanos() as u64);
 
-		delete(dir, after_key, before_key, after_time, before_time, filter);
-	} else if let Some(matches) = matches.subcommand_matches("read") {
-		let print_format = matches.is_present("print-format");
-		let timestamp_format = matches.value_of("timestamp-format").unwrap_or("%F %T");
-		let timestamp_nanos = matches.is_present("timestamp-nanos");
-		let timestamp_seconds = matches.is_present("timestamp-seconds");
+			let stdout = std::io::stdout();
+			let mut stdout = std::io::BufWriter::new(stdout.lock());
+			let db = DatabaseReader::new(&opt.dir)?;
 
-		let after_key = matches.value_of("after-key");
-		let before_key = matches.value_of("before-key");
+			let print_record_format = if print_format {
+				formatted::PrintRecordFormat::Yes
+			} else {
+				formatted::PrintRecordFormat::No
+			};
+			let print_timestamp = if timestamp_nanos {
+				formatted::PrintTimestamp::Nanos
+			} else if timestamp_seconds {
+				formatted::PrintTimestamp::Seconds
+			} else {
+				formatted::PrintTimestamp::FormatString(&timestamp_format)
+			};
 
-		let after_time = matches
-			.value_of("after-time")
-			.map(|t| parse_time(t).expect("parsing after-time").timestamp_nanos() as u64);
-		let before_time = matches.value_of("before-time").map(|t| {
-			parse_time(t)
-				.expect("parsing before-time")
-				.timestamp_nanos() as u64
-		});
-		let filter = matches.value_of("filter");
+			macro_rules! filter_parallel {
+				($filter:expr) => {{
+					let filter = $filter;
 
-		let stdout = std::io::stdout();
-		let mut stdout = std::io::BufWriter::new(stdout.lock());
-		let db = DatabaseReader::new(dir)?;
+					use std::io::BufWriter;
+					use std::process::*;
 
-		let print_record_format = if print_format {
-			formatted::PrintRecordFormat::Yes
-		} else {
-			formatted::PrintRecordFormat::No
-		};
-		let print_timestamp = if timestamp_nanos {
-			formatted::PrintTimestamp::Nanos
-		} else if timestamp_seconds {
-			formatted::PrintTimestamp::Seconds
-		} else {
-			formatted::PrintTimestamp::FormatString(timestamp_format)
-		};
+					let shell = &std::env::var_os("SHELL").unwrap_or("sh".into());
 
-		macro_rules! filter_parallel {
-			($filter:expr) => {{
-				let filter = $filter;
-
-				use std::io::BufWriter;
-				use std::process::*;
-
-				let shell = &std::env::var_os("SHELL").unwrap_or("sh".into());
-
-				struct CheckOnDrop(Child, BufWriter<ChildStdin>);
-				impl Drop for CheckOnDrop {
-					fn drop(&mut self) {
-						self.1.flush().unwrap();
-						let s = self.0.wait().unwrap();
-						if !s.success() {
-							panic!("parallel worker failed");
+					struct CheckOnDrop(Child, BufWriter<ChildStdin>);
+					impl Drop for CheckOnDrop {
+						fn drop(&mut self) {
+							self.1.flush().unwrap();
+							let s = self.0.wait().unwrap();
+							if !s.success() {
+								panic!("parallel worker failed");
+							}
 						}
 					}
-				}
 
-				let subproc = || {
-					let mut child = Command::new(shell)
-						.arg("-c")
-						.arg(matches.value_of_os("parallel").unwrap())
-						.stdin(Stdio::piped())
-						.spawn()
-						.unwrap();
-					let stdout = BufWriter::new(child.stdin.take().unwrap());
-					(child, stdout)
-				};
+					let subproc = || {
+						let mut child = Command::new(shell)
+							.arg("-c")
+							.arg(parallel.as_ref().unwrap())
+							.stdin(Stdio::piped())
+							.spawn()
+							.unwrap();
+						let stdout = BufWriter::new(child.stdin.take().unwrap());
+						(child, stdout)
+					};
 
-				filter
-					.into_par_iter()
-					.for_each_init(subproc, |(_, out), record| {
+					filter
+						.into_par_iter()
+						.for_each_init(subproc, |(_, out), record| {
+							let ts = record.timestamp_nanos();
+							if let Some(after_time) = after_time {
+								if ts < after_time {
+									return;
+								}
+							}
+							if let Some(before_time) = before_time {
+								if ts >= before_time {
+									return;
+								}
+							}
+							formatted::print_record(
+								&record,
+								out,
+								print_timestamp,
+								print_record_format,
+							)
+							.expect("failed to write to subprocess");
+							writeln!(out, "").expect("failed to write to subprocess");
+						});
+				}};
+			}
+			macro_rules! filter {
+				($filter:expr) => {{
+					for record in $filter {
 						let ts = record.timestamp_nanos();
 						if let Some(after_time) = after_time {
 							if ts < after_time {
-								return;
+								continue;
 							}
 						}
 						if let Some(before_time) = before_time {
 							if ts >= before_time {
-								return;
+								continue;
 							}
 						}
-						formatted::print_record(&record, out, print_timestamp, print_record_format)
-							.expect("failed to write to subprocess");
-						writeln!(out, "").expect("failed to write to subprocess");
-					});
-			}};
-		}
-		macro_rules! filter {
-			($filter:expr) => {{
-				for record in $filter {
-					let ts = record.timestamp_nanos();
-					if let Some(after_time) = after_time {
-						if ts < after_time {
-							continue;
-						}
+						formatted::print_record(
+							&record,
+							&mut stdout,
+							print_timestamp,
+							print_record_format,
+						)?;
+						writeln!(&mut stdout, "")?;
 					}
-					if let Some(before_time) = before_time {
-						if ts >= before_time {
-							continue;
-						}
-					}
-					formatted::print_record(
-						&record,
-						&mut stdout,
-						print_timestamp,
-						print_record_format,
-					)?;
-					writeln!(&mut stdout, "")?;
-				}
-			}};
-		}
+				}};
+			}
 
-		if matches.is_present("parallel") {
-			match (after_key, before_key, filter) {
-				(Some(a), None, None) => filter_parallel!(db.get_range(a..)),
-				(None, Some(b), None) => filter_parallel!(db.get_range(..b)),
-				(Some(a), Some(b), None) => filter_parallel!(db.get_range(a..b)),
-				(None, None, Some(filter)) => {
-					let w = Wildcard::new(filter);
-					filter_parallel!(db.get_filter(&w));
+			if parallel.is_some() {
+				match (after_key.as_deref(), before_key.as_deref(), filter) {
+					(Some(a), None, None) => filter_parallel!(db.get_range(a..)),
+					(None, Some(b), None) => filter_parallel!(db.get_range(..b)),
+					(Some(a), Some(b), None) => filter_parallel!(db.get_range(a..b)),
+					(None, None, Some(filter)) => {
+						let w = Wildcard::new(&filter);
+						filter_parallel!(db.get_filter(&w));
+					}
+					_ => unreachable!(),
 				}
-				_ => unreachable!(),
-			}
-		} else {
-			match (after_key, before_key, filter) {
-				(Some(a), None, None) => filter!(db.get_range(a..)),
-				(None, Some(b), None) => filter!(db.get_range(..b)),
-				(Some(a), Some(b), None) => filter!(db.get_range(a..b)),
-				(None, None, Some(filter)) => {
-					let w = Wildcard::new(filter);
-					filter!(db.get_filter(&w));
+			} else {
+				match (after_key.as_deref(), before_key.as_deref(), filter) {
+					(Some(a), None, None) => filter!(db.get_range(a..)),
+					(None, Some(b), None) => filter!(db.get_range(..b)),
+					(Some(a), Some(b), None) => filter!(db.get_range(a..b)),
+					(None, None, Some(filter)) => {
+						let w = Wildcard::new(&filter);
+						filter!(db.get_filter(&w));
+					}
+					_ => unreachable!(),
 				}
-				_ => unreachable!(),
 			}
 		}
-	} else {
-		eprintln!("A command must be specified (read, add, compact, delete)");
-		std::process::exit(1);
 	}
 
 	Ok(())
@@ -416,9 +401,11 @@ fn compact(
 		// a thread that reads from "db" and writes to the child
 		let reader_db = db.clone();
 		let reader_thread = std::thread::spawn(move || -> std::io::Result<()> {
-			let timestamp_format =
-				if let Some(ts_format) = &ts_format_cloned { formatted::PrintTimestamp::FormatString(&ts_format) }
-				else { formatted::PrintTimestamp::Nanos };
+			let timestamp_format = if let Some(ts_format) = &ts_format_cloned {
+				formatted::PrintTimestamp::FormatString(&ts_format)
+			} else {
+				formatted::PrintTimestamp::Nanos
+			};
 
 			let reader = reader_db.get_range(..);
 			for record in reader {
@@ -499,20 +486,27 @@ fn compact(
 	Ok(())
 }
 
-fn parse_time(t: &str) -> Option<NaiveDateTime> {
-	if let Ok(k) = NaiveDateTime::parse_from_str(t, "%Y-%m-%dT%H:%M:%S.f") {
-		Some(k)
-	} else if let Ok(k) = NaiveDateTime::parse_from_str(t, "%Y-%m-%dT%H:%M:%S") {
-		Some(k)
-	} else if let Ok(k) = NaiveDateTime::parse_from_str(t, "%Y-%m-%d %H:%M:%S.f") {
-		Some(k)
-	} else if let Ok(k) = NaiveDateTime::parse_from_str(t, "%Y-%m-%d %H:%M:%S") {
-		Some(k)
-	} else if let Ok(k) = NaiveDateTime::parse_from_str(t, "%Y-%m-%d %H:%M:%S.f") {
-		Some(k)
-	} else if let Ok(k) = NaiveDate::parse_from_str(t, "%Y-%m-%d") {
-		Some(k.and_hms(0, 0, 0))
-	} else {
-		None
+#[derive(Debug)]
+struct EasyNaiveDateTime(NaiveDateTime);
+
+impl FromStr for EasyNaiveDateTime {
+	type Err = &'static str;
+
+	fn from_str(t: &str) -> Result<Self, Self::Err> {
+		if let Ok(k) = NaiveDateTime::parse_from_str(t, "%Y-%m-%dT%H:%M:%S.f") {
+			Ok(EasyNaiveDateTime(k))
+		} else if let Ok(k) = NaiveDateTime::parse_from_str(t, "%Y-%m-%dT%H:%M:%S") {
+			Ok(EasyNaiveDateTime(k))
+		} else if let Ok(k) = NaiveDateTime::parse_from_str(t, "%Y-%m-%d %H:%M:%S.f") {
+			Ok(EasyNaiveDateTime(k))
+		} else if let Ok(k) = NaiveDateTime::parse_from_str(t, "%Y-%m-%d %H:%M:%S") {
+			Ok(EasyNaiveDateTime(k))
+		} else if let Ok(k) = NaiveDateTime::parse_from_str(t, "%Y-%m-%d %H:%M:%S.f") {
+			Ok(EasyNaiveDateTime(k))
+		} else if let Ok(k) = NaiveDate::parse_from_str(t, "%Y-%m-%d") {
+			Ok(EasyNaiveDateTime(k.and_hms(0, 0, 0)))
+		} else {
+			Err("invalid date and time")
+		}
 	}
 }

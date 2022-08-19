@@ -26,7 +26,7 @@ fn main() {
 		.arg(
 			Arg::with_name("listen")
 				.long("listen")
-				.short("l")
+				.short('l')
 				.help("listen on this address (unix:/path or addr:port)")
 				.required(true)
 				.takes_value(true),
@@ -34,7 +34,7 @@ fn main() {
 		.arg(
 			Arg::with_name("dir")
 				.long("dir")
-				.short("d")
+				.short('d')
 				.help("store data here")
 				.required(true)
 				.takes_value(true),
