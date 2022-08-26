@@ -26,7 +26,7 @@ struct Opt {
 	#[clap(short, long)]
 	dir: PathBuf,
 
-	/// Listen on this address (unix:/path or addr:port)
+	/// Listen on this address (addr:port)
 	#[clap(short, long)]
 	listen: SocketAddr,
 }
