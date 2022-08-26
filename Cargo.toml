@@ -24,7 +24,7 @@ memmap="0.7"
 static_init="1"
 byteorder="1"
 lz4="1"
-chrono="0.4"
+chrono={version="0.4", default-features=false, features=["std"]}
 regex="1"
 fs2="0.4"
 antidote="1"
@@ -46,8 +46,7 @@ shardio = { version="0.8", optional=true }
 smallvec="1"
 rayon="1.1"
 either="1.6"
-compact_str="0.5"
-lazy-init="0.5"
+compact_str="0.6"
 lending-cell = {version="0.1.1", optional=true }
 
 [dev-dependencies]
