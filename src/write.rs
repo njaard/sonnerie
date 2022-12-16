@@ -1,6 +1,8 @@
 use antidote::{Condvar, Mutex};
 use byteorder::{BigEndian, ByteOrder, WriteBytesExt};
 use crossbeam::channel;
+use thiserror::Error;
+
 use std::io::Write;
 use std::sync::Arc;
 
@@ -53,26 +55,24 @@ struct WorkerMessage {
 }
 
 /// A reason a write could not be completed
-#[derive(Debug)]
+#[derive(Error,Debug)]
 pub enum WriteFailure {
 	/// The key `second` does not come lexicographically after `first`, but they were added in that order
+        #[error("the key `{second}` does not come lexicographically after `{first}`, but they were added in that order")]
 	KeyOrderingViolation { first: String, second: String },
 	/// The timestamp `second` does not come chronologically after `first`, but they were added in that order, in the same key (`key`)
+        #[error("the timestamp `{second}` does not come chronologically after `{first}`, but they were added in that order, in the same key (`{key}`)")]
 	TimeOrderingViolation {
 		first: chrono::NaiveDateTime,
 		second: chrono::NaiveDateTime,
 		key: String,
 	},
 	/// The size of data was not expected
+        #[error("the size of data ({0}) was not expected")]
 	IncorrectLength(usize),
 	/// An IO error from the OS
-	IOError(std::io::Error),
-}
-
-impl From<std::io::Error> for WriteFailure {
-	fn from(e: std::io::Error) -> Self {
-		WriteFailure::IOError(e)
-	}
+        #[error("io error")]
+	IOError(#[from] std::io::Error),
 }
 
 impl<W: Write + Send> Writer<W> {
