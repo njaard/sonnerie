@@ -1,3 +1,6 @@
+# 0.8.1: 2022-12-19
+* Implement `std::io::Error` on `WriteFailure`, thanks @db48x
+
 # 0.8.0: 2022-07-13
 * Rename `DatabaseKeyReader` to `DatabaseRecordReader`
 * Rename `CreateTx::add_record()` to `CreateTx::add_record_raw()`
