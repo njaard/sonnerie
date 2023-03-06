@@ -46,7 +46,7 @@ shardio = { version="0.8", optional=true }
 smallvec="1"
 rayon="1.1"
 either="1.6"
-compact_str="0.6"
+compact_str="0.7"
 lending-cell = {version="0.1.1", optional=true }
 thiserror = "1.0"
 
