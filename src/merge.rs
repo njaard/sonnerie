@@ -2,6 +2,8 @@ use core::cmp::Ordering;
 use std::collections::BinaryHeap;
 use std::sync::Arc;
 
+type CompareRecord<Record> = Box<dyn Fn(&Record, &Record) -> Ordering + Send + Sync>;
+
 struct NextRecord<Source, Record>
 where
 	Source: Iterator<Item = Record>,
@@ -9,7 +11,7 @@ where
 	source: Source,
 	source_index: usize,
 	current_record: Option<Record>,
-	compare_record: Arc<Box<dyn Fn(&Record, &Record) -> Ordering + Send + Sync>>,
+	compare_record: Arc<CompareRecord<Record>>,
 }
 
 impl<Source: Iterator<Item = Record>, Record> Ord for NextRecord<Source, Record> {
@@ -63,8 +65,7 @@ where
 	where
 		CompareRecord: Fn(&Record, &Record) -> Ordering + 'static + Send + Sync,
 	{
-		let compare_record: Box<dyn Fn(&Record, &Record) -> Ordering + Send + Sync> =
-			Box::new(compare_record);
+		let compare_record: self::CompareRecord<Record> = Box::new(compare_record);
 		let compare_record = Arc::new(compare_record);
 
 		let mut sorter = BinaryHeap::with_capacity(orig_sources.len());
