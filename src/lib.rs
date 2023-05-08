@@ -167,3 +167,60 @@ impl<'a> From<(Bound<Cow<'a, str>>, Bound<Cow<'a, str>>)> for CowStringRange<'a>
 		}
 	}
 }
+
+// not part of public api
+#[doc(hidden)]
+#[cfg(feature = "bin")]
+pub fn _purge_compacted_files(
+	compacted: CreateTx,
+	dir: &std::path::Path,
+	db: &DatabaseReader,
+	major: bool,
+) -> std::io::Result<()> {
+	let source_transaction_paths = db.transaction_paths();
+
+	let removed_transaction_paths = if major {
+		compacted.commit_to(&dir.join("main"))?;
+		&source_transaction_paths[..]
+	} else {
+		// allow OS to atomically replace `first_path` (and don't delete it afterwards)
+		let first_path = &source_transaction_paths[0];
+
+		if let Some(deletion) = db.delete_txes_paths().last() {
+			if deletion > first_path {
+				// a deletion transaction may not be sorted sequentially after
+				// the new compacted transaction, so I have to invent a filename
+				// that comes after `deletion`
+				return Err(std::io::Error::new(
+					std::io::ErrorKind::AlreadyExists,
+					format!(
+						"the file {first_path:?} comes after the \
+					deletion transaction {deletion:?}. You should rename {first_path:?} manually to fix this situation"
+					),
+				));
+			}
+		}
+
+		compacted.commit_to(first_path)?;
+		&source_transaction_paths[1..]
+	};
+
+	for txfile in removed_transaction_paths {
+		if txfile.file_name().expect("filename in txfile") == "main" {
+			continue;
+		}
+		if let Err(e) = std::fs::remove_file(txfile) {
+			eprintln!("warning: failed to remove {:?}: {}", txfile, e);
+		}
+	}
+
+	if major {
+		for txfile in db.delete_txes_paths() {
+			if let Err(e) = std::fs::remove_file(txfile) {
+				eprintln!("warning: failed to remove {:?}: {}", txfile, e);
+			}
+		}
+	}
+
+	Ok(())
+}

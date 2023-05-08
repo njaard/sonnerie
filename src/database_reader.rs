@@ -124,6 +124,9 @@ impl DatabaseReader {
 	///
 	/// This function also returns the path for `main`,
 	/// which is overwritten. Don't delete that.
+	///
+	/// This function doesn't return the transactions that
+	/// contain deletions.
 	pub fn transaction_paths(&self) -> Vec<PathBuf> {
 		self.txes.iter().map(|(_, e, _)| e.clone()).collect()
 	}

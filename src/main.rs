@@ -450,38 +450,7 @@ fn compact(
 		eprintln!("compacted {} records", n);
 	}
 
-	let source_transaction_paths = db.transaction_paths();
-
-	let removed_transaction_paths = if major {
-		compacted
-			.commit_to(&dir.join("main"))
-			.expect("failed to replace main database");
-		&source_transaction_paths[..]
-	} else {
-		// allow OS to atomically replace `first_path` (and don't delete it afterwards)
-		let first_path = &source_transaction_paths[0];
-		compacted
-			.commit_to(first_path)
-			.expect("failed to commit compacted database");
-		&source_transaction_paths[1..]
-	};
-
-	for txfile in removed_transaction_paths {
-		if txfile.file_name().expect("filename in txfile") == "main" {
-			continue;
-		}
-		if let Err(e) = std::fs::remove_file(txfile) {
-			eprintln!("warning: failed to remove {:?}: {}", txfile, e);
-		}
-	}
-
-	if major {
-		for txfile in db.delete_txes_paths() {
-			if let Err(e) = std::fs::remove_file(&txfile) {
-				eprintln!("warning: failed to remove {:?}: {}", txfile, e);
-			}
-		}
-	}
+	sonnerie::_purge_compacted_files(compacted, &dir, &db, major).expect("failure compacting");
 
 	Ok(())
 }

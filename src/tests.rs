@@ -969,6 +969,97 @@ fn delete_all() {
 	assert_eq!(0, db.get_range(..).into_par_iter().count());
 }
 
+#[test]
+fn delete_quantum_choice_eraser_compact() {
+	let t = tempfile::TempDir::new().unwrap();
+	let dir = t.path();
+
+	let has_n = |msg: &str, n| {
+		let r = DatabaseReader::new(dir).unwrap();
+		assert_eq!(n, r.get_range(..).count(), "{msg}");
+	};
+	let compact = || {
+		let db = DatabaseReader::without_main_db(dir).unwrap();
+		let mut compacted = CreateTx::new(dir).unwrap();
+		let reader = db.get_range(..);
+		for record in reader {
+			compacted
+				.add_record_raw(record.key(), record.format(), record.raw())
+				.unwrap();
+		}
+		crate::_purge_compacted_files(compacted, &dir, &db, false)
+	};
+
+	// create two transactions
+	{
+		let mut tx = CreateTx::new(dir).expect("creating tx");
+		tx.add_record(
+			"aa",
+			"2010-01-01T00:00:01".parse().unwrap(),
+			&[&42u32 as &dyn crate::ToRecord],
+		)
+		.unwrap();
+		tx.commit_to(&dir.join("main")).expect("committed");
+	}
+	{
+		let mut tx = CreateTx::new(t.path()).expect("creating tx");
+		tx.add_record(
+			"bb",
+			"2010-01-01T00:00:01".parse().unwrap(),
+			&[&42u32 as &dyn crate::ToRecord],
+		)
+		.unwrap();
+		tx.commit_to(&dir.join("tx.0000000000000061"))
+			.expect("committed");
+	}
+	{
+		let mut tx = CreateTx::new(t.path()).expect("creating tx");
+		tx.add_record(
+			"cc",
+			"2010-01-01T00:00:01".parse().unwrap(),
+			&[&42u32 as &dyn crate::ToRecord],
+		)
+		.unwrap();
+		tx.commit().expect("committed");
+	}
+
+	has_n("creation", 3);
+	{
+		let mut tx = CreateTx::new(dir).expect("creating tx");
+		tx.delete("cc", "", u64::MIN, u64::MAX, "%").unwrap();
+		tx.commit().expect("committed");
+	}
+
+	assert!(compact().is_err());
+	/*
+	// this is the problem we're trying to prevent
+	has_n("compact 1", 2);
+
+	{
+		let mut tx = CreateTx::new(dir).expect("creating tx");
+		tx.add_record(
+			"dd",
+			"2010-01-01T00:00:01".parse().unwrap(),
+			&[&42u32 as &dyn crate::ToRecord],
+		)
+		.unwrap();
+		tx.commit().expect("committed");
+	}
+	{
+		let mut tx = CreateTx::new(dir).expect("creating tx");
+		tx.add_record(
+			"ee",
+			"2010-01-01T00:00:01".parse().unwrap(),
+			&[&42u32 as &dyn crate::ToRecord],
+		)
+		.unwrap();
+		tx.commit().expect("committed");
+	}
+	has_n("adding", 4);
+	compact();
+	has_n("compact 2", 4);*/
+}
+
 // this is a generalized form of the delete test with various flags for which
 // test is active
 fn configurable_delete_test(
