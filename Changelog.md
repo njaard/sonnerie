@@ -1,3 +1,9 @@
+# 0.8.2: 2023-05-08
+* Update `compact_str` to version 0.7
+* Update `clap` version 4
+* Catch a certain situation when your database was updated from a version preceding 0.7,
+when doing a minor compaction on a database with a deletion.
+
 # 0.8.1: 2022-12-19
 * Implement `std::io::Error` on `WriteFailure`, thanks @db48x
 
