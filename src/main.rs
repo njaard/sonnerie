@@ -80,7 +80,7 @@ enum Command {
 	/// Reads records.
 	Read {
 		/// Select the keys to print out, "%" is the wildcard.
-		#[clap(long, required_unless_one = ["before-key", "after-key"])]
+		#[clap(required_unless_one = ["before-key", "after-key"])]
 		filter: Option<String>,
 
 		/// Output the line format after the timestamp for each record.
