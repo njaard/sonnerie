@@ -33,7 +33,7 @@ enum Command {
 	/// Deletes records.
 	Delete {
 		/// Select the keys to print out, "%" is the wildcard.
-		#[clap(required_unless_one = ["before-key", "after-key", "before-time", "after-time","time"])]
+		#[clap(required_unless_present_any = ["before-key", "after-key", "before-time", "after-time", "time"])]
 		filter: Option<String>,
 
 		/// Delete values after (and including) this key.
@@ -80,7 +80,7 @@ enum Command {
 	/// Reads records.
 	Read {
 		/// Select the keys to print out, "%" is the wildcard.
-		#[clap(required_unless_one = ["before-key", "after-key"])]
+		#[clap(required_unless_present_any = ["before-key", "after-key"])]
 		filter: Option<String>,
 
 		/// Output the line format after the timestamp for each record.
@@ -455,7 +455,7 @@ fn compact(
 	Ok(())
 }
 
-#[derive(Debug)]
+#[derive(Debug,Clone)]
 struct EasyNaiveDateTime(NaiveDateTime);
 
 impl FromStr for EasyNaiveDateTime {

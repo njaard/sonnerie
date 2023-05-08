@@ -1,24 +1,24 @@
 use sonnerie::Reader;
 use std::io::Write;
-use std::path::Path;
+use std::path::PathBuf;
 
 fn main() -> std::io::Result<()> {
 	use clap::Arg;
-	let matches = clap::App::new("get")
+	let matches = clap::Command::new("get")
 		.version("1.0")
 		.author("Charles Samuels <kalle@eventures.vc>")
 		.about("Dump a single transaction file data")
 		.arg(
-			Arg::with_name("db")
+			Arg::new("db")
 				.help("database file")
 				.required(true)
-				.takes_value(true),
+				.action(clap::ArgAction::Set),
 		)
-		.arg(Arg::with_name("filter").required(true).takes_value(true))
+		.arg(Arg::new("filter").required(true).action(clap::ArgAction::Set))
 		.get_matches();
 
-	let db = Path::new(matches.value_of_os("db").unwrap());
-	let filter = matches.value_of("filter").unwrap();
+	let db: &PathBuf = matches.get_one("db").unwrap();
+	let filter: &String = matches.get_one("filter").unwrap();
 
 	let stdout = std::io::stdout();
 	let mut stdout = stdout.lock();
@@ -27,7 +27,7 @@ fn main() -> std::io::Result<()> {
 
 	let w = std::fs::File::open(db)?;
 	let r = Reader::new(w).unwrap();
-	for record in r.left().unwrap().get_filter(&filter).into_iter() {
+	for record in r.left().unwrap().get_filter(filter).into_iter() {
 		sonnerie::formatted::print_record(
 			&record,
 			&mut stdout,
