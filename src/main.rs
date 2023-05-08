@@ -402,7 +402,7 @@ fn compact(
 		let reader_db = db.clone();
 		let reader_thread = std::thread::spawn(move || -> std::io::Result<()> {
 			let timestamp_format = if let Some(ts_format) = &ts_format_cloned {
-				formatted::PrintTimestamp::FormatString(&ts_format)
+				formatted::PrintTimestamp::FormatString(ts_format)
 			} else {
 				formatted::PrintTimestamp::Nanos
 			};
@@ -450,7 +450,7 @@ fn compact(
 		eprintln!("compacted {} records", n);
 	}
 
-	sonnerie::_purge_compacted_files(compacted, &dir, &db, major).expect("failure compacting");
+	sonnerie::_purge_compacted_files(compacted, dir, &db, major).expect("failure compacting");
 
 	Ok(())
 }

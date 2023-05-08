@@ -180,18 +180,18 @@ impl CreateTx {
 			// don't create an empty transaction file
 			drop(file);
 			if final_name.file_name().map(|n| n == "main") != Some(true) {
-				let _ = std::fs::remove_file(&final_name);
+				let _ = std::fs::remove_file(final_name);
 			}
 			return Ok(());
 		}
 		file.sync_all()?;
 		drop(file);
 		self.tmp
-			.persist_by_rename(&final_name)
+			.persist_by_rename(final_name)
 			.map_err(|e| e.error)?;
 		if let Some(umask) = get_umask() {
 			use std::os::unix::fs::PermissionsExt;
-			let p = std::fs::Permissions::from_mode((0o444 & !umask) as u32);
+			let p = std::fs::Permissions::from_mode(0o444 & !umask);
 			let _ = std::fs::set_permissions(final_name, p);
 		}
 		Ok(())

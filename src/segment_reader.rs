@@ -114,7 +114,7 @@ impl SegmentReader {
 	}
 
 	/// instructs the OS I'm going to sequentially read starting here
-	pub(crate) fn advise<'s>(&self, from: &Segment<'s>) {
+	pub(crate) fn advise(&self, from: &Segment) {
 		use libc::{c_void, sysconf, _SC_PAGESIZE};
 		let pagesize = unsafe { sysconf(_SC_PAGESIZE) as usize };
 

@@ -132,7 +132,7 @@ impl DatabaseReader {
 	}
 
 	/// Get the filenames of the transactions that have a delete marker in them.
-	pub fn delete_txes_paths<'a>(&'a self) -> impl Iterator<Item = &Path> {
+	pub fn delete_txes_paths(&self) -> impl Iterator<Item = &Path> {
 		self.filter_out.iter().map(|(_, path, _)| &**path)
 	}
 
@@ -409,7 +409,7 @@ impl<'a> DeleteMarkerPrecomputed<'a> {
 	pub(crate) fn from_delete_marker(marker: &'a DeleteMarker) -> DeleteMarkerPrecomputed<'a> {
 		use Either::*;
 
-		let wildcard = match Wildcard::new(&*marker.wildcard).as_regex() {
+		let wildcard = match Wildcard::new(&marker.wildcard).as_regex() {
 			Some(re) => Left(re),
 			None => {
 				let starts_with = marker.wildcard.split('%').next().unwrap();
@@ -418,8 +418,8 @@ impl<'a> DeleteMarkerPrecomputed<'a> {
 		};
 
 		DeleteMarkerPrecomputed {
-			first_key: &*marker.first_key,
-			last_key: &*marker.last_key,
+			first_key: &marker.first_key,
+			last_key: &marker.last_key,
 			first_timestamp: marker.first_timestamp,
 			last_timestamp: marker.last_timestamp,
 			wildcard,
@@ -462,11 +462,11 @@ impl<'d> Iterator for DatabaseRecordIterator<'d> {
 				.any(|(_, filter)| {
 					let key = record.key();
 
-					if &*filter.first_key > key {
+					if filter.first_key > key {
 						return false;
 					}
 
-					if !filter.last_key.is_empty() && key >= &*filter.last_key {
+					if !filter.last_key.is_empty() && key >= filter.last_key {
 						return false;
 					}
 
