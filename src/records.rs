@@ -57,10 +57,10 @@ impl Record {
 	/// A decoded timestamp for this record
 	pub fn time(&self) -> chrono::NaiveDateTime {
 		let ts = self.timestamp_nanos();
-		chrono::NaiveDateTime::from_timestamp(
+		chrono::NaiveDateTime::from_timestamp_opt(
 			(ts / 1_000_000_000) as i64,
 			(ts % 1_000_000_000) as u32,
-		)
+		).unwrap()
 	}
 
 	/// The raw timestamp for this record as nanoseconds

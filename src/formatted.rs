@@ -159,10 +159,10 @@ pub fn print_record<W: std::io::Write>(
 		PrintTimestamp::Nanos => write!(out, "{}", ts)?,
 		PrintTimestamp::Seconds => write!(out, "{}", ts / 1_000_000_000)?,
 		PrintTimestamp::FormatString(strf) => {
-			let ts = chrono::NaiveDateTime::from_timestamp(
+			let ts = chrono::NaiveDateTime::from_timestamp_opt(
 				(ts / 1_000_000_000) as i64,
 				(ts % 1_000_000_000) as u32,
-			);
+			).unwrap();
 			write!(out, "{}", ts.format(strf))?;
 		}
 	}

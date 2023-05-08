@@ -941,7 +941,7 @@ fn many_string_records_highlevel() {
 		while size < crate::write::SEGMENT_SIZE_GOAL * 2 {
 			tx.add_record(
 				"abcdef",
-				chrono::NaiveDateTime::from_timestamp(size as i64, 0),
+				chrono::NaiveDateTime::from_timestamp_opt(size as i64, 0).unwrap(),
 				record("short text"),
 			)
 			.unwrap();

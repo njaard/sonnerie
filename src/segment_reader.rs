@@ -61,18 +61,18 @@ impl SegmentReader {
 				// first 8 bytes being the first timestamp
 				let ts_slice = &next_slice[fkey_len..];
 				let ts_u64 = BigEndian::read_u64(ts_slice);
-				let start_ts = NaiveDateTime::from_timestamp(
+				let start_ts = NaiveDateTime::from_timestamp_opt(
 					(ts_u64 / 1_000_000_000) as i64,
 					(ts_u64 % 1_000_000_000) as u32,
-				);
+				).unwrap();
 
 				// next 8 bytes being the last timestamp
 				let ts_slice = &next_slice[fkey_len + 8..fkey_len + 16];
 				let ts_u64 = BigEndian::read_u64(ts_slice);
-				let end_ts = NaiveDateTime::from_timestamp(
+				let end_ts = NaiveDateTime::from_timestamp_opt(
 					(ts_u64 / 1_000_000_000) as i64,
 					(ts_u64 % 1_000_000_000) as u32,
-				);
+				).unwrap();
 
 				// next set of bytes is a varint containing the length of the
 				// wildcard

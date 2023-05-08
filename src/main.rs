@@ -473,7 +473,7 @@ impl FromStr for EasyNaiveDateTime {
 		} else if let Ok(k) = NaiveDateTime::parse_from_str(t, "%Y-%m-%d %H:%M:%S.f") {
 			Ok(EasyNaiveDateTime(k))
 		} else if let Ok(k) = NaiveDate::parse_from_str(t, "%Y-%m-%d") {
-			Ok(EasyNaiveDateTime(k.and_hms(0, 0, 0)))
+			Ok(EasyNaiveDateTime(k.and_hms_opt(0, 0, 0).unwrap()))
 		} else {
 			Err("invalid date and time")
 		}
