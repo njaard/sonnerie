@@ -1,3 +1,7 @@
+# 0.8.3: 2023-05-9
+* Basically revert the compaction change in the previous version and fix it
+for real in a much simpler way.
+
 # 0.8.2: 2023-05-08
 * Update `compact_str` to version 0.7
 * Update `clap` version 4
