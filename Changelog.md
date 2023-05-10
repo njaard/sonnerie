@@ -1,4 +1,7 @@
-# 0.8.3: 2023-05-9
+# 0.8.4: 2023-05-10
+* Make the CLI tool accept certain parameters. Caused by the upgrade to clap 4
+
+# 0.8.3: 2023-05-09
 * Basically revert the compaction change in the previous version and fix it
 for real in a much simpler way.
 
