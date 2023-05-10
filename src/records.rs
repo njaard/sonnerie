@@ -60,7 +60,8 @@ impl Record {
 		chrono::NaiveDateTime::from_timestamp_opt(
 			(ts / 1_000_000_000) as i64,
 			(ts % 1_000_000_000) as u32,
-		).unwrap()
+		)
+		.unwrap()
 	}
 
 	/// The raw timestamp for this record as nanoseconds

@@ -33,7 +33,7 @@ enum Command {
 	/// Deletes records.
 	Delete {
 		/// Select the keys to print out, "%" is the wildcard.
-		#[clap(required_unless_present_any = ["before-key", "after-key", "before-time", "after-time", "time"])]
+		#[clap(required_unless_present_any = ["before_key", "after_key", "before_time", "after_time", "time"])]
 		filter: Option<String>,
 
 		/// Delete values after (and including) this key.
@@ -80,7 +80,7 @@ enum Command {
 	/// Reads records.
 	Read {
 		/// Select the keys to print out, "%" is the wildcard.
-		#[clap(required_unless_present_any = ["before-key", "after-key"])]
+		#[clap(required_unless_present_any = ["before_key", "after_key"])]
 		filter: Option<String>,
 
 		/// Output the line format after the timestamp for each record.
@@ -92,14 +92,14 @@ enum Command {
 		timestamp_format: String,
 
 		/// Print timestamps as nanoseconds since the unix epoch.
-		#[clap(long, conflicts_with = "timestamp-format")]
+		#[clap(long, conflicts_with = "timestamp_format")]
 		timestamp_nanos: bool,
 
 		/// Print timestamps as seconds since the unix epoch (rounded down if necessary).
 		#[clap(
 			long,
-			conflicts_with = "timestamp-format",
-			conflicts_with = "timestamp-nanos"
+			conflicts_with = "timestamp_format",
+			conflicts_with = "timestamp_nanos"
 		)]
 		timestamp_seconds: bool,
 
@@ -455,7 +455,7 @@ fn compact(
 	Ok(())
 }
 
-#[derive(Debug,Clone)]
+#[derive(Debug, Clone)]
 struct EasyNaiveDateTime(NaiveDateTime);
 
 impl FromStr for EasyNaiveDateTime {

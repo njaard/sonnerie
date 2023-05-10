@@ -187,7 +187,7 @@ pub fn _purge_compacted_files(
 		let keep_path = &source_transaction_paths.last().unwrap();
 
 		compacted.commit_to(keep_path)?;
-		&source_transaction_paths[ .. source_transaction_paths.len()-1]
+		&source_transaction_paths[..source_transaction_paths.len() - 1]
 	};
 
 	for txfile in removed_transaction_paths {

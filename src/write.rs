@@ -179,11 +179,13 @@ impl<W: Write + Send> Writer<W> {
 				let first = chrono::NaiveDateTime::from_timestamp_opt(
 					(self.current_timestamp / 1_000_000_000) as i64,
 					(self.current_timestamp % 1_000_000_000) as u32,
-				).unwrap();
+				)
+				.unwrap();
 				let second = chrono::NaiveDateTime::from_timestamp_opt(
 					(timestamp / 1_000_000_000) as i64,
 					(timestamp % 1_000_000_000) as u32,
-				).unwrap();
+				)
+				.unwrap();
 				return Err(WriteFailure::TimeOrderingViolation {
 					key: key.to_string(),
 					first,

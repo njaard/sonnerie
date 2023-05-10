@@ -14,7 +14,11 @@ fn main() -> std::io::Result<()> {
 				.required(true)
 				.action(clap::ArgAction::Set),
 		)
-		.arg(Arg::new("filter").required(true).action(clap::ArgAction::Set))
+		.arg(
+			Arg::new("filter")
+				.required(true)
+				.action(clap::ArgAction::Set),
+		)
 		.get_matches();
 
 	let db: &PathBuf = matches.get_one("db").unwrap();

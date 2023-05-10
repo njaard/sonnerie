@@ -162,7 +162,8 @@ pub fn print_record<W: std::io::Write>(
 			let ts = chrono::NaiveDateTime::from_timestamp_opt(
 				(ts / 1_000_000_000) as i64,
 				(ts % 1_000_000_000) as u32,
-			).unwrap();
+			)
+			.unwrap();
 			write!(out, "{}", ts.format(strf))?;
 		}
 	}
