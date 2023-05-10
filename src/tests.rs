@@ -1030,8 +1030,6 @@ fn delete_quantum_choice_eraser_compact() {
 		tx.commit().expect("committed");
 	}
 
-	assert!(compact().is_err());
-	/*
 	// this is the problem we're trying to prevent
 	has_n("compact 1", 2);
 
@@ -1056,8 +1054,8 @@ fn delete_quantum_choice_eraser_compact() {
 		tx.commit().expect("committed");
 	}
 	has_n("adding", 4);
-	compact();
-	has_n("compact 2", 4);*/
+	compact().unwrap();
+	has_n("compact 2", 4);
 }
 
 // this is a generalized form of the delete test with various flags for which

@@ -184,25 +184,10 @@ pub fn _purge_compacted_files(
 		&source_transaction_paths[..]
 	} else {
 		// allow OS to atomically replace `first_path` (and don't delete it afterwards)
-		let first_path = &source_transaction_paths[0];
+		let keep_path = &source_transaction_paths.last().unwrap();
 
-		if let Some(deletion) = db.delete_txes_paths().last() {
-			if deletion > first_path {
-				// a deletion transaction may not be sorted sequentially after
-				// the new compacted transaction, so I have to invent a filename
-				// that comes after `deletion`
-				return Err(std::io::Error::new(
-					std::io::ErrorKind::AlreadyExists,
-					format!(
-						"the file {first_path:?} comes after the \
-					deletion transaction {deletion:?}. You should rename {first_path:?} manually to fix this situation"
-					),
-				));
-			}
-		}
-
-		compacted.commit_to(first_path)?;
-		&source_transaction_paths[1..]
+		compacted.commit_to(keep_path)?;
+		&source_transaction_paths[ .. source_transaction_paths.len()-1]
 	};
 
 	for txfile in removed_transaction_paths {
