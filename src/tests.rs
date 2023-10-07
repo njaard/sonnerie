@@ -639,6 +639,7 @@ fn keys_split() {
 }
 
 #[test]
+#[cfg(feature = "by-key")]
 fn parallel_split1() {
 	let (_t, db) = make_big_database(1000);
 
@@ -647,7 +648,7 @@ fn parallel_split1() {
 
 	let w = crate::Wildcard::new("%");
 
-	let s = db.get_filter(&w).into_par_iter().count();
+	let s = db.get_filter_keys(&w).into_par_iter().count();
 	assert_eq!(s, 999);
 }
 
