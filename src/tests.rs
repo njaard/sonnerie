@@ -1102,9 +1102,15 @@ fn configurable_delete_test(
 		tx.delete(
 			dbg!(begin_key.as_deref().unwrap_or("")),
 			dbg!(end_key.as_deref().unwrap_or("")),
-			dbg!(begin_time.map(|t| t.timestamp_nanos() as u64).unwrap_or(0)),
+			dbg!(begin_time
+				.map(|t| t
+					.timestamp_nanos_opt()
+					.expect("This is a test and must work; qed") as u64)
+				.unwrap_or(0)),
 			dbg!(end_time
-				.map(|t| t.timestamp_nanos() as u64)
+				.map(|t| t
+					.timestamp_nanos_opt()
+					.expect("This is a test and must work; qed") as u64)
 				.unwrap_or(u64::MAX)),
 			dbg!(wildcard_str),
 		)

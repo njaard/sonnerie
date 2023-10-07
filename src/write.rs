@@ -73,6 +73,9 @@ pub enum WriteFailure {
 	/// An IO error from the OS
 	#[error("io error")]
 	IOError(#[from] std::io::Error),
+	/// The timestamp was not in the expected format
+	#[error("Unable to parse the timestamp")]
+	UnableToParseTimestamp,
 }
 
 impl<W: Write + Send> Writer<W> {

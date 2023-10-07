@@ -39,7 +39,9 @@ pub fn add_from_stream<R: std::io::BufRead>(
 		if let Some(f) = timestamp_format.as_ref() {
 			let n = chrono::NaiveDateTime::parse_from_str(&timestamp, f)
 				.expect("parsing timestamp according to format");
-			ts = n.timestamp_nanos() as Timestamp;
+			ts = n
+				.timestamp_nanos_opt()
+				.ok_or(crate::WriteFailure::UnableToParseTimestamp)? as Timestamp;
 		} else {
 			ts = timestamp.parse().expect("parsing timestamp");
 		}
@@ -79,7 +81,9 @@ pub fn add_from_stream_with_fmt<R: std::io::BufRead>(
 		if let Some(f) = timestamp_format.as_ref() {
 			let n = chrono::NaiveDateTime::parse_from_str(&timestamp, f)
 				.expect("parsing timestamp according to format");
-			ts = n.timestamp_nanos() as Timestamp;
+			ts = n
+				.timestamp_nanos_opt()
+				.ok_or(crate::WriteFailure::UnableToParseTimestamp)? as Timestamp;
 		} else {
 			ts = timestamp.parse().expect("parsing timestamp");
 		}
