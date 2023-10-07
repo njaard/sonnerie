@@ -647,7 +647,7 @@ fn parallel_split1() {
 
 	let w = crate::Wildcard::new("%");
 
-	let s = db.get_filter_keys(&w).into_par_iter().count();
+	let s = db.get_filter(&w).into_par_iter().count();
 	assert_eq!(s, 999);
 }
 
