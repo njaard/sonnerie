@@ -73,9 +73,14 @@ impl CreateTx {
 		key: &str,
 		timestamp: chrono::NaiveDateTime,
 		values: impl crate::RecordBuilder,
-	) -> std::result::Result<(), crate::write::WriteFailure> {
-		self.writer
-			.add_record(key, timestamp.timestamp_nanos() as crate::Timestamp, values)
+	) -> std::result::Result<(), crate::WriteFailure> {
+		self.writer.add_record(
+			key,
+			timestamp
+				.timestamp_nanos_opt()
+				.ok_or(crate::WriteFailure::UnableToParseTimestamp)? as crate::Timestamp,
+			values,
+		)
 	}
 
 	/// Add a record with the given key, format, and payload.

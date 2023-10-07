@@ -8,6 +8,8 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
+pub(crate) const EXPECT_TIMESTAMP_CORRECTNESS: &str = "The timestamp is guaranteed to valid; qed";
+
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
 struct Opt {
@@ -183,8 +185,14 @@ fn main() -> std::io::Result<()> {
 			after_time,
 			parallel,
 		} => {
-			let after_time = after_time.map(|t| t.0.timestamp_nanos() as u64);
-			let before_time = before_time.map(|t| t.0.timestamp_nanos() as u64);
+			let after_time = after_time.map(|t| {
+				t.0.timestamp_nanos_opt()
+					.expect(EXPECT_TIMESTAMP_CORRECTNESS) as u64
+			});
+			let before_time = before_time.map(|t| {
+				t.0.timestamp_nanos_opt()
+					.expect(EXPECT_TIMESTAMP_CORRECTNESS) as u64
+			});
 
 			let stdout = std::io::stdout();
 			let mut stdout = std::io::BufWriter::new(stdout.lock());
@@ -348,9 +356,11 @@ fn delete(
 ) {
 	let mut tx = CreateTx::new(dir).expect("creating tx");
 
-	let after_time = after_time.map(|t| t.timestamp_nanos() as u64).unwrap_or(0);
+	let after_time = after_time
+		.map(|t| t.timestamp_nanos_opt().expect(EXPECT_TIMESTAMP_CORRECTNESS) as u64)
+		.unwrap_or(0);
 	let before_time = before_time
-		.map(|t| t.timestamp_nanos() as u64)
+		.map(|t| t.timestamp_nanos_opt().expect(EXPECT_TIMESTAMP_CORRECTNESS) as u64)
 		.unwrap_or(u64::MAX);
 
 	tx.delete(
