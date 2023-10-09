@@ -239,7 +239,7 @@ make `PUT` and `GET` requests:
 
 * Add more data:
 
-	`curl -X PUT http://localhost:5555/ --data-binary 'fibonacci 2020-01-07T00:00:00 u 13'`
+	`curl -X PUT http://localhost:5555/ --data-binary 'fibonacci 1578384000000000000 u 13'`
 
 (`200 OK` means that the transaction was committed)
 
