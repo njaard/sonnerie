@@ -12,7 +12,7 @@ documentation = "https://docs.rs/sonnerie/"
 
 
 [features]
-default=["bin", "sonnerie-serve"]
+default=["bin", "sonnerie-serve","by-key"]
 bin = ["clap" ]
 sonnerie-serve = ["clap","url","hyper","tokio","futures",
 	"lines_from_request", "serde", "serde_derive", "shardio" ]
