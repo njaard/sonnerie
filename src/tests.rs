@@ -639,6 +639,7 @@ fn keys_split() {
 }
 
 #[test]
+#[cfg(feature = "by-key")]
 fn parallel_split1() {
 	let (_t, db) = make_big_database(1000);
 
