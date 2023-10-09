@@ -18,6 +18,11 @@ use regex::Regex;
 #[cfg(feature = "by-key")]
 use crate::bykey::DatabaseKeyReader;
 
+/// To prevent file handles running out, set a maximum number of files to have open at once
+/// This only applies to compaction, so that it always succeeds, even if you have a
+/// very large number of transaction files.
+const MAX_FILES_TO_COMPACT: usize = 1000;
+
 /// Read a database in key-timestamp sorted format.
 ///
 /// Open a database with [`new`](#method.new) and then [`get`](#method.get),
@@ -93,7 +98,11 @@ impl DatabaseReader {
 			// we add 1 because we'd reserve the 0 for the main database,
 			// regardless of whether `include_main_db` or not
 			.map(|(txid, p)| (txid + 1, p));
-		for (txid, p) in iter {
+		for (txid, p) in iter.take(if include_main_db {
+			usize::MAX
+		} else {
+			MAX_FILES_TO_COMPACT
+		}) {
 			let mut f = File::open(&p)?;
 			let len = f.seek(std::io::SeekFrom::End(0))? as usize;
 			if len == 0 {
@@ -114,6 +123,16 @@ impl DatabaseReader {
 			filter_out,
 			_dir: dir.to_owned(),
 		})
+	}
+
+	/// Number of tx files found in this iteration
+	/// This reduces the likelihood of file ulimit errors
+	///
+	/// An arbitrary limit is only set during compaction,
+	/// Normal accesses don't have a limit, so that
+	/// data doesn't go missing (instead, the program fails)
+	pub fn num_txes(&self) -> usize {
+		self.txes.len()
 	}
 
 	/// Get the filenames of each transaction.

@@ -385,83 +385,93 @@ fn compact(
 	let lock = File::create(dir.join(".compact"))?;
 	lock.lock_exclusive()?;
 
-	let db = if major {
-		DatabaseReader::new(dir)?
-	} else {
-		DatabaseReader::without_main_db(dir)?
-	};
-	let db = std::sync::Arc::new(db);
+	// We loop to ensure we've processed all the .tx files
+	// As we know the compaction is atomic there is no downside
+	// to processing a (somewhat) large group at a time
+	loop {
+		let db = if major {
+			DatabaseReader::new(dir)?
+		} else {
+			DatabaseReader::without_main_db(dir)?
+		};
 
-	let mut compacted = CreateTx::new(dir)?;
+		eprintln!("processing {} .txes", db.num_txes());
 
-	if let Some(gegnum) = gegnum {
-		let mut child = std::process::Command::new("/bin/sh")
-			.arg("-c")
-			.arg(gegnum)
-			.stdin(std::process::Stdio::piped())
-			.stdout(std::process::Stdio::piped())
-			.spawn()
-			.expect("unable to run --gegnum process");
+		if db.num_txes() == 0 {
+			break;
+		}
+		let db = std::sync::Arc::new(db);
 
-		let childinput = child.stdin.take().expect("process had no stdin");
-		let mut childinput = std::io::BufWriter::new(childinput);
+		let mut compacted = CreateTx::new(dir)?;
 
-		let ts_format_cloned = ts_format.map(|m| m.to_owned());
+		if let Some(gegnum) = gegnum {
+			let mut child = std::process::Command::new("/bin/sh")
+				.arg("-c")
+				.arg(gegnum)
+				.stdin(std::process::Stdio::piped())
+				.stdout(std::process::Stdio::piped())
+				.spawn()
+				.expect("unable to run --gegnum process");
 
-		// a thread that reads from "db" and writes to the child
-		let reader_db = db.clone();
-		let reader_thread = std::thread::spawn(move || -> std::io::Result<()> {
-			let timestamp_format = if let Some(ts_format) = &ts_format_cloned {
-				formatted::PrintTimestamp::FormatString(ts_format)
-			} else {
-				formatted::PrintTimestamp::Nanos
-			};
+			let childinput = child.stdin.take().expect("process had no stdin");
+			let mut childinput = std::io::BufWriter::new(childinput);
 
-			let reader = reader_db.get_range(..);
+			let ts_format_cloned = ts_format.map(|m| m.to_owned());
+
+			// a thread that reads from "db" and writes to the child
+			let reader_db = db.clone();
+			let reader_thread = std::thread::spawn(move || -> std::io::Result<()> {
+				let timestamp_format = if let Some(ts_format) = &ts_format_cloned {
+					formatted::PrintTimestamp::FormatString(ts_format)
+				} else {
+					formatted::PrintTimestamp::Nanos
+				};
+
+				let reader = reader_db.get_range(..);
+				for record in reader {
+					formatted::print_record(
+						&record,
+						&mut childinput,
+						timestamp_format,
+						formatted::PrintRecordFormat::Yes,
+					)?;
+					writeln!(&mut childinput)?;
+				}
+				Ok(())
+			});
+
+			let childoutput = child.stdout.take().expect("process had no stdout");
+			let mut childoutput = std::io::BufReader::new(childoutput);
+			formatted::add_from_stream_with_fmt(&mut compacted, &mut childoutput, ts_format)?;
+
+			reader_thread
+				.join()
+				.expect("failed to join subprocess writing thread")
+				.expect("child writer failed");
+			let result = child.wait()?;
+			if !result.success() {
+				panic!("child process failed: cancelling compact");
+			}
+		} else {
+			{
+				let ps = db.transaction_paths();
+				if ps.len() == 1 && ps[0].file_name().expect("filename") == "main" {
+					eprintln!("nothing to do");
+					return Ok(());
+				}
+			}
+			// create the new transaction after opening the database reader
+			let reader = db.get_range(..);
+			let mut n = 0u64;
 			for record in reader {
-				formatted::print_record(
-					&record,
-					&mut childinput,
-					timestamp_format,
-					formatted::PrintRecordFormat::Yes,
-				)?;
-				writeln!(&mut childinput)?;
+				compacted.add_record_raw(record.key(), record.format(), record.raw())?;
+				n += 1;
 			}
-			Ok(())
-		});
+			eprintln!("compacted {} records", n);
+		}
 
-		let childoutput = child.stdout.take().expect("process had no stdout");
-		let mut childoutput = std::io::BufReader::new(childoutput);
-		formatted::add_from_stream_with_fmt(&mut compacted, &mut childoutput, ts_format)?;
-
-		reader_thread
-			.join()
-			.expect("failed to join subprocess writing thread")
-			.expect("child writer failed");
-		let result = child.wait()?;
-		if !result.success() {
-			panic!("child process failed: cancelling compact");
-		}
-	} else {
-		{
-			let ps = db.transaction_paths();
-			if ps.len() == 1 && ps[0].file_name().expect("filename") == "main" {
-				eprintln!("nothing to do");
-				return Ok(());
-			}
-		}
-		// create the new transaction after opening the database reader
-		let reader = db.get_range(..);
-		let mut n = 0u64;
-		for record in reader {
-			compacted.add_record_raw(record.key(), record.format(), record.raw())?;
-			n += 1;
-		}
-		eprintln!("compacted {} records", n);
+		sonnerie::_purge_compacted_files(compacted, dir, &db, major).expect("failure compacting");
 	}
-
-	sonnerie::_purge_compacted_files(compacted, dir, &db, major).expect("failure compacting");
-
 	Ok(())
 }
 
