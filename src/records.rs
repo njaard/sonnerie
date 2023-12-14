@@ -251,6 +251,21 @@ impl ToRecord for &str {
 	}
 }
 
+impl ToRecord for String {
+	fn store(&self, buf: &mut Vec<u8>) {
+		self.as_str().store(buf)
+	}
+	fn format_char(&self) -> u8 {
+		self.as_str().format_char()
+	}
+	fn size(&self) -> usize {
+		self.as_str().size()
+	}
+	fn variable_size(&self) -> bool {
+		self.as_str().variable_size()
+	}
+}
+
 /// Converts multiple-column data to the internal encoding
 ///
 /// Create this type with [`crate::record()`]
