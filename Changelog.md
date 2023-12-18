@@ -1,3 +1,6 @@
+# 0.8.5: 2023-12-18
+* implement `ToRecord` impl for `String`. Thank you [ettom](https://github.com/ettom).
+
 # 0.8.4: 2023-05-10
 * Make the CLI tool accept certain parameters. Caused by the upgrade to clap 4
 
