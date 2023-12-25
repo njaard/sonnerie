@@ -257,7 +257,7 @@ impl<'d> Iterator for DatabaseKeyIterator<'d> {
 	type Item = KeyRecordReader<'d>;
 
 	fn next(&mut self) -> Option<Self::Item> {
-		let mut hot_potato = self.hot_potato_hole.get_mut();
+		let hot_potato = self.hot_potato_hole.get_mut();
 
 		// if the previous KeyRecordReader was dropped before it got to the end,
 		// we have to skip all the records from the old key
