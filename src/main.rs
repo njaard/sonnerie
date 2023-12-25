@@ -397,7 +397,7 @@ fn compact(
 
 		eprintln!("processing {} .txes", db.num_txes());
 
-		if db.num_txes() == 0 {
+		if db.num_txes() <= 1 {
 			break;
 		}
 		let db = std::sync::Arc::new(db);
