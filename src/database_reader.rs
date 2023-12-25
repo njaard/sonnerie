@@ -58,71 +58,74 @@ impl DatabaseReader {
 	/// minor compaction.
 	fn new_opts(dir: &Path, include_main_db: bool) -> std::io::Result<DatabaseReader> {
 		use Either::*;
+		'compaction_in_progress:
+		loop {
+			let mut paths = vec![];
 
-		let dir_reader = std::fs::read_dir(dir)?;
+			let dir_reader = std::fs::read_dir(dir)?;
 
-		let mut paths = vec![];
 
-		for entry in dir_reader {
-			let entry = entry?;
-			if let Some(s) = entry.file_name().to_str() {
-				if s.starts_with("tx.") && !s.ends_with(".tmp") {
-					paths.push(entry.path());
+			for entry in dir_reader {
+				let entry = entry?;
+				if let Some(s) = entry.file_name().to_str() {
+					if s.starts_with("tx.") && !s.ends_with(".tmp") {
+						paths.push(entry.path());
+					}
 				}
 			}
-		}
 
-		paths.sort();
-		let mut txes: Vec<(usize, PathBuf, Reader)> = Vec::with_capacity(paths.len());
+			paths.sort();
+			let mut txes: Vec<(usize, PathBuf, Reader)> = Vec::with_capacity(paths.len());
 
-		if include_main_db {
-			let main_db_name = dir.join("main");
-			let mut f = File::open(&main_db_name)?;
-			let len = f.seek(std::io::SeekFrom::End(0))? as usize;
-			if len == 0 {
-				eprintln!("disregarding main database, it is zero length");
+			if include_main_db {
+				let main_db_name = dir.join("main");
+				let mut f = File::open(&main_db_name)?; // No need to jump to compaction_in_progress
+				let len = f.seek(std::io::SeekFrom::End(0))? as usize;
+				if len == 0 {
+					eprintln!("disregarding main database, it is zero length");
+				} else {
+					match Reader::new(f)? {
+						Left(main_db) => txes.push((0, main_db_name, main_db)),
+						// the main database cannot be a delete marker
+						Right(_) => unreachable!(),
+					}
+				}
+			}
+
+			let mut filter_out = vec![];
+
+			let iter = paths
+				.into_iter()
+				.enumerate()
+				// we add 1 because we'd reserve the 0 for the main database,
+				// regardless of whether `include_main_db` or not
+				.map(|(txid, p)| (txid + 1, p));
+			for (txid, p) in iter.take(if include_main_db {
+				usize::MAX
 			} else {
-				match Reader::new(f)? {
-					Left(main_db) => txes.push((0, main_db_name, main_db)),
-					// the main database cannot be a delete marker
-					Right(_) => unreachable!(),
+				MAX_FILES_TO_COMPACT
+			}) {
+				let Ok(mut f) = File::open(&p) else { continue 'compaction_in_progress };
+				let len = f.seek(std::io::SeekFrom::End(0))? as usize;
+				if len == 0 {
+					eprintln!("disregarding {:?}, it is zero length", p);
+					continue;
+				}
+				let r = Reader::new(f)?;
+
+				// match the reader if it is indeed a reader or a delete marker
+				match r {
+					Left(r) => txes.push((txid, p, r)),
+					Right(d) => filter_out.push((txid, p, d)),
 				}
 			}
+
+			return Ok(DatabaseReader {
+				txes,
+				filter_out,
+				_dir: dir.to_owned(),
+			});
 		}
-
-		let mut filter_out = vec![];
-
-		let iter = paths
-			.into_iter()
-			.enumerate()
-			// we add 1 because we'd reserve the 0 for the main database,
-			// regardless of whether `include_main_db` or not
-			.map(|(txid, p)| (txid + 1, p));
-		for (txid, p) in iter.take(if include_main_db {
-			usize::MAX
-		} else {
-			MAX_FILES_TO_COMPACT
-		}) {
-			let mut f = File::open(&p)?;
-			let len = f.seek(std::io::SeekFrom::End(0))? as usize;
-			if len == 0 {
-				eprintln!("disregarding {:?}, it is zero length", p);
-				continue;
-			}
-			let r = Reader::new(f)?;
-
-			// match the reader if it is indeed a reader or a delete marker
-			match r {
-				Left(r) => txes.push((txid, p, r)),
-				Right(d) => filter_out.push((txid, p, d)),
-			}
-		}
-
-		Ok(DatabaseReader {
-			txes,
-			filter_out,
-			_dir: dir.to_owned(),
-		})
 	}
 
 	/// Number of tx files found in this iteration
