@@ -197,6 +197,8 @@ fn main() -> std::io::Result<()> {
 			let stdout = std::io::stdout();
 			let mut stdout = std::io::BufWriter::new(stdout.lock());
 			let db = DatabaseReader::new(&opt.dir)?;
+			write_empty_file_warnings(&mut std::io::stderr().lock(), db.empty_transaction_files())
+				.unwrap();
 
 			let print_record_format = if print_format {
 				formatted::PrintRecordFormat::Yes
@@ -331,7 +333,8 @@ fn main() -> std::io::Result<()> {
 // delete's approach is to copy what add_from_stream does and call
 // CreateTx::add_record with a prepared bare payload
 fn add(dir: &Path, fmt: &str, ts_format: Option<&str>) {
-	let _db = DatabaseReader::new(dir).expect("opening db");
+	let db = DatabaseReader::new(dir).expect("opening db");
+	write_empty_file_warnings(&mut std::io::stderr().lock(), db.empty_transaction_files()).unwrap();
 	let mut tx = CreateTx::new(dir).expect("creating tx");
 
 	let stdin = std::io::stdin();
@@ -394,6 +397,8 @@ fn compact(
 		} else {
 			DatabaseReader::without_main_db(dir)?
 		};
+		write_empty_file_warnings(&mut std::io::stderr().lock(), db.empty_transaction_files())
+			.unwrap();
 
 		eprintln!("processing {} .txes", db.num_txes());
 
@@ -471,6 +476,25 @@ fn compact(
 		}
 
 		sonnerie::_purge_compacted_files(compacted, dir, &db, major).expect("failure compacting");
+	}
+	Ok(())
+}
+
+fn write_empty_file_warnings(
+	out: &mut impl std::io::Write,
+	names: &[PathBuf],
+) -> std::io::Result<()> {
+	for p in names {
+		if p.file_name().is_some_and(|n| n == "main") {
+			if names.len() == 1 {
+				// if the main file is the only empty file, and it's empty, we
+				// can output nothing
+			} else {
+				writeln!(out, "disregarding main database, it is zero length")?;
+			}
+		} else {
+			writeln!(out, "disregarding {p:?}, it is zero length")?;
+		}
 	}
 	Ok(())
 }

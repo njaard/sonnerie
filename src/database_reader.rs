@@ -31,6 +31,7 @@ pub struct DatabaseReader {
 	_dir: PathBuf,
 	pub(crate) txes: Vec<(usize, PathBuf, Reader)>,
 	pub(crate) filter_out: Vec<(usize, PathBuf, DeleteMarker)>,
+	empty_files: Vec<PathBuf>,
 }
 
 impl DatabaseReader {
@@ -58,12 +59,11 @@ impl DatabaseReader {
 	/// minor compaction.
 	fn new_opts(dir: &Path, include_main_db: bool) -> std::io::Result<DatabaseReader> {
 		use Either::*;
-		'compaction_in_progress:
-		loop {
+		'compaction_in_progress: loop {
 			let mut paths = vec![];
+			let mut empty_files = vec![];
 
 			let dir_reader = std::fs::read_dir(dir)?;
-
 
 			for entry in dir_reader {
 				let entry = entry?;
@@ -82,7 +82,7 @@ impl DatabaseReader {
 				let mut f = File::open(&main_db_name)?; // No need to jump to compaction_in_progress
 				let len = f.seek(std::io::SeekFrom::End(0))? as usize;
 				if len == 0 {
-					eprintln!("disregarding main database, it is zero length");
+					empty_files.push(main_db_name);
 				} else {
 					match Reader::new(f)? {
 						Left(main_db) => txes.push((0, main_db_name, main_db)),
@@ -105,10 +105,12 @@ impl DatabaseReader {
 			} else {
 				MAX_FILES_TO_COMPACT
 			}) {
-				let Ok(mut f) = File::open(&p) else { continue 'compaction_in_progress };
+				let Ok(mut f) = File::open(&p) else {
+					continue 'compaction_in_progress;
+				};
 				let len = f.seek(std::io::SeekFrom::End(0))? as usize;
 				if len == 0 {
-					eprintln!("disregarding {:?}, it is zero length", p);
+					empty_files.push(p);
 					continue;
 				}
 				let r = Reader::new(f)?;
@@ -124,6 +126,7 @@ impl DatabaseReader {
 				txes,
 				filter_out,
 				_dir: dir.to_owned(),
+				empty_files,
 			});
 		}
 	}
@@ -189,6 +192,17 @@ impl DatabaseReader {
 			prefix: "",
 			range: crate::disassemble_range_bound(range).into(),
 		}
+	}
+
+	/// Return a list of detected transaction files that are empty.
+	///
+	/// This function is used by the CLI to output warnings
+	/// that the files exist. Empty files sometimes may appear, but
+	/// should not be considered an error
+	///
+	/// If the `main` file is empty, it will always be listed first.
+	pub fn empty_transaction_files(&self) -> &[PathBuf] {
+		&self.empty_files
 	}
 
 	/// Get a key reader for a lexicographic range of keys **`feature=by-key`**
