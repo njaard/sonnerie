@@ -1,3 +1,8 @@
+# 0.8.6: 2024-02-11
+* Fix race condition while opening db when compacting
+* Fix infinite loop during compaction
+* `DatabaseReader` no longer outputs to stderr when finding empty files (the CLI does so instead)
+
 # 0.8.5: 2023-12-18
 * implement `ToRecord` impl for `String`. Thank you [ettom](https://github.com/ettom).
 
