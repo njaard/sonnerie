@@ -60,6 +60,9 @@ enum Command {
 		time: Option<EasyNaiveDateTime>,
 	},
 	/// Merges transactions.
+	///
+	/// Purges deleted records and also allows transactions to be better compressed.
+	/// Also reduces overhead in opening transaction files.
 	Compact {
 		/// Compact everything into a new main database.
 		#[clap(short = 'M', long)]
@@ -72,6 +75,8 @@ enum Command {
 		/// It is recommended to backup the database first
 		/// (or make hard links of the files). You probably want to
 		/// use this with --major to get the entire database.
+		///
+		/// The output of the gegnum command must still be in sorted order.
 		#[clap(long)]
 		gegnum: Option<OsString>,
 
@@ -129,8 +134,8 @@ enum Command {
 
 		/// Output only these columns, specified as comma-delimited numbers and hyphenated
 		/// ranges, as though entered as the "print these pages" text. The first column
-		/// is '1'.
-		#[clap(long)]
+		/// is '1'. Example: 1,3,5-7
+		#[clap(long, short = 'C')]
 		columns: Option<String>,
 	},
 }
