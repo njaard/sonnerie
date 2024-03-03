@@ -11,11 +11,7 @@ pub trait RowFormat {
 	fn to_stored_format(&self, ts: Timestamp, from: &str, dest: &mut Vec<u8>)
 		-> Result<(), String>;
 	/// Decode the data into something human readable
-	fn to_protocol_format(
-		&self,
-		from: &[u8],
-		dest: &mut dyn ::std::io::Write,
-	) -> ::std::io::Result<()>;
+	fn elements(&self) -> &[Box<dyn Element>];
 	/// The size in bytes of a row payload, including its timestamp.
 	///
 	/// None indicates that it has a variable-sized encoding (Strings)
@@ -46,21 +42,8 @@ impl RowFormat for RowFormatImpl {
 		}
 		Ok(())
 	}
-	fn to_protocol_format(
-		&self,
-		mut from: &[u8],
-		dest: &mut dyn ::std::io::Write,
-	) -> ::std::io::Result<()> {
-		let mut first = true;
-
-		for e in self.elements.iter() {
-			if !first {
-				write!(dest, " ")?;
-			}
-			first = false;
-			from = e.to_protocol_format(from, dest)?;
-		}
-		Ok(())
+	fn elements(&self) -> &[Box<dyn Element>] {
+		&self.elements
 	}
 	fn row_size(&self) -> Option<usize> {
 		Some(self.size? + 8)
@@ -155,7 +138,7 @@ pub fn row_format_size(human: &str) -> Option<usize> {
 	Some(size)
 }
 
-pub(crate) trait Element {
+pub trait Element {
 	fn to_stored_format<'s>(&self, from: &'s str, dest: &mut Vec<u8>) -> Result<&'s str, String>;
 	fn to_protocol_format<'a>(
 		&self,

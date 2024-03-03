@@ -123,9 +123,15 @@ enum Command {
 		after_time: Option<EasyNaiveDateTime>,
 
 		/// Run several of this command in parallel, piping a portion of the results into each.
-		/// Keys are never divided between two commands.
+		/// A single key is never split between two command invocations.
 		#[clap(long)]
 		parallel: Option<String>,
+
+		/// Output only these columns, specified as comma-delimited numbers and hyphenated
+		/// ranges, as though entered as the "print these pages" text. The first column
+		/// is '1'.
+		#[clap(long)]
+		columns: Option<String>,
 	},
 }
 
@@ -184,6 +190,7 @@ fn main() -> std::io::Result<()> {
 			before_time,
 			after_time,
 			parallel,
+			columns,
 		} => {
 			let after_time = after_time.map(|t| {
 				t.0.and_utc()
@@ -214,6 +221,10 @@ fn main() -> std::io::Result<()> {
 			} else {
 				formatted::PrintTimestamp::FormatString(&timestamp_format)
 			};
+
+			let column_selection = columns
+				.map(|c| choice_string::parse(&c).unwrap())
+				.unwrap_or(choice_string::Selection::All);
 
 			macro_rules! filter_parallel {
 				($filter:expr) => {{
@@ -265,6 +276,7 @@ fn main() -> std::io::Result<()> {
 								out,
 								print_timestamp,
 								print_record_format,
+								&column_selection,
 							)
 							.expect("failed to write to subprocess");
 							writeln!(out, "").expect("failed to write to subprocess");
@@ -290,6 +302,7 @@ fn main() -> std::io::Result<()> {
 							&mut stdout,
 							print_timestamp,
 							print_record_format,
+							&column_selection,
 						)?;
 						writeln!(&mut stdout, "")?;
 					}
@@ -449,6 +462,7 @@ fn compact(
 						&mut childinput,
 						timestamp_format,
 						formatted::PrintRecordFormat::Yes,
+						&choice_string::Selection::All,
 					)?;
 					writeln!(&mut childinput)?;
 				}

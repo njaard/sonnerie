@@ -278,6 +278,7 @@ impl Tsrv {
 						&mut row,
 						timestamp_fmt,
 						sonnerie::formatted::PrintRecordFormat::No,
+						&choice_string::Selection::All,
 					)
 					.unwrap();
 					row.push(b'\n');

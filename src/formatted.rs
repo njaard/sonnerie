@@ -151,6 +151,7 @@ pub fn print_record<W: std::io::Write>(
 	out: &mut W,
 	print_timestamp: PrintTimestamp<'_>,
 	print_record_format: PrintRecordFormat,
+	column_selection: &choice_string::Selection,
 ) -> std::io::Result<()> {
 	let fmt_string = record.format();
 	let fmt = parse_row_format(fmt_string);
@@ -180,5 +181,18 @@ pub fn print_record<W: std::io::Write>(
 		PrintRecordFormat::No => {}
 	}
 
-	fmt.to_protocol_format(value, out)
+	let mut value = value;
+	let mut first = true;
+	for (idx, e) in fmt.elements().iter().enumerate() {
+		if column_selection.contains_item(idx + 1) {
+			if !first {
+				write!(out, " ")?;
+			}
+			first = false;
+			value = e.to_protocol_format(value, out)?;
+		} else {
+			value = e.to_protocol_format(value, &mut std::io::sink())?;
+		}
+	}
+	Ok(())
 }

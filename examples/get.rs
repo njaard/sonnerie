@@ -37,6 +37,7 @@ fn main() -> std::io::Result<()> {
 			&mut stdout,
 			sonnerie::formatted::PrintTimestamp::Seconds,
 			sonnerie::formatted::PrintRecordFormat::Yes,
+			&choice_string::Selection::All,
 		)?;
 		writeln!(&mut stdout)?;
 	}

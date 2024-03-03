@@ -311,6 +311,7 @@ fn multicolumn() {
 		&mut out,
 		PrintTimestamp::FormatString("%F_%T"),
 		PrintRecordFormat::Yes,
+		&choice_string::Selection::All,
 	)
 	.expect("formatting");
 	std::io::Write::write_all(&mut out, b"\n").unwrap();
@@ -319,6 +320,7 @@ fn multicolumn() {
 		&mut out,
 		PrintTimestamp::FormatString("%F_%T"),
 		PrintRecordFormat::Yes,
+		&choice_string::Selection::All,
 	)
 	.expect("formatting");
 	assert!(i.next().is_none());
@@ -331,6 +333,60 @@ fn multicolumn() {
 		"
 	);
 }
+
+#[test]
+fn multicolumn_select() {
+	let t = tempfile::TempDir::new().unwrap();
+
+	{
+		let mut tx = CreateTx::new(t.path()).expect("creating tx");
+		let data = "a 2010-01-01_00:00:00 10 20\n\
+			a 2010-01-02_00:00:00 20 30\n";
+
+		add_from_stream(
+			&mut tx,
+			"uu",
+			&mut std::io::Cursor::new(data),
+			Some("%F_%T"),
+		)
+		.expect("writing");
+		tx.commit_to(&t.path().join("main")).expect("committed");
+	}
+
+	let w = std::fs::File::open(t.path().join("main")).unwrap();
+	let o = Reader::new(w).unwrap().left().unwrap();
+	let s = o.get_range("a".."z");
+	let mut i = s.into_iter();
+
+	let mut out = vec![];
+	print_record(
+		&i.next().expect("row1"),
+		&mut out,
+		PrintTimestamp::FormatString("%F_%T"),
+		PrintRecordFormat::Yes,
+		&choice_string::parse("1").unwrap(),
+	)
+	.expect("formatting");
+	std::io::Write::write_all(&mut out, b"\n").unwrap();
+	print_record(
+		&i.next().expect("row2"),
+		&mut out,
+		PrintTimestamp::FormatString("%F_%T"),
+		PrintRecordFormat::Yes,
+		&choice_string::parse("2").unwrap(),
+	)
+	.expect("formatting");
+	assert!(i.next().is_none());
+
+	assert_eq!(
+		&String::from_utf8(out).unwrap(),
+		"\
+			a\t2010-01-01_00:00:00\tuu\t10\n\
+			a\t2010-01-02_00:00:00\tuu\t30\
+		"
+	);
+}
+
 #[test]
 #[should_panic]
 fn violate_time_order() {
@@ -375,6 +431,7 @@ fn multicolumn_string() {
 		&mut out,
 		PrintTimestamp::FormatString("%F_%T"),
 		PrintRecordFormat::Yes,
+		&choice_string::Selection::All,
 	)
 	.expect("formatting");
 	std::io::Write::write_all(&mut out, b"\n").unwrap();
@@ -383,6 +440,7 @@ fn multicolumn_string() {
 		&mut out,
 		PrintTimestamp::FormatString("%F_%T"),
 		PrintRecordFormat::Yes,
+		&choice_string::Selection::All,
 	)
 	.expect("formatting");
 	std::io::Write::write_all(&mut out, b"\n").unwrap();
@@ -391,6 +449,7 @@ fn multicolumn_string() {
 		&mut out,
 		PrintTimestamp::FormatString("%F_%T"),
 		PrintRecordFormat::Yes,
+		&choice_string::Selection::All,
 	)
 	.expect("formatting");
 	assert!(i.next().is_none());
@@ -533,6 +592,7 @@ fn store_string1() {
 		&mut out,
 		PrintTimestamp::FormatString("%F_%T"),
 		PrintRecordFormat::Yes,
+		&choice_string::Selection::All,
 	)
 	.expect("formatting");
 	assert!(i.next().is_none());
@@ -595,6 +655,7 @@ fn homogenic_types() {
 			&mut out,
 			PrintTimestamp::FormatString("%F_%T"),
 			PrintRecordFormat::Yes,
+			&choice_string::Selection::All,
 		)
 		.expect("formatting");
 		std::io::Write::write_all(&mut out, b"\n").unwrap();

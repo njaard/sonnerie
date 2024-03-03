@@ -13,7 +13,7 @@ documentation = "https://docs.rs/sonnerie/"
 
 [features]
 default=["bin", "sonnerie-serve","by-key"]
-bin = ["clap" ]
+bin = ["clap","choice-string" ]
 sonnerie-serve = ["clap","url","hyper","tokio","futures",
 	"lines_from_request", "serde", "serde_derive", "shardio" ]
 by-key=["lending-cell"]
@@ -49,6 +49,7 @@ either="1.6"
 compact_str="0.7"
 lending-cell = {version="0.1.1", optional=true }
 thiserror = "1.0"
+choice-string = {version="0.0.1", optional=true }
 
 [dev-dependencies]
 rand={version="0.8", features=["small_rng"]}
