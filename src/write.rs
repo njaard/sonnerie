@@ -179,20 +179,20 @@ impl<W: Write + Send> Writer<W> {
 			}
 
 			if key.as_bytes() == self.last_key.as_bytes() && timestamp <= self.current_timestamp {
-				let first = chrono::NaiveDateTime::from_timestamp_opt(
+				let first = chrono::DateTime::from_timestamp(
 					(self.current_timestamp / 1_000_000_000) as i64,
 					(self.current_timestamp % 1_000_000_000) as u32,
 				)
 				.unwrap();
-				let second = chrono::NaiveDateTime::from_timestamp_opt(
+				let second = chrono::DateTime::from_timestamp(
 					(timestamp / 1_000_000_000) as i64,
 					(timestamp % 1_000_000_000) as u32,
 				)
 				.unwrap();
 				return Err(WriteFailure::TimeOrderingViolation {
 					key: key.to_string(),
-					first,
-					second,
+					first: first.naive_utc(),
+					second: second.naive_utc(),
 				});
 			}
 

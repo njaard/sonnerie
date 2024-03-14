@@ -43,7 +43,7 @@ impl<'k> UnindexedProducer for RecordProducer<'k> {
 	where
 		F: Folder<Self::Item>,
 	{
-		folder.consume_iter(self.reader.into_iter())
+		folder.consume_iter(self.reader)
 	}
 }
 

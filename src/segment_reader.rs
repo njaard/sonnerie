@@ -1,6 +1,7 @@
 //use byteorder::{BigEndian};
 
 use crate::Segment;
+use chrono::DateTime;
 use chrono::NaiveDateTime;
 use either::Either;
 use std::io::Read;
@@ -61,7 +62,7 @@ impl SegmentReader {
 				// first 8 bytes being the first timestamp
 				let ts_slice = &next_slice[fkey_len..];
 				let ts_u64 = BigEndian::read_u64(ts_slice);
-				let start_ts = NaiveDateTime::from_timestamp_opt(
+				let start_ts = DateTime::from_timestamp(
 					(ts_u64 / 1_000_000_000) as i64,
 					(ts_u64 % 1_000_000_000) as u32,
 				)
@@ -70,7 +71,7 @@ impl SegmentReader {
 				// next 8 bytes being the last timestamp
 				let ts_slice = &next_slice[fkey_len + 8..fkey_len + 16];
 				let ts_u64 = BigEndian::read_u64(ts_slice);
-				let end_ts = NaiveDateTime::from_timestamp_opt(
+				let end_ts = DateTime::from_timestamp(
 					(ts_u64 / 1_000_000_000) as i64,
 					(ts_u64 % 1_000_000_000) as u32,
 				)
@@ -103,8 +104,8 @@ impl SegmentReader {
 				let marker = DeleteMarker {
 					first_key,
 					last_key,
-					first_timestamp: start_ts,
-					last_timestamp: end_ts,
+					first_timestamp: start_ts.naive_utc(),
+					last_timestamp: end_ts.naive_utc(),
 					wildcard,
 				};
 

@@ -186,11 +186,13 @@ fn main() -> std::io::Result<()> {
 			parallel,
 		} => {
 			let after_time = after_time.map(|t| {
-				t.0.timestamp_nanos_opt()
+				t.0.and_utc()
+					.timestamp_nanos_opt()
 					.expect(EXPECT_TIMESTAMP_CORRECTNESS) as u64
 			});
 			let before_time = before_time.map(|t| {
-				t.0.timestamp_nanos_opt()
+				t.0.and_utc()
+					.timestamp_nanos_opt()
 					.expect(EXPECT_TIMESTAMP_CORRECTNESS) as u64
 			});
 
@@ -360,10 +362,18 @@ fn delete(
 	let mut tx = CreateTx::new(dir).expect("creating tx");
 
 	let after_time = after_time
-		.map(|t| t.timestamp_nanos_opt().expect(EXPECT_TIMESTAMP_CORRECTNESS) as u64)
+		.map(|t| {
+			t.and_utc()
+				.timestamp_nanos_opt()
+				.expect(EXPECT_TIMESTAMP_CORRECTNESS) as u64
+		})
 		.unwrap_or(0);
 	let before_time = before_time
-		.map(|t| t.timestamp_nanos_opt().expect(EXPECT_TIMESTAMP_CORRECTNESS) as u64)
+		.map(|t| {
+			t.and_utc()
+				.timestamp_nanos_opt()
+				.expect(EXPECT_TIMESTAMP_CORRECTNESS) as u64
+		})
 		.unwrap_or(u64::MAX);
 
 	tx.delete(
