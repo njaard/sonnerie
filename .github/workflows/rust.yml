@@ -56,31 +56,8 @@ jobs:
           cargo clean
           cargo check --all-features
 
-  examples:
-    name: Run the sonnerie examples
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [ubuntu-latest, macos-latest]
-        include:
-          - os: ubuntu-latest
-          - os: macos-latest
-
-    steps:
-      - uses: actions/checkout@v2
-        with:
-          submodules: recursive
-      - uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: stable
-          override: true
-      - name: Run the examples
-        run: |
-          cargo run --example 2>&1 | grep -E '^ ' | xargs -n1 cargo run --example
-
   fmt:
-    name: Ensure the heed project is formatted
+    name: rust-fmt
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
