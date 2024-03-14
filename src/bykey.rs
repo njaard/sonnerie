@@ -312,6 +312,8 @@ impl<'d> Iterator for KeyRecordReader<'d> {
 
 #[cfg(test)]
 mod tests {
+	use std::{f32, f64};
+
 	use crate::*;
 	#[test]
 	fn high_level_writer() {
@@ -346,7 +348,7 @@ mod tests {
 			tx.add_record(
 				"b",
 				"2010-01-01T00:00:05".parse().unwrap(),
-				&[&3.1415f64 as &dyn crate::ToRecord, &2.7182f32],
+				&[&f64::consts::PI as &dyn crate::ToRecord, &f32::consts::E],
 			)
 			.unwrap();
 			tx.add_record(
@@ -381,7 +383,7 @@ mod tests {
 				let r = k.next().unwrap();
 				assert_eq!(r.get::<f32>(1), 22.0f32);
 				let r = k.next().unwrap();
-				assert_eq!(r.get::<f32>(1), 2.7182f32);
+				assert_eq!(r.get::<f32>(1), f32::consts::E);
 				assert!(k.next().is_none());
 			}
 

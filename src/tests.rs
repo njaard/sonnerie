@@ -9,6 +9,8 @@ use crate::record;
 use core::mem::drop;
 use rayon::iter::IntoParallelIterator;
 use rayon::iter::ParallelIterator;
+use std::f32;
+use std::f64;
 use std::io::BufWriter;
 
 use byteorder::*;
@@ -796,7 +798,7 @@ fn high_level_writer() {
 		tx.add_record(
 			"b",
 			"2010-01-01T00:00:05".parse().unwrap(),
-			&[&3.1415f64 as &dyn crate::ToRecord, &2.7182f32],
+			&[&f64::consts::PI as &dyn crate::ToRecord, &f32::consts::E],
 		)
 		.unwrap();
 		tx.add_record(
@@ -847,7 +849,7 @@ fn high_level_writer2() {
 		tx.add_record(
 			"b",
 			"2010-01-01T00:00:05".parse().unwrap(),
-			record(3.1415f64).add(2.7182f32),
+			record(f64::consts::PI).add(f32::consts::E),
 		)
 		.unwrap();
 		tx.add_record(
