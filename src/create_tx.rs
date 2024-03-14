@@ -196,7 +196,7 @@ impl CreateTx {
 			.map_err(|e| e.error)?;
 		if let Some(umask) = get_umask() {
 			use std::os::unix::fs::PermissionsExt;
-			let p = std::fs::Permissions::from_mode(0o444 & !umask);
+			let p = std::fs::Permissions::from_mode((0o444 & !umask) as _);
 			let _ = std::fs::set_permissions(final_name, p);
 		}
 		Ok(())
