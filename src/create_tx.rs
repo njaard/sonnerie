@@ -77,6 +77,7 @@ impl CreateTx {
 		self.writer.add_record(
 			key,
 			timestamp
+				.and_utc()
 				.timestamp_nanos_opt()
 				.ok_or(crate::WriteFailure::UnableToParseTimestamp)? as crate::Timestamp,
 			values,

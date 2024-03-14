@@ -944,7 +944,9 @@ fn many_string_records_highlevel() {
 		while size < crate::write::SEGMENT_SIZE_GOAL * 2 {
 			tx.add_record(
 				"abcdef",
-				chrono::NaiveDateTime::from_timestamp_opt(size as i64, 0).unwrap(),
+				chrono::DateTime::from_timestamp(size as i64, 0)
+					.unwrap()
+					.naive_utc(),
 				record("short text"),
 			)
 			.unwrap();
@@ -1106,11 +1108,13 @@ fn configurable_delete_test(
 			dbg!(end_key.as_deref().unwrap_or("")),
 			dbg!(begin_time
 				.map(|t| t
+					.and_utc()
 					.timestamp_nanos_opt()
 					.expect("This is a test and must work; qed") as u64)
 				.unwrap_or(0)),
 			dbg!(end_time
 				.map(|t| t
+					.and_utc()
 					.timestamp_nanos_opt()
 					.expect("This is a test and must work; qed") as u64)
 				.unwrap_or(u64::MAX)),

@@ -40,6 +40,7 @@ pub fn add_from_stream<R: std::io::BufRead>(
 			let n = chrono::NaiveDateTime::parse_from_str(&timestamp, f)
 				.expect("parsing timestamp according to format");
 			ts = n
+				.and_utc()
 				.timestamp_nanos_opt()
 				.ok_or(crate::WriteFailure::UnableToParseTimestamp)? as Timestamp;
 		} else {
@@ -82,6 +83,7 @@ pub fn add_from_stream_with_fmt<R: std::io::BufRead>(
 			let n = chrono::NaiveDateTime::parse_from_str(&timestamp, f)
 				.expect("parsing timestamp according to format");
 			ts = n
+				.and_utc()
 				.timestamp_nanos_opt()
 				.ok_or(crate::WriteFailure::UnableToParseTimestamp)? as Timestamp;
 		} else {
@@ -163,7 +165,7 @@ pub fn print_record<W: std::io::Write>(
 		PrintTimestamp::Nanos => write!(out, "{}", ts)?,
 		PrintTimestamp::Seconds => write!(out, "{}", ts / 1_000_000_000)?,
 		PrintTimestamp::FormatString(strf) => {
-			let ts = chrono::NaiveDateTime::from_timestamp_opt(
+			let ts = chrono::DateTime::from_timestamp(
 				(ts / 1_000_000_000) as i64,
 				(ts % 1_000_000_000) as u32,
 			)
