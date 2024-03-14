@@ -36,34 +36,28 @@ use std::borrow::Cow;
 ///
 /// Returns a tuple of the first "word" up until the first unescaped whitespace character,
 /// and then every after the whitespace characters.
-pub fn split_one_bytes<'a>(bytes: &'a [u8])
-	-> Option<(Cow<'a, [u8]>, &'a [u8])>
-{
+pub fn split_one_bytes<'a>(bytes: &'a [u8]) -> Option<(Cow<'a, [u8]>, &'a [u8])> {
 	let mut start = 0usize;
-	while let Some(b) = bytes.get(start)
-	{
-		if b.is_ascii_whitespace()
-			{ start+=1; }
-		else
-			{ break; }
+	while let Some(b) = bytes.get(start) {
+		if b.is_ascii_whitespace() {
+			start += 1;
+		} else {
+			break;
+		}
 	}
 
 	let mut owned: Option<Vec<u8>> = None;
 
 	let mut position = start;
 
-	while position < bytes.len()
-	{
-		if bytes[position] == b'\\'
-		{
-			if !owned.is_some()
-			{
+	while position < bytes.len() {
+		if bytes[position] == b'\\' {
+			if !owned.is_some() {
 				owned = Some(bytes[start..position].to_owned());
 			}
 			let b = owned.as_mut().unwrap();
 			position += 1;
-			match bytes.get(position)
-			{
+			match bytes.get(position) {
 				None => return None,
 				Some(b'a') => b.push(b'\x07'),
 				Some(b'b') => b.push(b'\x08'),
@@ -76,38 +70,32 @@ pub fn split_one_bytes<'a>(bytes: &'a [u8])
 				Some(b'\\') => b.push(b'\\'),
 				Some(a) => b.push(*a),
 			}
-			position+=1;
-		}
-		else if bytes[position].is_ascii_whitespace()
-		{
+			position += 1;
+		} else if bytes[position].is_ascii_whitespace() {
 			break;
-		}
-		else
-		{
-			if let Some(o) = owned.as_mut()
-				{ o.push( bytes[position] ); }
+		} else {
+			if let Some(o) = owned.as_mut() {
+				o.push(bytes[position]);
+			}
 			position += 1;
 		}
 	}
 
 	let mut after = position;
-	while let Some(b) = bytes.get(after)
-	{
-		if b.is_ascii_whitespace()
-			{ after+=1; }
-		else
-			{ break; }
+	while let Some(b) = bytes.get(after) {
+		if b.is_ascii_whitespace() {
+			after += 1;
+		} else {
+			break;
+		}
 	}
 
 	let after = &bytes[after..];
 
-	if let Some(owned) = owned
-	{
-		Some( (Cow::Owned(owned), after) )
-	}
-	else
-	{
-		Some( (Cow::Borrowed(&bytes[start..position]), after) )
+	if let Some(owned) = owned {
+		Some((Cow::Owned(owned), after))
+	} else {
+		Some((Cow::Borrowed(&bytes[start..position]), after))
 	}
 }
 
@@ -123,103 +111,82 @@ pub fn split_one_bytes<'a>(bytes: &'a [u8])
 /// Returns None if there was an escape character and then nothing
 ///
 /// Does not look at the following text at all.
-pub fn split_one<'a>(text: &'a str)
-	-> Option<(Cow<'a, str>, &'a str)>
-{
-	if let Some((one, remainder)) = split_one_bytes(text.as_bytes())
-	{
+pub fn split_one<'a>(text: &'a str) -> Option<(Cow<'a, str>, &'a str)> {
+	if let Some((one, remainder)) = split_one_bytes(text.as_bytes()) {
 		let one_text;
-		match one
-		{
-			Cow::Borrowed(b) =>
-				one_text = unsafe { Cow::Borrowed( std::str::from_utf8_unchecked(b) ) },
-			Cow::Owned(b) =>
-				one_text = unsafe { Cow::Owned( String::from_utf8_unchecked(b) ) },
+		match one {
+			Cow::Borrowed(b) => {
+				one_text = unsafe { Cow::Borrowed(std::str::from_utf8_unchecked(b)) }
+			}
+			Cow::Owned(b) => one_text = unsafe { Cow::Owned(String::from_utf8_unchecked(b)) },
 		}
 		let remainder = unsafe { std::str::from_utf8_unchecked(remainder) };
 		Some((one_text, remainder))
-	}
-	else
-	{
+	} else {
 		None
 	}
 }
 
 /// Produce all the words as a vector
-pub fn split<'a>(mut text: &'a str)
-	-> Option<Vec<Cow<'a, str>>>
-{
-	let mut res = vec!();
+pub fn split<'a>(mut text: &'a str) -> Option<Vec<Cow<'a, str>>> {
+	let mut res = vec![];
 
-	while !text.is_empty()
-	{
+	while !text.is_empty() {
 		let s = split_one(text);
-		if s.is_none() { return None; }
+		if s.is_none() {
+			return None;
+		}
 		let s = s.unwrap();
-		res.push( s.0 );
+		res.push(s.0);
 		text = s.1;
 	}
 	Some(res)
 }
 
 /// Converts text with all the special characters escape with a backslash
-pub fn escape<'a>(text: &'a str)
-	-> Cow<'a, str>
-{
+pub fn escape<'a>(text: &'a str) -> Cow<'a, str> {
 	let bytes = text.as_bytes();
 
 	let mut owned = None;
 
-	for pos in 0..bytes.len()
-	{
-		let special =
-			match bytes[pos]
-			{
-				0x07 => Some(b'a'),
-				0x08 => Some(b'b'),
-				b'\t' => Some(b't'),
-				b'\n' => Some(b'n'),
-				0x0b => Some(b'v'),
-				0x0c => Some(b'f'),
-				b'\r' => Some(b'r'),
-				b' ' => Some(b' '),
-				b'\\' => Some(b'\\'),
-				_ => None,
-			};
-		if let Some(s) = special
-		{
-			if owned.is_none()
-			{
+	for pos in 0..bytes.len() {
+		let special = match bytes[pos] {
+			0x07 => Some(b'a'),
+			0x08 => Some(b'b'),
+			b'\t' => Some(b't'),
+			b'\n' => Some(b'n'),
+			0x0b => Some(b'v'),
+			0x0c => Some(b'f'),
+			b'\r' => Some(b'r'),
+			b' ' => Some(b' '),
+			b'\\' => Some(b'\\'),
+			_ => None,
+		};
+		if let Some(s) = special {
+			if owned.is_none() {
 				owned = Some(bytes[0..pos].to_owned());
 			}
 			owned.as_mut().unwrap().push(b'\\');
 			owned.as_mut().unwrap().push(s);
-		}
-		else if let Some(owned) = owned.as_mut()
-		{
-			owned.push( bytes[pos] );
+		} else if let Some(owned) = owned.as_mut() {
+			owned.push(bytes[pos]);
 		}
 	}
 
-	if let Some(owned) = owned
-	{
+	if let Some(owned) = owned {
 		unsafe { Cow::Owned(String::from_utf8_unchecked(owned)) }
-	}
-	else
-	{
+	} else {
 		unsafe { Cow::Borrowed(std::str::from_utf8_unchecked(bytes)) }
 	}
 }
 
 #[cfg(test)]
-mod tests
-{
-	use ::split_one;
-	use ::split;
-	use ::escape;
+mod tests {
+	use escape;
+	use split;
+	use split_one;
 
-	fn check(text: &str, one: &str, two: &str)
-	{
+	fn check(text: &str, one: &str, two: &str) {
 		let a = split_one(text);
 		let a = a.unwrap();
 		assert_eq!(a.0, one);
@@ -227,14 +194,12 @@ mod tests
 	}
 
 	#[test]
-	fn failure()
-	{
+	fn failure() {
 		assert_eq!(split_one("abc\\"), None);
 	}
 
 	#[test]
-	fn fine()
-	{
+	fn fine() {
 		check("abc\\\\", "abc\\", "");
 		check("1525824000000 520893", "1525824000000", "520893");
 		check("abc\\\\ def", "abc\\", "def");
@@ -246,23 +211,23 @@ mod tests
 		check(" ", "", "");
 	}
 	#[test]
-	fn splitting()
-	{
-		assert_eq!(format!("{:?}",split("abc\\\\")), "Some([\"abc\\\\\"])");
-		assert_eq!(format!("{:?}",split("abc def")), "Some([\"abc\", \"def\"])");
-		assert_eq!(format!("{:?}",split("abc\\ def")), "Some([\"abc def\"])");
+	fn splitting() {
+		assert_eq!(format!("{:?}", split("abc\\\\")), "Some([\"abc\\\\\"])");
+		assert_eq!(
+			format!("{:?}", split("abc def")),
+			"Some([\"abc\", \"def\"])"
+		);
+		assert_eq!(format!("{:?}", split("abc\\ def")), "Some([\"abc def\"])");
 	}
 
 	#[test]
-	fn escaping()
-	{
+	fn escaping() {
 		assert_eq!(escape("abc\ndef"), "abc\\ndef");
 		assert_eq!(escape("abc\n def"), "abc\\n\\ def");
 	}
 
 	#[test]
-	fn round_trip()
-	{
+	fn round_trip() {
 		check(&escape("ads\nasd"), "ads\nasd", "");
 	}
 }

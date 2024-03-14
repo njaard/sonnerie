@@ -51,7 +51,6 @@ jobs:
           override: true
       - name: Run cargo test
         run: |
-          cd heed
           cargo clean
           cargo check --all-features
 
