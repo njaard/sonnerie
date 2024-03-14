@@ -31,14 +31,14 @@ fn main() -> std::io::Result<()> {
 
 	let w = std::fs::File::open(db)?;
 	let r = Reader::new(w).unwrap();
-	for record in r.left().unwrap().get_filter(&filter).into_iter() {
+	for record in r.left().unwrap().get_filter(&filter) {
 		sonnerie::formatted::print_record(
 			&record,
 			&mut stdout,
 			sonnerie::formatted::PrintTimestamp::Seconds,
 			sonnerie::formatted::PrintRecordFormat::Yes,
 		)?;
-		writeln!(&mut stdout, "")?;
+		writeln!(&mut stdout)?;
 	}
 
 	Ok(())

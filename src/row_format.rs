@@ -87,8 +87,7 @@ impl RowFormat for RowFormatImpl {
 pub fn parse_row_format(human: &str) -> Box<dyn RowFormat> {
 	let mut size = 0usize;
 	let mut has_size = true;
-	let mut elements: Vec<Box<dyn Element>> = vec![];
-	elements.reserve(human.len());
+	let mut elements: Vec<Box<dyn Element>> = Vec::with_capacity(human.len());
 
 	for t in human.bytes() {
 		match t {

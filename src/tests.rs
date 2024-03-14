@@ -185,7 +185,7 @@ fn write_many_u64<W: std::io::Write + Send>(
 ) {
 	for n in range {
 		let mut buf = [0u8; 16];
-		byteorder::BigEndian::write_u64(&mut buf[..], n as u64);
+		byteorder::BigEndian::write_u64(&mut buf[..], n);
 		byteorder::BigEndian::write_u64(&mut buf[8..16], n);
 		w.add_record_raw(key, "U", &buf).unwrap();
 	}
@@ -625,7 +625,7 @@ fn keys_split() {
 		write_many(&mut w, "aa", 1040000..1050000);
 		w.finish().unwrap();
 	}
-	let mut f = std::fs::File::open(&t.path().join("w")).unwrap();
+	let mut f = std::fs::File::open(t.path().join("w")).unwrap();
 	let o = SegmentReader::open(&mut f).unwrap().left().unwrap();
 	{
 		let f = o.first().unwrap();
@@ -988,7 +988,7 @@ fn delete_quantum_choice_eraser_compact() {
 				.add_record_raw(record.key(), record.format(), record.raw())
 				.unwrap();
 		}
-		crate::_purge_compacted_files(compacted, &dir, &db, false)
+		crate::_purge_compacted_files(compacted, dir, &db, false)
 	};
 
 	// create two transactions
@@ -1122,7 +1122,7 @@ fn configurable_delete_test(
 	let db = DatabaseReader::new(t.path()).unwrap();
 	let wildcard = match crate::wildcard::Wildcard::new(wildcard_str).as_regex() {
 		Some(re) => Left(re),
-		None => Right(wildcard_str.split("%").next().unwrap()),
+		None => Right(wildcard_str.split('%').next().unwrap()),
 	};
 
 	let mut len = 0;

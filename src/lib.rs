@@ -15,7 +15,6 @@ pub(crate) mod write;
 
 pub use write::WriteFailure;
 
-pub use crate::rayon::*;
 #[cfg(feature = "by-key")]
 pub use bykey::*;
 pub use create_tx::*;

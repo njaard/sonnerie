@@ -227,7 +227,7 @@ mod tests {
 		let a = [("b", 1), ("c", 1), ("d", 1), ("e", 1)].iter().cloned();
 		let b = [("c", 2)].iter().cloned();
 		let mut merged =
-			crate::merge::Merge::new(vec![(0, a), (1, b)], |a, b| a.0.cmp(&b.0)).map(|(_, x)| x);
+			crate::merge::Merge::new(vec![(0, a), (1, b)], |a, b| a.0.cmp(b.0)).map(|(_, x)| x);
 		//assert_eq!(merged.next().unwrap(), ("a",2));
 		assert_eq!(merged.next().unwrap(), ("b", 1));
 		assert_eq!(merged.next().unwrap(), ("c", 2));
