@@ -880,7 +880,7 @@ fn high_level_writer() {
 		.collect();
 	assert_eq!(
 		format!("{:.4?}", a),
-		r#"[("Ff", 34.0000, 22.0000), ("Ff", 3.1415, 2.7182)]"#
+		r#"[("Ff", 34.0000, 22.0000), ("Ff", 3.1416, 2.7183)]"#
 	);
 	let a: Vec<(String, String)> = r.get("c").map(|m| (m.get(0), m.get(1))).collect();
 	assert_eq!(
@@ -931,7 +931,7 @@ fn high_level_writer2() {
 		.collect();
 	assert_eq!(
 		format!("{:.4?}", a),
-		r#"[("Ff", 34.0000, 22.0000), ("Ff", 3.1415, 2.7182)]"#
+		r#"[("Ff", 34.0000, 22.0000), ("Ff", 3.1416, 2.7183)]"#
 	);
 	let a: Vec<(String, String)> = r.get("c").map(|m| (m.get(0), m.get(1))).collect();
 	assert_eq!(
