@@ -32,6 +32,7 @@ impl std::fmt::Debug for Record {
 				'u' => write!(f, ", {}", self.get::<u32>(idx))?,
 				'U' => write!(f, ", {}", self.get::<u64>(idx))?,
 				's' => write!(f, ", \"{}\"", self.get::<&str>(idx).escape_default())?,
+				'B' => write!(f, ", \"{}bytes\"", self.get::<&[u8]>(idx).len())?,
 				a => panic!("unknown format column '{a}'"),
 			}
 		}
@@ -92,7 +93,7 @@ impl Record {
 			match code {
 				b'i' | b'u' | b'f' => from = &from[4..],
 				b'I' | b'U' | b'F' => from = &from[8..],
-				b's' => {
+				b's' | b'B' => {
 					let (len, tail) = unsigned_varint::decode::u64(from).map_err(|e| {
 						std::io::Error::new(std::io::ErrorKind::InvalidData, format!("{:?}", e))
 					})?;
@@ -261,6 +262,42 @@ impl ToRecord for String {
 	}
 	fn variable_size(&self) -> bool {
 		self.as_str().variable_size()
+	}
+}
+
+impl ToRecord for &[u8] {
+	fn store(&self, buf: &mut Vec<u8>) {
+		let len = self.len();
+		let mut lenbuf = unsigned_varint::encode::usize_buffer();
+		let lenbuf = unsigned_varint::encode::usize(len, &mut lenbuf);
+		buf.extend_from_slice(lenbuf);
+		buf.extend_from_slice(self);
+	}
+	fn format_char(&self) -> u8 {
+		b'B'
+	}
+	fn size(&self) -> usize {
+		let mut buf = unsigned_varint::encode::usize_buffer();
+		let buf = unsigned_varint::encode::usize(self.len(), &mut buf);
+		buf.len() + self.len()
+	}
+	fn variable_size(&self) -> bool {
+		true
+	}
+}
+
+impl ToRecord for Vec<u8> {
+	fn store(&self, buf: &mut Vec<u8>) {
+		self.as_slice().store(buf)
+	}
+	fn format_char(&self) -> u8 {
+		self.as_slice().format_char()
+	}
+	fn size(&self) -> usize {
+		self.as_slice().size()
+	}
+	fn variable_size(&self) -> bool {
+		self.as_slice().variable_size()
 	}
 }
 
@@ -523,5 +560,29 @@ impl<'a> FromRecord<'a> for &'a str {
 
 		std::str::from_utf8(&tail[..len as usize])
 			.map_err(|k| std::io::Error::new(std::io::ErrorKind::InvalidData, k))
+	}
+}
+
+impl<'a> FromRecord<'a> for Vec<u8> {
+	fn get(fmt_char: u8, bytes: &'a [u8]) -> std::io::Result<Self> {
+		let s: &[u8] = FromRecord::get(fmt_char, bytes)?;
+		Ok(s.to_owned())
+	}
+}
+
+impl<'a> FromRecord<'a> for &'a [u8] {
+	fn get(fmt_char: u8, bytes: &'a [u8]) -> std::io::Result<Self> {
+		if fmt_char != b'B' {
+			return Err(std::io::Error::new(
+				std::io::ErrorKind::InvalidData,
+				format!("cannot decode String from '{}'", fmt_char as char),
+			));
+		}
+
+		let (len, tail) = unsigned_varint::decode::u64(bytes).map_err(|e| {
+			std::io::Error::new(std::io::ErrorKind::InvalidData, format!("{:?}", e))
+		})?;
+
+		Ok(&tail[..len as usize])
 	}
 }

@@ -1,7 +1,9 @@
 //! Decode an encoded row format.
 
+use base64::prelude::*;
 use byteorder::{BigEndian, ByteOrder};
 use escape_string::split_one;
+use std::io::Write;
 
 use crate::Timestamp;
 
@@ -61,6 +63,7 @@ impl RowFormat for RowFormatImpl {
 /// * `f` -> 32-bit unsigned float
 /// * `F` -> 64-bit unsigned float
 /// * `s` -> variable size string type
+/// * `B` -> variable size byte type (outputted as base64 in the CLI tools)
 ///
 /// Potential future types:
 /// * decimal
@@ -102,6 +105,10 @@ pub fn parse_row_format(human: &str) -> Box<dyn RowFormat> {
 				has_size = false;
 				elements.push(Box::new(ElementString));
 			}
+			b'B' => {
+				has_size = false;
+				elements.push(Box::new(ElementBytes));
+			}
 			a => {
 				panic!("invalid format character '{}'", a);
 			}
@@ -128,6 +135,7 @@ pub fn row_format_size(human: &str) -> Option<usize> {
 			b'f' => size += 4,
 			b'F' => size += 8,
 			b's' => return None,
+			b'B' => return None,
 			b'\x7f' => return None,
 			a => {
 				panic!("invalid format character '{}'", a);
@@ -338,6 +346,36 @@ impl Element for ElementString {
 		let s = std::str::from_utf8(&tail[0..len as usize])
 			.map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
 		write!(dest, "{}", escape_string::escape(s))?;
+		Ok(&tail[len as usize..])
+	}
+}
+
+pub(crate) struct ElementBytes;
+impl Element for ElementBytes {
+	fn to_stored_format<'s>(&self, from: &'s str, dest: &mut Vec<u8>) -> Result<&'s str, String> {
+		let (head, tail) = escape_string::split_one(from)
+			.ok_or_else(|| format!("Unable to parse \"{}\" as backslash-escaped string", from))?;
+		let head = BASE64_STANDARD_NO_PAD
+			.decode(&*head)
+			.map_err(|e| format!("Unable to interpret \"{head}\" as a base64 string: {e:?}"))?;
+		let mut buf = unsigned_varint::encode::u64_buffer();
+		let encoded_len = unsigned_varint::encode::u64(head.len() as u64, &mut buf);
+		dest.extend_from_slice(encoded_len);
+		dest.extend_from_slice(head.as_slice());
+		Ok(tail)
+	}
+	fn to_protocol_format<'a>(
+		&self,
+		from: &'a [u8],
+		dest: &mut dyn ::std::io::Write,
+	) -> ::std::io::Result<&'a [u8]> {
+		let (len, tail) = unsigned_varint::decode::u64(from).map_err(|e| {
+			std::io::Error::new(std::io::ErrorKind::InvalidData, format!("{:?}", e))
+		})?;
+		let mut enc =
+			base64::write::EncoderWriter::new(dest, &base64::engine::general_purpose::STANDARD);
+		enc.write_all(&tail[0..len as usize])?;
+
 		Ok(&tail[len as usize..])
 	}
 }
