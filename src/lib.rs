@@ -168,10 +168,10 @@ impl<'a> From<(Bound<Cow<'a, str>>, Bound<Cow<'a, str>>)> for CowStringRange<'a>
 }
 
 /// Perform a compaction of the DB.
-/// 
-/// Written for use with downstream crates needing periodic
-/// compactions.
-pub fn compact(dir: &std::path::Path, major: bool) -> std::io::Result<()> {
+///
+/// For use with downstream crates needing periodic
+/// compactions. Returns the number of records compacted.
+pub fn compact(dir: &std::path::Path, major: bool) -> std::io::Result<u64> {
 	use fs2::FileExt;
 	let lock = std::fs::File::create(dir.join(".compact"))?;
 	lock.try_lock_exclusive()?;
@@ -182,33 +182,28 @@ pub fn compact(dir: &std::path::Path, major: bool) -> std::io::Result<()> {
 		DatabaseReader::without_main_db(dir)?
 	};
 
-	let mut no_transaction_paths = false;
 	{
 		let ps = db.transaction_paths();
-		if ps.len() == 1 && ps[0].file_name().expect("filename") == "main" {
-			no_transaction_paths = true;
+		if db.num_txes() <= 1 || (ps.len() == 1 && ps[0].file_name().expect("filename") == "main") {
+			return Ok(0);
 		}
 	}
+	// println!("Processing {} .txes", db.num_txes());
+	let db = std::sync::Arc::new(db);
+	let mut compacted = CreateTx::new(dir)?;
 
-	if db.num_txes() <= 1 || no_transaction_paths {
-		println!("Compaction has nothing to do.");
-	} else {
-		println!("Processing {} .txes", db.num_txes());
-		let db = std::sync::Arc::new(db);
-		let mut compacted = CreateTx::new(dir)?;
-		
-		// create the new transaction after opening the database reader
-		let reader = db.get_range(..);
-		let mut n = 0u64;
-		for record in reader {
-			compacted.add_record_raw(record.key(), record.format(), record.raw()).expect("Error adding record");
-			n += 1;
-		}
-		_purge_compacted_files(compacted, dir, &db, major)?;
-		println!("Compacted {} records.", {n});
+	// create the new transaction after opening the database reader
+	let reader = db.get_range(..);
+	let mut n = 0u64;
+	for record in reader {
+		compacted
+			.add_record_raw(record.key(), record.format(), record.raw())
+			.expect("Error adding record");
+		n += 1;
 	}
+	_purge_compacted_files(compacted, dir, &db, major)?;
 	
-	Ok(())
+	Ok(n)
 }
 
 // not part of public api
