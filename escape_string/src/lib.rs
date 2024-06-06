@@ -150,12 +150,11 @@ pub fn escape<'a>(text: &'a str) -> Cow<'a, str> {
 	let mut owned = None;
 
 	for pos in 0..bytes.len() {
-		let special: Box<[u8]> = std::ascii::escape_default(bytes[pos]).collect();
-		if special.len() > 1 {
+		if !(bytes[pos] as char).is_ascii() {
 			if owned.is_none() {
 				owned = Some(bytes[0..pos].to_owned());
 			}
-			owned.as_mut().unwrap().push(special);
+			owned.as_mut().unwrap().expand(std::ascii::escape_default(bytes[pos]));
 		} else if let Some(owned) = owned.as_mut() {
 			owned.push(bytes[pos]);
 		}
