@@ -1,3 +1,7 @@
+# 0.9.0: 2024-07-03
+* add `--columns` option to CLI
+* MacOS build support
+
 # 0.8.6: 2024-02-11
 * Fix race condition while opening db when compacting
 * Fix infinite loop during compaction
