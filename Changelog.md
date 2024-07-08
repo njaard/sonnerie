@@ -1,3 +1,6 @@
+# 0.9.1: 2024-07-08
+* Make `choice-string` a non-optional dependency, fixing build without feature `bin`
+
 # 0.9.0: 2024-07-03
 * add `--columns` option to CLI
 * MacOS build support
