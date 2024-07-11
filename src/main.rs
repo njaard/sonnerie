@@ -240,17 +240,6 @@ fn main() -> std::io::Result<()> {
 
 					let shell = &std::env::var_os("SHELL").unwrap_or("sh".into());
 
-					struct CheckOnDrop(Child, BufWriter<ChildStdin>);
-					impl Drop for CheckOnDrop {
-						fn drop(&mut self) {
-							self.1.flush().unwrap();
-							let s = self.0.wait().unwrap();
-							if !s.success() {
-								panic!("parallel worker failed");
-							}
-						}
-					}
-
 					let subproc = || {
 						let mut child = Command::new(shell)
 							.arg("-c")
