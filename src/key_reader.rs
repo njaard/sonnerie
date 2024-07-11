@@ -180,8 +180,8 @@ impl<'rdr, 'k> StringKeyRangeReader<'rdr, 'k> {
 				let prefix = self.prefix;
 
 				segment_after_end = self.reader.segments.find_after(|o| {
-					let oo = &o[0..std::cmp::min(o.len(), prefix.len())];
-					let c = oo.cmp(prefix);
+					let oo = &o.as_bytes()[0..std::cmp::min(o.len(), prefix.len())];
+					let c = oo.cmp(prefix.as_bytes());
 					if c == std::cmp::Ordering::Equal && oo.len() >= prefix.len() {
 						return std::cmp::Ordering::Less;
 					}
