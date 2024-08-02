@@ -105,6 +105,10 @@ is `--before-time` and similar functions for filtering by key range.
 The data is immediately removed from the database. A later compaction will
 purge it and recover disk space.
 
+Deletions merely suppress output; reading a sequence of records that
+contain the deleted items will still have to iterate through the deleted records.
+You should thus compact (with --major) to not pay that penalty.
+
 # Usage
 
 ## Row format
