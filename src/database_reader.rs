@@ -316,8 +316,7 @@ impl<'d> DatabaseRecordReader<'d> {
 				let b = filter.compressed_bytes();
 				(filter, b)
 			})
-			.max_by_key(|(_, rsize)| *rsize)
-			.unwrap();
+			.max_by_key(|(_, rsize)| *rsize)?;
 
 		// biggest_reader is a StringKeyRangeReader
 
