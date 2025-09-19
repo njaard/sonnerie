@@ -966,6 +966,36 @@ fn string_records() {
 }
 
 #[test]
+fn bytearray_records() {
+	let t = tempfile::TempDir::new().unwrap();
+	let data = "\
+		ab\t2010-01-01_00:00:01\tB\tSGVsbG8x\n\
+		ab\t2010-01-01_00:00:02\tB\tSGVsbG8gV29ybGQ\n\
+		ab\t2010-01-01_00:00:03\tB\tSGVsbG8gUGxhbmV0\n\
+		";
+
+	{
+		let mut tx = CreateTx::new(t.path()).expect("creating tx");
+
+		add_from_stream_with_fmt(&mut tx, &mut std::io::Cursor::new(data), Some("%F_%T"))
+			.expect("writing");
+		tx.add_record(
+			"ab",
+			"2010-01-01T00:00:04".parse().unwrap(),
+			&[&b"Hello Universe".as_slice() as &dyn crate::ToRecord],
+		)
+		.unwrap();
+		tx.commit_to(&t.path().join("main")).expect("committed");
+	}
+	let r = DatabaseReader::new(t.path()).unwrap();
+	let a: Vec<Vec<u8>> = r.get("ab").map(|m| m.value()).collect();
+	assert_eq!(a[0], b"Hello1");
+	assert_eq!(a[1], b"Hello World");
+	assert_eq!(a[2], b"Hello Planet");
+	assert_eq!(a[3], b"Hello Universe");
+}
+
+#[test]
 fn many_string_records() {
 	let t = tempfile::TempDir::new().unwrap();
 

@@ -50,6 +50,7 @@ compact_str="0.8"
 lending-cell = {version="0.1.1", optional=true }
 thiserror = "1.0"
 choice-string = "0.0.1"
+base64 = "0.22"
 
 [dev-dependencies]
 rand={version="0.8", features=["small_rng"]}
